@@ -307,30 +307,6 @@ TWEAKS = validate_module("fps_boost", [
         tags=["activity", "history", "telemetry", "background"],
     ),
 
-    # ── Ultimate Performance Power Plan ──────────────────────────────
-    T(
-        "fpsb-011", "Activate Ultimate Performance Power Plan",
-        "Creates and activates the hidden Ultimate Performance power plan.",
-        actions=[
-            ("powerscheme", "create",
-             "e9a42b02-d5df-448d-aa00-03f14749eb61",
-             "Ultimate Performance"),
-        ],
-        revert=[
-            ("powerscheme", "setactive",
-             "381b4222-f694-41df-9d63-86d0b2b0e55f"),
-            ("powerscheme", "delete",
-             "e9a42b02-d5df-448d-aa00-03f14749eb61"),
-        ],
-        why="The Ultimate Performance plan minimizes micro-latencies by "
-            "removing power-saving delays.  It keeps CPUs at high clock "
-            "speeds and disables PCI Express link state power management.",
-        changes="Activates the Ultimate Performance power plan.",
-        risk="safe", impact="moderate", recommended="recommended",
-        admin=True,
-        tags=["power", "plan", "ultimate", "clock", "latency"],
-    ),
-
     # ── Spectre/Meltdown Mitigations ─────────────────────────────────
     T(
         "fpsb-012", "Disable Spectre/Meltdown Mitigations",

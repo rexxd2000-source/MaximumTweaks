@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>RexTweaks Network Globe</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#0a0e1a;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;user-select:none}
+#globe{position:absolute;inset:0;cursor:grab}
+.panel{position:absolute;background:rgba(13,19,34,.93);border:1px solid rgba(50,80,130,.55);border-radius:10px;padding:10px 14px;color:#dbe7ff;font-size:12px;line-height:1.5;display:none;box-shadow:0 4px 18px rgba(0,0,0,.45)}
+#gameBadge{top:12px;left:12px;min-width:200px}
+.gname{font-size:15px;font-weight:700;color:#fff;margin-bottom:2px}
+.brow{display:flex;justify-content:space-between;gap:16px}
+.brow span:first-child{color:#7d93b8}
+.brow span:last-child{color:#e8f0ff;text-align:right}
+#infoPanel{top:12px;right:12px;width:240px}
+#infoPanel h3,#routePanel h3{margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid rgba(80,110,160,.35);padding-bottom:5px}
+#infoPanel h3{color:#a78bfa}
+#routePanel{bottom:12px;left:12px;max-width:360px}
+#routePanel h3{color:#60a5fa}
+#tooltip{position:absolute;background:rgba(10,16,30,.96);border:1px solid rgba(90,130,190,.6);border-radius:6px;padding:4px 9px;color:#eaf2ff;font-size:11px;display:none;pointer-events:none;z-index:9;white-space:nowrap}
+.x{position:absolute;top:3px;right:9px;cursor:pointer;color:#7d93b8;font-size:13px}
+.x:hover{color:#fff}
+</style>
+</head>
+<body>
+<canvas id="globe"></canvas>
+<div id="gameBadge" class="panel"><div class="gname" id="gbName">&mdash;</div>
+<div class="brow"><span>State</span><span id="gbState">&mdash;</span></div>
+<div class="brow"><span>Process</span><span id="gbProc">&mdash;</span></div>
+<div class="brow"><span>Region</span><span id="gbRegion">&mdash;</span></div>
+<div class="brow"><span>Latency</span><span id="gbLat">&mdash;</span></div></div>
+<div id="infoPanel" class="panel"><span class="x" onclick="closeInfoPanel()">&#10005;</span><h3 id="ipTitle">Node</h3><div id="ipBody"></div></div>
+<div id="routePanel" class="panel"><h3>Route</h3><div id="rpBody"></div></div>
+<div id="tooltip"></div>
+<script src="countries.js"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const cv=$("globe"),ctx=cv.getContext("2d"),TT=$("tooltip");
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+let W,H,DPR=1;
+function resize(){DPR=Math.min(window.devicePixelRatio||1,1.5);W=innerWidth;H=innerHeight;cv.width=W*DPR|0;cv.height=H*DPR|0;ctx.setTransform(DPR,0,0,DPR,0,0);}
+addEventListener("resize",resize);resize();
+
+let camRotY=-40,camRotX=22,camDist=2.5,focus=null;
+let user=null,endpt=null,hops=[],gaming=false;
+let lastAct=performance.now(),lastDraw=0,paused=false,rnodes=[],hoverN=null;
+let cRY,sRY,cRX,sRX,S,CX,CY,HR;
+const D2R=Math.PI/180;
+function ll2v(lat,lon){const la=lat*D2R,lo=lon*D2R,c=Math.cos(la);return{x:c*Math.sin(lo),y:Math.sin(la),z:c*Math.cos(lo)};}
+function updCam(){cRY=Math.cos(camRotY*D2R);sRY=Math.sin(camRotY*D2R);cRX=Math.cos(camRotX*D2R);sRX=Math.sin(camRotX*D2R);S=Math.min(W,H)*0.36*camDist;CX=W/2;CY=H/2;HR=S/Math.sqrt(Math.max(camDist*camDist-1,.01));}
+function proj(v){const x=v.x*cRY-v.z*sRY,z0=v.x*sRY+v.z*cRY,y=v.y*cRX-z0*sRX,z=v.y*sRX+z0*cRX,d=z+camDist;if(d<.1)return null;return{x:CX+x*S/d,y:CY-y*S/d,z};}
+
+const LAND=(typeof COUNTRIES==="undefined"?[]:COUNTRIES).map(c=>{
+ let cen=null,bn=0,n=0;
+ const polys=c.polygons.map(p=>p.map(r=>{
+  n+=r.length;
+  const vs=r.map(pt=>ll2v(pt[1],pt[0]));
+  if(vs.length>bn){bn=vs.length;let x=0,y=0,z=0;vs.forEach(v=>{x+=v.x;y+=v.y;z+=v.z;});const L=Math.hypot(x,y,z)||1;cen={x:x/L,y:y/L,z:z/L};}
+  return vs;
+ }));
+ return{name:c.name,polys,cen,n};
+}).sort((a,b)=>b.n-a.n);
+
+function slerp(a,b,t){const d=clamp(a.x*b.x+a.y*b.y+a.z*b.z,-1,1),th=Math.acos(d);if(th<1e-4)return a;const s=Math.sin(th),A=Math.sin((1-t)*th)/s,B=Math.sin(t*th)/s;return{x:a.x*A+b.x*B,y:a.y*A+b.y*B,z:a.z*A+b.z*B};}
+function drawArc(a,b){
+ const th=Math.acos(clamp(a.x*b.x+a.y*b.y+a.z*b.z,-1,1)),lift=1+.38*th/Math.PI,n=gaming?14:28;
+ ctx.beginPath();let pen=false;
+ for(let i=0;i<=n;i++){
+  const t=i/n,q=slerp(a,b,t),m=lift*Math.sin(Math.PI*t);
+  const p=proj({x:q.x*m,y:q.y*m,z:q.z*m});
+  if(!p||p.z<-.15){pen=false;continue;}
+  if(pen)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);
+  pen=true;
+ }
+ ctx.stroke();
+}
+
+function draw(now){
+ updCam();
+ ctx.clearRect(0,0,W,H);
+ if(gaming){ctx.fillStyle="#101a30";}
+ else{
+  const g=ctx.createRadialGradient(CX-HR*.35,CY-HR*.35,HR*.1,CX,CY,HR);
+  g.addColorStop(0,"#182743");g.addColorStop(.72,"#111c33");g.addColorStop(1,"#0b1424");
+  ctx.fillStyle=g;
+ }
+ ctx.beginPath();ctx.arc(CX,CY,HR,0,6.2832);ctx.fill();
+ ctx.strokeStyle="rgba(90,140,210,.4)";ctx.lineWidth=1.5;ctx.stroke();
+
+ ctx.beginPath();
+ for(const c of LAND)for(const poly of c.polys){
+  let f=0,t=0,ok=true;const rings=[];
+  for(const ring of poly){
+   const pts=[];
+   for(const v of ring){const p=proj(v);if(!p){ok=false;break;}pts.push(p);if(p.z>0)f++;}
+   t+=ring.length;rings.push(pts);
+   if(!ok)break;
+  }
+  if(ok&&f*2>=t)for(const pts of rings){
+   for(let i=0;i<pts.length;i++){if(i)ctx.lineTo(pts[i].x,pts[i].y);else ctx.moveTo(pts[i].x,pts[i].y);}
+   ctx.closePath();
+  }
+ }
+ ctx.fillStyle="rgba(20,35,60,.85)";ctx.fill("evenodd");
+ ctx.strokeStyle="rgba(50,80,130,.6)";ctx.lineWidth=1;ctx.stroke();
+
+ if(!gaming){
+  const lim=camDist>=3.4?12:camDist>=2.6?26:camDist>=2.05?55:LAND.length;
+  ctx.fillStyle="rgba(150,178,215,.8)";ctx.font="11px 'Segoe UI',sans-serif";ctx.textAlign="center";
+  for(let i=0;i<lim&&i<LAND.length;i++){const c=LAND[i],p=proj(c.cen);if(p&&p.z>.2)ctx.fillText(c.name,p.x,p.y);}
+ }
+
+ const chain=[];
+ if(user)chain.push({d:user,v:ll2v(user.lat,user.lng),c:"#34d399",t:"user"});
+ for(const h of hops)if(h&&h.lat!=null&&h.lng!=null)chain.push({d:h,v:ll2v(+h.lat,+h.lng),c:"#60a5fa",t:"hop"});
+ if(endpt)chain.push({d:endpt,v:ll2v(endpt.lat,endpt.lng),c:"#8B5CF6",t:"endpoint"});
+
+ ctx.strokeStyle="rgba(96,165,250,.75)";ctx.lineWidth=1.5;
+ ctx.setLineDash([5,7]);ctx.lineDashOffset=-(now/40)%12;
+ for(let i=0;i<chain.length-1;i++)drawArc(chain[i].v,chain[i+1].v);
+ ctx.setLineDash([]);
+
+ rnodes.length=0;
+ for(const nd of chain){
+  const p=proj(nd.v);nd.p=p;
+  if(!p||p.z<0)continue;
+  rnodes.push(nd);
+  if(!gaming){ctx.fillStyle=nd.c+"33";ctx.beginPath();ctx.arc(p.x,p.y,8,0,6.2832);ctx.fill();}
+  ctx.fillStyle=nd.c;ctx.beginPath();ctx.arc(p.x,p.y,3.5,0,6.2832);ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(p.x,p.y,1.4,0,6.2832);ctx.fill();
+  if(nd.t!=="hop"){ctx.strokeStyle=nd.c;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(p.x,p.y,6+2*Math.sin(now/280),0,6.2832);ctx.stroke();}
+ }
+}
+
+let drag=null,moved=0;
+function act(){lastAct=performance.now();}
+function pick(x,y){let best=null,bd=144;for(const nd of rnodes)if(nd.p){const dx=nd.p.x-x,dy=nd.p.y-y,dd=dx*dx+dy*dy;if(dd<bd){bd=dd;best=nd;}}return best;}
+cv.addEventListener("mousedown",e=>{drag={x:e.clientX,y:e.clientY};moved=0;act();cv.style.cursor="grabbing";});
+addEventListener("mousemove",e=>{
+ act();
+ if(drag){
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  moved+=Math.abs(dx)+Math.abs(dy);
+  camRotY-=dx*.3;camRotX=clamp(camRotX+dy*.3,-89,89);
+  drag={x:e.clientX,y:e.clientY};focus=null;hoverN=null;TT.style.display="none";return;
+ }
+ hoverN=e.target===cv?pick(e.clientX,e.clientY):null;
+ if(hoverN){cv.style.cursor="pointer";showTip(e.clientX,e.clientY,hoverN);}
+ else{cv.style.cursor="grab";TT.style.display="none";}
+});
+addEventListener("mouseup",e=>{
+ if(drag&&moved<5){const n=pick(e.clientX,e.clientY);if(n)openInfo(n);}
+ drag=null;cv.style.cursor="grab";
+});
+cv.addEventListener("wheel",e=>{e.preventDefault();act();focus=null;camDist=clamp(camDist*(e.deltaY>0?1.12:.89),1.3,5);},{passive:false});
+
+function showTip(x,y,nd){
+ const d=nd.d;let s="";
+ if(nd.t==="user")s=[d.city,d.country].filter(Boolean).join(", ");
+ else if(nd.t==="endpoint")s=d.ip?"IP "+d.ip:"";
+ else s=[d.ip,d.city].filter(Boolean).join(" \u00b7 ");
+ TT.textContent=(nd.t==="user"?"USER":nd.t==="endpoint"?"ENDPOINT":"HOP")+(s?" \u2014 "+s:"");
+ TT.style.display="block";
+ TT.style.left=Math.min(x+14,W-TT.offsetWidth-8)+"px";
+ TT.style.top=Math.min(y+14,H-TT.offsetHeight-8)+"px";
+}
+function row(b,k,v){const r=document.createElement("div");r.className="brow";const a=document.createElement("span"),c=document.createElement("span");a.textContent=k;c.textContent=v;r.append(a,c);b.append(r);}
+function openInfo(nd){
+ const d=nd.d,b=$("ipBody");b.innerHTML="";
+ $("ipTitle").textContent=nd.t==="user"?"User Node":nd.t==="endpoint"?"Game Endpoint":"Hop "+(d.hop_number!=null?d.hop_number:d.hopNumber!=null?d.hopNumber:"?");
+ const keys=nd.t==="user"?["city","country","isp","asn"]:nd.t==="endpoint"?["ip","city","country","asn","asnName","classification","score","confidence"]:["ip","city","country","asn","asn_name","rtt_ms","type"];
+ keys.forEach(k=>{if(d[k]!==undefined&&d[k]!==null&&d[k]!=="")row(b,k,String(d[k]));});
+ $("infoPanel").style.display="block";
+}
+window.closeInfoPanel=()=>{$("infoPanel").style.display="none";};
+
+window.setGame=(name,state,process,region,pid)=>{
+ $("gbName").textContent=name||"\u2014";$("gbState").textContent=state||"\u2014";
+ $("gbProc").textContent=process||"\u2014";$("gbRegion").textContent=(region||"\u2014")+(pid?" \u00b7 PID "+pid:"");
+ $("gameBadge").style.display="block";
+};
+window.clearGame=()=>{$("gameBadge").style.display="none";};
+window.setUser=(lat,lng,city,country,isp,asn)=>{user={lat:+lat,lng:+lng,city,country,isp,asn};};
+window.setGameEndpoint=(ip,lat,lng,city,country,asn,asnName,classification,score,confidence)=>{endpt={ip,lat:+lat,lng:+lng,city,country,asn,asnName,classification,score,confidence};};
+window.clearGameEndpoint=()=>{endpt=null;};
+window.setHops=j=>{try{hops=(typeof j==="string"?JSON.parse(j):j)||[];}catch(_){hops=[];}};
+window.setRouteInfo=(h,latency,jitter,loss,asPath)=>{
+ const b=$("rpBody");b.innerHTML="";
+ if(!h){$("routePanel").style.display="none";return;}
+ row(b,"Hops",h);
+ if(latency!=null)row(b,"Latency",latency+" ms");
+ if(jitter!=null)row(b,"Jitter",jitter+" ms");
+ if(loss!=null)row(b,"Loss",loss+"%");
+ if(asPath)row(b,"AS Path",String(asPath));
+ $("routePanel").style.display="block";
+};
+window.setLatency=ms=>{$("gbLat").textContent=ms==null||ms===""?"\u2014":ms+" ms";};
+window.focusOn=(lat,lng,alt)=>{
+ focus={t0:performance.now(),dur:900,x0:camRotX,y0:camRotY,d0:camDist,
+  x1:clamp(+lat,-85,85),
+  y1:camRotY+((((+lng-camRotY)%360)+540)%360-180),
+  d1:clamp(isFinite(+alt)&&+alt>0?+alt:2.2,1.3,5)};
+ act();
+};
+window.setGamingMode=on=>{gaming=!!on;};
+
+function ease(k){return k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;}
+function loop(now){
+ requestAnimationFrame(loop);
+ if(paused)return;
+ if(focus){
+  const k=clamp((now-focus.t0)/focus.dur,0,1),e=ease(k);
+  camRotX=focus.x0+(focus.x1-focus.x0)*e;
+  camRotY=focus.y0+(focus.y1-focus.y0)*e;
+  camDist=focus.d0+(focus.d1-focus.d0)*e;
+  if(k>=1)focus=null;
+ }
+ const iv=gaming?100:(now-lastAct>5000?200:66);
+ if(now-lastDraw<iv)return;
+ lastDraw=now;
+ draw(now);
+}
+document.addEventListener("visibilitychange",()=>{paused=document.hidden;if(!paused){lastDraw=0;act();}});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

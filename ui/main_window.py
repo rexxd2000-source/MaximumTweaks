@@ -1,47 +1,27 @@
-"""Main application window: premium sidebar navigation + stacked pages."""
+"""Main application window — new 3-panel layout.
+
+Layout:
+  [Sidebar] | [AI Bar] | [Center Pages] | [Actions Panel] | [Telemetry]
+"""
 from __future__ import annotations
 
 import ctypes
 import sys
 
-from PySide6.QtCore import (
-    QSize,
-    Qt,
-)
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QScrollArea,
-    QStackedWidget,
-    QVBoxLayout,
-    QWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from config.app_config import (
-    APP_NAME,
-    APP_VERSION,
-    GITHUB_REPO,
-    ICONS,
+    APP_NAME, APP_VERSION, DIRS, GITHUB_REPO, ICONS,
     UPDATE_MANIFEST_URL,
 )
 from engine import activity
 from rexlog import logger
-from ui.categories import SIDEBAR_TWEAKS, logo_path
 from ui.context import AppContext
-from ui.pages.dashboard import DashboardPage
-from ui.pages.detect import DetectPage, DetectWorker
-from ui.pages.logs import LogsPage
-from ui.pages.optimize import OptimizePage
-from ui.pages.chat import ChatPage
-from ui.premium_widgets import ComingSoonPage
-from ui.pages.delay_destroyer import DelayDestroyerPage
-from ui.pages.debloat import DebloatPage
-from ui.pages.settings import SettingsPage
-from ui.pages.tools import ToolsPage
-from ui.pages.tweaks import ALL_KEY, TweaksPage
 from ui.monitor_widgets import RexLogo
 from ui.space import SpaceBackground
 from ui.widgets import repolish
@@ -54,22 +34,31 @@ def is_admin() -> bool:
         return False
 
 
-def relaunch_as_admin() -> None:
-    import subprocess
-    params = " ".join(f'"{a}"' for a in sys.argv)
-    if sys.executable.lower().endswith((".exe", "python.exe", "pythonw.exe")):
-        cmd = f'powershell -NoProfile -Command "Start-Process -FilePath \'{sys.executable}\' -ArgumentList \'{params}\' -Verb RunAs"'
-        try:
-            subprocess.Popen(cmd, shell=True, creationflags=0x08000000)
-        except Exception as exc:  # noqa: BLE001
-            logger.warn(f"relaunch as admin failed: {exc}")
+# ── Sidebar definition: (key, label, icon_char) ─────────────────────
+SIDEBAR_ITEMS = [
+    ("home",         "Home",         "\u2302"),
+    ("backups",      "Backups",      "\u2601"),
+    ("fixes",        "Fixes",        "\u26cf"),
+    ("general",      "General",      "\u2699"),
+    ("hardware",     "Hardware",     "\u2699"),
+    ("debloat",      "Debloat",      "\u2716"),
+    ("network",      "Network",      "\u2637"),
+    ("gamemode",     "Game Mode",    "\u2605"),
+    ("advanced",     "Advanced",     "\u2699"),
+    ("bios",         "BIOS",         "\u2139"),
+    ("premium",      "Premium",      "\u2b50"),
+    # Separator
+    ("_sep2", "", ""),
+    ("settings",     "Settings",     "\u2699"),
+    ("logs",         "Logs",         "\u2709"),
+]
 
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        self.resize(1320, 900)
+        self.resize(1400, 900)
         self.setMinimumSize(1100, 700)
 
         self.ctx = AppContext(self)
@@ -80,25 +69,62 @@ class MainWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Deep-space ambient background (glow orbs + stars) behind the pages.
+        # Deep-space background
         self.space = SpaceBackground(self)
         self.space.setGeometry(self.rect())
         self.space.lower()
 
+        # ── Sidebar (left rail) ──
         self.sidebar = self._build_sidebar()
         root.addWidget(self.sidebar)
+
+        # ── Center + Right area ──
+        right_area = QWidget()
+        right_lay = QHBoxLayout(right_area)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setSpacing(0)
+
+        # Center: AI bar + pages + actions
+        center = QWidget()
+        center_lay = QVBoxLayout(center)
+        center_lay.setContentsMargins(0, 0, 0, 0)
+        center_lay.setSpacing(0)
+
+        # AI Bar
+        from ui.panels.ai_bar import AIBar
+        self.ai_bar = AIBar()
+        self.ai_bar.setContentsMargins(16, 12, 16, 8)
+        center_lay.addWidget(self.ai_bar)
+
+        # Pages stack
         self.stack = QStackedWidget()
-        root.addWidget(self.stack, 1)
+        self.stack.setContentsMargins(0, 0, 0, 0)
+        center_lay.addWidget(self.stack, 1)
 
+        # Actions panel
+        from ui.panels.actions_panel import ActionsPanel
+        self.actions_panel = ActionsPanel()
+        self.actions_panel.setContentsMargins(16, 8, 16, 12)
+        center_lay.addWidget(self.actions_panel)
+
+        right_lay.addWidget(center, 1)
+
+        # Right telemetry panel
+        from ui.panels.telemetry_panel import TelemetryPanel
+        self.telemetry_panel = TelemetryPanel()
+        self.telemetry_panel.setContentsMargins(12, 12, 12, 12)
+        right_lay.addWidget(self.telemetry_panel)
+
+        root.addWidget(right_area, 1)
+
+        # ── Register pages ──
         self._register_pages()
-        self.navigate("dashboard")
+        self.navigate("home")
 
-        # Background system-state audit: reads live registry/power/service
-        # state so every toggle reflects the real system, not just what this
-        # app has applied. Runs off the UI thread; cards fill in as results land.
+        # ── Background systems ──
         self.ctx.start_full_audit()
 
-        # Background hardware detection at startup.
+        from ui.pages.detect import DetectWorker
         self._detect_worker = DetectWorker(self)
         self._detect_worker.done.connect(self._on_detected)
         self._detect_worker.error.connect(
@@ -108,10 +134,16 @@ class MainWindow(QWidget):
         activity.emit("info", f"{APP_NAME} v{APP_VERSION} started")
         logger.info(f"{APP_NAME} v{APP_VERSION} launched (admin={is_admin()})")
 
-        # Silent background update check — an update banner appears if the
-        # server is ahead of this build, otherwise nothing happens.
         self._update_worker = None
         self._check_for_update_background()
+
+        # Connect AI bar
+        self.ai_bar.prompt_submitted.connect(self._on_ai_prompt)
+
+        # Connect actions panel
+        self.actions_panel.action_triggered.connect(self._on_action)
+
+    # ── Detection ──
 
     def _on_detected(self, profile):
         self.ctx.set_profile(profile)
@@ -119,13 +151,12 @@ class MainWindow(QWidget):
         activity.emit("scan", f"System scan completed \u2014 {ready} tweaks compatible")
 
     def _check_for_update_background(self):
-        """Non-blocking update probe; shows a toast if a newer build exists."""
         if not GITHUB_REPO and not UPDATE_MANIFEST_URL:
-            return  # updates not configured
+            return
         from ui.updater_dialog import FetchWorker
         worker = FetchWorker(self)
         worker.done.connect(self._on_bg_update)
-        self._update_worker = worker  # keep a strong ref until finished
+        self._update_worker = worker
         worker.start()
 
     def _on_bg_update(self, payload):
@@ -140,7 +171,61 @@ class MainWindow(QWidget):
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
 
-    # ---------------- Sidebar ----------------
+    # ── AI Bar ──
+
+    def _on_ai_prompt(self, text: str):
+        """Route AI prompts to the chat page or handle inline."""
+        # Navigate to chat page with the prompt
+        if "chat" in self.pages:
+            self.navigate("chat")
+            # Try to send the message
+            chat_page = self.pages["chat"]
+            if hasattr(chat_page, "send_message"):
+                chat_page.send_message(text)
+        else:
+            from ui.widgets import toast
+            toast("AI Assistant is loading...", "info", self)
+
+    # ── Actions Panel ──
+
+    def _on_action(self, action_title: str):
+        """Route action card clicks."""
+        action_map = {
+            "Create Restore Point": lambda: self.navigate("backups"),
+            "Create Backup": lambda: self.navigate("backups"),
+            "Quick Optimize": lambda: self.navigate("general"),
+            "System Info": lambda: self.navigate("advanced"),
+            "Run Fixes": lambda: self.navigate("fixes"),
+            "Create Restore Point": lambda: self.navigate("backups"),
+            "Backup Registry": lambda: self.navigate("backups"),
+            "Restore Backup": lambda: self.navigate("backups"),
+            "Run SFC": lambda: self.navigate("fixes"),
+            "Run DISM": lambda: self.navigate("fixes"),
+            "Windows Update Fix": lambda: self.navigate("fixes"),
+            "Disable Telemetry": lambda: self.navigate("general"),
+            "Visual Tweaks": lambda: self.navigate("general"),
+            "Power Plan": lambda: self.navigate("general"),
+            "CPU Optimization": lambda: self.navigate("hardware"),
+            "GPU Scheduling": lambda: self.navigate("hardware"),
+            "RAM Cleanup": lambda: self.navigate("hardware"),
+            "Remove Bloat": lambda: self.navigate("debloat"),
+            "App Scan": lambda: self.navigate("debloat"),
+            "Service Cleanup": lambda: self.navigate("debloat"),
+            "Flush DNS": lambda: self.navigate("network"),
+            "TCP Optimization": lambda: self.navigate("network"),
+            "DNS Benchmark": lambda: self.navigate("network"),
+            "Game Launch": lambda: self.navigate("gamemode"),
+            "FPS Boost": lambda: self.navigate("gamemode"),
+            "Timer Resolution": lambda: self.navigate("gamemode"),
+            "Registry Editor": lambda: self.navigate("advanced"),
+            "Group Policy": lambda: self.navigate("advanced"),
+            "BCD Edit": lambda: self.navigate("advanced"),
+        }
+        handler = action_map.get(action_title)
+        if handler:
+            handler()
+
+    # ── Sidebar ──
 
     def _nav_button(self, text, obj="Nav"):
         btn = QPushButton(text)
@@ -152,12 +237,11 @@ class MainWindow(QWidget):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(244)
+        side.setFixedWidth(220)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(1)
 
-        # Scrollable navigation (prevents overflow at small window sizes).
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -186,100 +270,20 @@ class MainWindow(QWidget):
         nav_lay.addLayout(brand)
         nav_lay.addSpacing(10)
 
-        # ---- MAIN
-        sec = QLabel("MAIN")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button("Dashboard")
-        logo = logo_path("home")
-        if logo.is_file():
-            btn.setIcon(QIcon(str(logo)))
-            btn.setIconSize(QSize(15, 15))
-        btn.clicked.connect(lambda _=False: self.navigate("dashboard"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["dashboard"] = btn
+        # Nav items
+        for key, label, icon in SIDEBAR_ITEMS:
+            if key.startswith("_sep"):
+                sec = QLabel("")
+                sec.setObjectName("NavSection")
+                nav_lay.addWidget(sec)
+                continue
 
-        nav_lay.addWidget(btn)
-
-        # ---- TWEAKS (collapsible section with sub-categories)
-        tweak_header = QPushButton("TWEAKS  \u25be")
-        tweak_header.setObjectName("NavSectionBtn")
-        tweak_header.setCursor(Qt.PointingHandCursor)
-        tweak_header.clicked.connect(lambda: self._toggle_section("tweaks"))
-        nav_lay.addWidget(tweak_header)
-        self._section_headers = {"tweaks": tweak_header}
-
-        self.tweak_sub = QWidget()
-        tweak_sub_lay = QVBoxLayout(self.tweak_sub)
-        tweak_sub_lay.setContentsMargins(0, 0, 0, 0)
-        tweak_sub_lay.setSpacing(1)
-        btn = self._nav_button(f"{ICONS['tweaks']}   Tweaks")
-        btn.clicked.connect(lambda _=False: self.navigate("tweaks"))
-        tweak_sub_lay.addWidget(btn)
-        self.nav_buttons["tweaks"] = btn
-        for cat_key, label in SIDEBAR_TWEAKS:
-            sub_btn = self._nav_button(label, "NavSub")
-            logo = logo_path(cat_key)
-            if logo.is_file():
-                sub_btn.setIcon(QIcon(str(logo)))
-                sub_btn.setIconSize(QSize(15, 15))
-            nav_key = f"tweak:{cat_key}"
-            sub_btn.clicked.connect(
-                lambda _=False, k=cat_key: self.navigate(f"tweak:{k}"))
-            tweak_sub_lay.addWidget(sub_btn)
-            self.nav_buttons[nav_key] = sub_btn
-        nav_lay.addWidget(self.tweak_sub)
-        self._sections = {"tweaks": self.tweak_sub}
-
-        # ---- PROFILES
-        sec = QLabel("PROFILES")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button("Game Profiles")
-        logo = logo_path("profiles")
-        if logo.is_file():
-            btn.setIcon(QIcon(str(logo)))
-            btn.setIconSize(QSize(15, 15))
-        btn.clicked.connect(lambda _=False: self.navigate("profiles"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["profiles"] = btn
-
-        # ---- TOOLS
-        sec = QLabel("TOOLS")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['tools']}   Tools")
-        btn.clicked.connect(lambda _=False: self.navigate("tools"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["tools"] = btn
-
-        btn = self._nav_button("\u26a1   Delay Destroyer")
-        btn.clicked.connect(lambda _=False: self.navigate("delay_destroyer"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["delay_destroyer"] = btn
-
-        btn = self._nav_button("\u2702   Smart Debloater")
-        btn.clicked.connect(lambda _=False: self.navigate("debloat"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["debloat"] = btn
-
-        # ---- AI ASSISTANT
-        btn = self._nav_button("\u2728   AI Assistant")
-        btn.clicked.connect(lambda _=False: self.navigate("chat"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["chat"] = btn
-
-        # ---- SETTINGS
-        sec = QLabel("SYSTEM")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['settings']}   Settings")
-        btn.clicked.connect(lambda _=False: self.navigate("settings"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["settings"] = btn
+            btn = self._nav_button(f"  {icon}   {label}")
+            btn.clicked.connect(lambda _=False, k=key: self.navigate(k))
+            nav_lay.addWidget(btn)
+            self.nav_buttons[key] = btn
 
         nav_lay.addStretch()
-
         scroll.setWidget(nav)
         lay.addWidget(scroll, 1)
 
@@ -289,66 +293,49 @@ class MainWindow(QWidget):
 
         return side
 
-    # ---------------- Pages ----------------
+    # ── Pages ──
 
     def _register_pages(self):
-        self.pages["dashboard"] = DashboardPage(self.ctx, self.navigate)
-        self.pages["detect"] = DetectPage(self.ctx)
-        self.pages["tweaks"] = TweaksPage(self.ctx)
-        self.pages["profiles"] = ComingSoonPage("Game Profiles")
-        self.pages["optimize"] = OptimizePage(self.ctx)
-        self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
-        self.pages["chat"] = ChatPage(self.ctx)
-        self.pages["delay_destroyer"] = DelayDestroyerPage(self.ctx)
+        from ui.pages.home import HomePage
+        from ui.pages.backups import BackupsPage
+        from ui.pages.fixes import FixesPage
+        from ui.pages.general import GeneralPage
+        from ui.pages.hardware import HardwarePage
+        from ui.pages.debloat import DebloatPage
+        from ui.pages.network_page import NetworkPage
+        from ui.pages.gamemode import GameModePage
+        from ui.pages.advanced import AdvancedPage
+        from ui.pages.bios import BIOSPage
+        from ui.pages.premium import PremiumPage
+        from ui.pages.settings import SettingsPage
+        from ui.pages.logs import LogsPage
+        from ui.pages.chat import ChatPage
+
+        nav = self.navigate
+        self.pages["home"] = HomePage(self.ctx, nav)
+        self.pages["backups"] = BackupsPage(self.ctx, nav)
+        self.pages["fixes"] = FixesPage(self.ctx, nav)
+        self.pages["general"] = GeneralPage(self.ctx, nav)
+        self.pages["hardware"] = HardwarePage(self.ctx, nav)
         self.pages["debloat"] = DebloatPage(self.ctx)
-        self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
+        self.pages["network"] = NetworkPage(self.ctx, nav)
+        self.pages["gamemode"] = GameModePage(self.ctx, nav)
+        self.pages["advanced"] = AdvancedPage(self.ctx, nav)
+        self.pages["bios"] = BIOSPage(self.ctx, nav)
+        self.pages["premium"] = PremiumPage(self.ctx, nav)
+        self.pages["settings"] = SettingsPage(self.ctx, nav)
         self.pages["logs"] = LogsPage()
+        self.pages["chat"] = ChatPage(self.ctx)
+
         for page in self.pages.values():
             self.stack.addWidget(page)
 
     def navigate(self, key):
-        page_key = key
-        if key == "tweaks":
-            self.pages["tweaks"].select(ALL_KEY)
-        elif key.startswith("tweak:"):
-            # Sidebar sub-category: show the Tweaks master view pre-filtered.
-            self.pages["tweaks"].select(key[len("tweak:"):])
-            page_key = "tweaks"
-        if page_key not in self.pages:
+        if key not in self.pages:
             return
-        self.stack.setCurrentWidget(self.pages[page_key])
+        self.stack.setCurrentWidget(self.pages[key])
         self._mark_active(key)
-
-    def _toggle_section(self, name):
-        container = self._sections.get(name)
-        if container is None:
-            return
-        visible = not container.isVisible()
-        container.setVisible(visible)
-        header = self._section_headers.get(name)
-        if header is not None:
-            header.setText(f"TWEAKS  {'\u25be' if visible else '\u25b8'}")
-        container.update()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.space.setGeometry(self.rect())
-
-    def closeEvent(self, event):
-        dashboard = self.pages.get("dashboard")
-        if dashboard is not None and dashboard.sampler is not None:
-            dashboard.sampler.stop()
-            dashboard.sampler.wait(2000)
-        try:
-            self.ctx.auditor.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
-        # Startup hardware detection is a one-shot WMI scan that can take ~15s.
-        # If it is still running, wait for it so the QThread is not destroyed
-        # while alive (otherwise Qt aborts the process on exit).
-        if getattr(self, "_detect_worker", None) is not None:
-            self._detect_worker.wait(20000)
-        super().closeEvent(event)
+        self.actions_panel.set_category(key)
 
     def _mark_active(self, key):
         for k, btn in self.nav_buttons.items():
@@ -356,3 +343,23 @@ class MainWindow(QWidget):
             if btn.property("active") != active:
                 btn.setProperty("active", "true" if active else "false")
                 repolish(btn)
+
+    # ── Events ──
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.space.setGeometry(self.rect())
+
+    def closeEvent(self, event):
+        # Stop telemetry sampler if active (from old dashboard)
+        for page in self.pages.values():
+            if hasattr(page, "sampler") and page.sampler is not None:
+                page.sampler.stop()
+                page.sampler.wait(2000)
+        try:
+            self.ctx.auditor.shutdown()
+        except Exception:  # noqa: BLE001
+            pass
+        if getattr(self, "_detect_worker", None) is not None:
+            self._detect_worker.wait(20000)
+        super().closeEvent(event)

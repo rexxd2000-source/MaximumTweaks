@@ -15,9 +15,19 @@ for rel in ("config", "database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
 
+# Ensure route_visualization widget is available
+# (no globe.html needed — 3D globe removed, replaced with 2D route comparison)
+
 # SECURITY: nothing from auth_backend/ is bundled. The desktop app talks to the
 # hosted license backend over HTTPS and holds no secrets — LICENSE_SECRET,
 # ADMIN_TOKEN and the license DB must never end up inside the EXE.
+
+# Bundle the Npcap installer so end-users never have to install it manually.
+# It gets auto-installed silently on first run when capture is needed.
+import glob as _glob
+_npcap_files = _glob.glob(str(ROOT / "assets" / "npcap-*.exe"))
+for _nf in _npcap_files:
+    datas.append((_nf, "assets"))
 
 a = Analysis(
     ["main.py"],
@@ -55,6 +65,9 @@ a = Analysis(
         "engine.delay_destroyer.risk",
         "engine.delay_destroyer.backup",
         "engine.delay_destroyer.correlator",
+        "engine.delay_destroyer.network_measure",
+        "engine.delay_destroyer.gaming",
+        "engine.delay_destroyer.scoring",
         "engine.debloat",
         "engine.debloat.engine",
         "engine.debloat.scanner",
@@ -83,6 +96,40 @@ a = Analysis(
         "config.app_config",
         "rexlog",
         "psutil",
+        "ui.pages.network_monitor",
+        "ui.pages.home",
+        "ui.pages.backups",
+        "ui.pages.fixes",
+        "ui.pages.general",
+        "ui.pages.hardware",
+        "ui.pages.network_page",
+        "ui.pages.gamemode",
+        "ui.pages.advanced",
+        "ui.pages.bios",
+        "ui.pages.premium",
+        "ui.panels",
+        "ui.panels.ai_bar",
+        "ui.panels.telemetry_panel",
+        "ui.panels.actions_panel",
+        "engine.intel",
+        "engine.intel.process_detector",
+        "engine.intel.network_observer",
+        "engine.intel.game_state_machine",
+        "engine.intel.lobby_baseline",
+        "engine.intel.endpoint_scorer",
+        "engine.intel.session_manager",
+        "engine.intel.optimized_route",
+        "engine.intel.orchestrator",
+        "engine.intel.enrichment",
+        "engine.intel.traceroute",
+        "engine.intel.udp_capture",
+        "engine.intel.npcap_installer",
+        "scapy",
+        "scapy.all",
+        "scapy.config",
+        "scapy.arch.windows",
+        "scapy.arch",
+        "scapy.error",
     ],
     hookspath=[],
     runtime_hooks=[],

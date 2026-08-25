@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Intelligence Globe</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e1a;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;color:#e2e8f0}
+#globe-container{width:100vw;height:100vh;position:relative}
+#tooltip{position:absolute;display:none;background:rgba(10,14,26,.96);border:1px solid rgba(99,149,255,.4);border-radius:8px;padding:10px 14px;font-size:12px;pointer-events:none;z-index:100;max-width:340px;backdrop-filter:blur(10px);box-shadow:0 4px 24px rgba(0,0,0,.6)}
+.tt-title{font-weight:700;font-size:13px;color:#6395ff;margin-bottom:4px}
+.tt-sub{color:#94a3b8;font-size:11px;line-height:1.5}
+.tt-metric{color:#c0c8e0;font-family:Consolas,monospace;font-size:11px}
+.tt-tag{display:inline-block;background:rgba(99,149,255,.15);border:1px solid rgba(99,149,255,.3);border-radius:4px;padding:1px 6px;font-size:9px;color:#6395ff;margin-right:4px}
+#game-badge{position:absolute;top:14px;left:14px;z-index:60;background:rgba(10,14,26,.94);border:1px solid rgba(99,149,255,.3);border-radius:10px;padding:12px 18px;backdrop-filter:blur(10px);min-width:200px}
+.gb-game{font-size:15px;font-weight:800;color:#6395ff;letter-spacing:1px}
+.gb-state{font-size:10px;margin-top:2px;letter-spacing:.5px;font-weight:700}
+.gb-process{font-size:10px;color:#5F6178;margin-top:1px}
+.gb-latency{font-size:22px;font-weight:700;margin-top:4px;font-family:Consolas}
+#info-panel{position:absolute;top:14px;right:14px;z-index:60;background:rgba(10,14,26,.94);border:1px solid rgba(99,149,255,.3);border-radius:10px;padding:14px 18px;backdrop-filter:blur(10px);min-width:240px;max-width:320px;display:none}
+.ip-header{font-size:9px;font-weight:700;color:#6395ff;letter-spacing:1px;margin-bottom:8px}
+.ip-row{display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px}
+.ip-label{color:#5F6178}
+.ip-value{color:#c0c8e0;font-family:Consolas,monospace;text-align:right;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ip-section{border-top:1px solid rgba(99,149,255,.15);margin:8px 0;padding-top:6px}
+#route-panel{position:absolute;bottom:14px;left:14px;z-index:50;background:rgba(10,14,26,.94);border:1px solid rgba(99,149,255,.3);border-radius:10px;padding:12px 16px;font-size:10px;backdrop-filter:blur(10px);min-width:240px;max-width:340px;font-family:Consolas,monospace;line-height:1.6}
+.rp-header{font-size:9px;font-weight:700;color:#6395ff;letter-spacing:1px;margin-bottom:6px}
+.rp-line{color:#c0c8e0}
+.rp-dim{color:#5F6178}
+.rp-hl{color:#a78bfa;font-weight:700}
+.rp-hop{display:flex;align-items:center;gap:6px;padding:2px 0}
+.rp-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.rp-segment{position:relative;padding-left:14px;margin:2px 0}
+.rp-segment::before{content:'';position:absolute;left:4px;top:0;bottom:0;width:1px;background:rgba(99,149,255,.25)}
+#layer-controls{position:absolute;bottom:14px;right:14px;z-index:60;background:rgba(10,14,26,.92);border:1px solid rgba(99,149,255,.3);border-radius:8px;padding:10px 14px;font-size:10px;backdrop-filter:blur(10px)}
+#layer-controls label{display:flex;align-items:center;gap:6px;margin-bottom:3px;cursor:pointer;color:#94a3b8}
+#layer-controls label:hover{color:#e2e8f0}
+#layer-controls input[type=checkbox]{accent-color:#6395ff}
+#controls{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:60;display:flex;gap:6px}
+.ctrl-btn{background:rgba(10,14,26,.92);border:1px solid rgba(99,149,255,.3);border-radius:6px;padding:4px 12px;font-size:9px;color:#94a3b8;cursor:pointer;backdrop-filter:blur(10px);font-weight:700;letter-spacing:.5px}
+.ctrl-btn:hover{color:#e2e8f0;border-color:#6395ff}
+.ctrl-btn.active{color:#6395ff;border-color:#6395ff}
+#playback{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:55;background:rgba(10,14,26,.94);border:1px solid rgba(99,149,255,.3);border-radius:8px;padding:8px 16px;backdrop-filter:blur(10px);display:none;align-items:center;gap:12px}
+#playback .pb-label{font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:.5px}
+#playback .pb-progress{width:120px;height:3px;background:rgba(99,149,255,.2);border-radius:2px;overflow:hidden}
+#playback .pb-fill{height:100%;background:#6395ff;width:0%;transition:width .3s}
+</style>
+</head>
+<body>
+<div id="globe-container"></div>
+<div id="tooltip"><div class="tt-title"></div><div class="tt-sub"></div></div>
+
+<div id="game-badge">
+  <div class="gb-game" id="gb-game">NO GAME</div>
+  <div class="gb-state" id="gb-state"></div>
+  <div class="gb-process" id="gb-process"></div>
+  <div class="gb-latency" id="gb-latency"></div>
+</div>
+
+<div id="info-panel">
+  <div class="ip-header" id="ip-header">NODE DETAILS</div>
+  <div id="ip-content"></div>
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="resetView()">RESET VIEW</button>
+  <button class="ctrl-btn" id="btn-playback" onclick="togglePlayback()" style="display:none">PLAY ROUTE</button>
+</div>
+
+<div id="layer-controls">
+  <label><input type="checkbox" id="ly-countries" checked onchange="toggleLayer('countries')"> Countries</label>
+  <label><input type="checkbox" id="ly-borders" checked onchange="toggleLayer('borders')"> Borders</label>
+  <label><input type="checkbox" id="ly-labels" checked onchange="toggleLayer('labels')"> Labels</label>
+  <label><input type="checkbox" id="ly-nodes" checked onchange="toggleLayer('nodes')"> Nodes</label>
+  <label><input type="checkbox" id="ly-route" checked onchange="toggleLayer('route')"> Route</label>
+</div>
+
+<div id="route-panel">
+  <div class="rp-header">DIAGNOSTIC ROUTE</div>
+  <div class="rp-line rp-dim">Waiting for data...</div>
+</div>
+
+<div id="playback">
+  <span class="pb-label">REPLAY</span>
+  <div class="pb-progress"><div class="pb-fill" id="pb-fill"></div></div>
+  <button class="ctrl-btn" onclick="playbackStep()">STEP</button>
+  <button class="ctrl-btn" onclick="playbackReset()">RESET</button>
+</div>
+
+<script src="globe.gl.min.js"></script>
+<script src="countries.js"></script>
+<script>
+// State
+let gameState = null, userNode = null, gameEndpoint = null;
+let hopNodes = [], routeArcs = [], allNodes = [];
+let layers = {countries:true, borders:true, labels:true, nodes:true, route:true};
+let autoRotate = true, rotAngle = 0;
+let playbackActive = false, playbackIdx = 0;
+let selectedNode = null;
+
+const container = document.getElementById('globe-container');
+const tooltip = document.getElementById('tooltip');
+
+// Globe init
+const globe = Globe()(container)
+  .globeImageUrl('earth-night.jpg')
+  .bumpImageUrl('earth-topology.png')
+  .backgroundImageUrl('night-sky.png')
+  .atmosphereColor('#4a90d9')
+  .atmosphereAltitude(0.15);
+
+// Country polygons
+let countryPolygons = [];
+if (typeof COUNTRIES !== 'undefined') {
+  countryPolygons = COUNTRIES.map(c => ({
+    ...c,
+    geoJson: {type:'Feature', geometry:{type:'MultiPolygon',coordinates:c.polygons}, properties:{name:c.name}},
+  }));
+}
+
+globe
+  .polygonsData(countryPolygons)
+  .polygonCapColor(() => layers.countries ? 'rgba(20,35,60,0.85)' : 'rgba(0,0,0,0)')
+  .polygonSideColor(() => 'rgba(25,45,80,0.6)')
+  .polygonStrokeColor(() => layers.borders ? 'rgba(50,80,130,0.6)' : 'rgba(0,0,0,0)')
+  .polygonAltitude(0.001)
+  .onPolygonHover(p => {
+    if (p && p.name) {
+      showTooltip(p.name, 'Country');
+    } else {
+      hideTooltip();
+    }
+  });
+
+// Country labels
+let countryLabelData = [];
+if (typeof MAJOR_COUNTRY_LABELS !== 'undefined') {
+  countryLabelData = MAJOR_COUNTRY_LABELS.map(l => ({
+    lat:l.lat, lng:l.lng, text:l.name, color:'rgba(100,140,200,0.4)', size:0.6, alt:0.005,
+  }));
+}
+
+globe
+  .labelsData(countryLabelData)
+  .labelLat('lat').labelLng('lng')
+  .labelText(d => d.text)
+  .labelSize(d => d.size)
+  .labelDotRadius(0)
+  .labelColor(d => layers.labels ? d.color : 'rgba(0,0,0,0)')
+  .labelResolution(2)
+  .labelAltitude(d => d.alt);
+
+// Points
+globe
+  .pointsData([])
+  .pointLat('lat').pointLng('lng')
+  .pointColor(d => d.color)
+  .pointAltitude(d => d.alt || 0.012)
+  .pointRadius(d => d.radius || 0.06)
+  .pointsMerge(false)
+  .onPointHover(pt => {
+    if (pt) {
+      const sub = [];
+      if (pt.role) sub.push(pt.role);
+      if (pt.city) sub.push(pt.city);
+      if (pt.country) sub.push(pt.country);
+      if (pt.asn_name) sub.push('AS' + pt.asn + ' ' + pt.asn_name);
+      else if (pt.asn) sub.push('AS' + pt.asn);
+      if (pt.ip && pt.ip !== 'you') sub.push(pt.ip);
+      if (pt.rtt > 0) sub.push(pt.rtt.toFixed(1) + 'ms');
+      if (pt.score !== undefined) sub.push('Score: ' + pt.score);
+      showTooltip(pt.label || pt.ip || 'Unknown', sub.join(' . '));
+    } else {
+      hideTooltip();
+    }
+  })
+  .onPointClick(pt => {
+    if (pt && pt.lat && pt.lng) {
+      globe.pointOfView({lat:pt.lat, lng:pt.lng, altitude:0.8}, 800);
+      autoRotate = false;
+      setTimeout(() => {autoRotate = true;}, 5000);
+      showNodeInfo(pt);
+    }
+  });
+
+// Arcs
+globe
+  .arcsData([])
+  .arcColor(d => d.color)
+  .arcDashLen(d => d.dashLen || 0.4)
+  .arcDashGap(d => d.dashGap || 0.15)
+  .arcDashAnimateTime(2000)
+  .arcStroke(d => d.stroke || 0.6)
+  .arcAltitude(0.08)
+  .arcArrowLength(0.4)
+  .arcArrowRelLength(0.5)
+  .onArcHover(a => {
+    if (a) {
+      showTooltip(a.label || 'Route Segment', (a.rtt || '') + (a.asn_text ? ' . ' + a.asn_text : ''));
+    } else {
+      hideTooltip();
+    }
+  })
+  .onArcClick(a => {
+    if (a) showSegmentInfo(a);
+  });
+
+// Rings
+globe
+  .ringsData([])
+  .ringLat('lat').ringLng('lng')
+  .ringColor(d => () => d.color)
+  .ringMaxRadius(0.06)
+  .ringPropagationSpeed(2)
+  .ringRepeatPeriod(1000)
+  .ringAltitude(0.012);
+
+// ── Update ──────────────────────────────────────────────────────────────────
+function updateGlobe() {
+  const pts = [];
+  if (userNode) pts.push(userNode);
+  if (gameEndpoint) pts.push(gameEndpoint);
+  for (const n of hopNodes) if (n.lat && n.lng) pts.push(n);
+  globe.pointsData(layers.nodes ? pts : []);
+
+  globe.arcsData(layers.route ? routeArcs : []);
+
+  const rings = [];
+  if (userNode) rings.push({...userNode});
+  if (gameEndpoint) rings.push({...gameEndpoint});
+  globe.ringsData(rings);
+
+  const labels = [...countryLabelData.map(l => ({...l}))];
+  for (const n of hopNodes) {
+    if (n.city && n.lat && n.lng) {
+      labels.push({lat:n.lat, lng:n.lng, text:n.city, color:n.color || '#94a3b8', size:0.7, alt:0.014});
+    }
+  }
+  if (userNode && userNode.city) {
+    labels.push({lat:userNode.lat, lng:userNode.lng, text:userNode.city, color:'#34d399', size:0.8, alt:0.014});
+  }
+  globe.labelsData(labels);
+}
+
+function showTooltip(title, sub) {
+  tooltip.style.display = 'block';
+  tooltip.querySelector('.tt-title').textContent = title;
+  tooltip.querySelector('.tt-sub').textContent = sub || '';
+}
+
+function hideTooltip() {
+  tooltip.style.display = 'none';
+}
+
+// ── Node Info Panel ─────────────────────────────────────────────────────────
+function showNodeInfo(pt) {
+  const panel = document.getElementById('info-panel');
+  const header = document.getElementById('ip-header');
+  const content = document.getElementById('ip-content');
+
+  header.textContent = pt.role || 'NETWORK NODE';
+  let html = '';
+
+  const rows = [
+    ['IP', pt.ip],
+    ['ASN', pt.asn ? 'AS' + pt.asn : null],
+    ['Network', pt.asn_name || null],
+    ['City', pt.city || null],
+    ['Country', pt.country || null],
+    ['RTT', pt.rtt > 0 ? pt.rtt.toFixed(1) + ' ms' : null],
+    ['Hop #', pt.hop_number || null],
+    ['Classification', pt.role || null],
+    ['Score', pt.score !== undefined ? pt.score + '/100' : null],
+    ['Confidence', pt.confidence || null],
+    ['Data Source', pt.source || null],
+  ];
+
+  for (const [label, value] of rows) {
+    if (value) {
+      html += '<div class="ip-row"><span class="ip-label">' + label + '</span><span class="ip-value">' + value + '</span></div>';
+    }
+  }
+
+  content.innerHTML = html;
+  panel.style.display = 'block';
+  selectedNode = pt;
+}
+
+function showSegmentInfo(arc) {
+  const panel = document.getElementById('info-panel');
+  const header = document.getElementById('ip-header');
+  const content = document.getElementById('ip-content');
+
+  header.textContent = 'ROUTE SEGMENT';
+  let html = '';
+
+  const rows = [
+    ['From', arc.from_label || ''],
+    ['To', arc.to_label || ''],
+    ['RTT', arc.rtt || ''],
+    ['Delta', arc.delta || ''],
+    ['ASN', arc.asn_text || ''],
+    ['State', arc.state || 'measured'],
+  ];
+
+  for (const [label, value] of rows) {
+    if (value) {
+      html += '<div class="ip-row"><span class="ip-label">' + label + '</span><span class="ip-value">' + value + '</span></div>';
+    }
+  }
+
+  content.innerHTML = html;
+  panel.style.display = 'block';
+}
+
+// ── Layer Toggle ────────────────────────────────────────────────────────────
+function toggleLayer(name) {
+  layers[name] = document.getElementById('ly-' + name).checked;
+  updateGlobe();
+  if (name === 'countries' || name === 'borders') {
+    globe.polygonCapColor(() => layers.countries ? 'rgba(20,35,60,0.85)' : 'rgba(0,0,0,0)');
+    globe.polygonStrokeColor(() => layers.borders ? 'rgba(50,80,130,0.6)' : 'rgba(0,0,0,0)');
+  }
+}
+
+// ── Route Playback ──────────────────────────────────────────────────────────
+let playbackNodes = [];
+function togglePlayback() {
+  if (playbackActive) {
+    playbackActive = false;
+    document.getElementById('btn-playback').classList.remove('active');
+    document.getElementById('playback').style.display = 'none';
+    updateGlobe();
+  } else {
+    playbackActive = true;
+    playbackIdx = 0;
+    playbackNodes = [userNode, ...hopNodes, gameEndpoint].filter(n => n && n.lat && n.lng);
+    document.getElementById('btn-playback').classList.add('active');
+    document.getElementById('playback').style.display = 'flex';
+    updatePlayback();
+  }
+}
+
+function playbackStep() {
+  if (playbackIdx < playbackNodes.length - 1) {
+    playbackIdx++;
+    updatePlayback();
+  }
+}
+
+function playbackReset() {
+  playbackIdx = 0;
+  updatePlayback();
+}
+
+function updatePlayback() {
+  const visible = playbackNodes.slice(0, playbackIdx + 1);
+  const pts = visible.filter(n => n);
+  globe.pointsData(layers.nodes ? pts : []);
+
+  const arcs = [];
+  for (let i = 0; i < playbackIdx && i < playbackNodes.length - 1; i++) {
+    const a = playbackNodes[i], b = playbackNodes[i + 1];
+    if (a && b && a.lat && b.lat) {
+      arcs.push({
+        startLat: a.lat, startLng: a.lng, endLat: b.lat, endLng: b.lng,
+        color: b.color || '#6395ff', dashLen: 0.4, dashGap: 0.15, stroke: 0.6,
+        label: (a.label || '') + ' -> ' + (b.label || ''),
+      });
+    }
+  }
+  globe.arcsData(arcs);
+
+  const pct = playbackNodes.length > 1 ? (playbackIdx / (playbackNodes.length - 1)) * 100 : 0;
+  document.getElementById('pb-fill').style.width = pct + '%';
+
+  if (playbackIdx < playbackNodes.length - 1) {
+    const next = playbackNodes[playbackIdx + 1];
+    if (next) globe.pointOfView({lat:next.lat, lng:next.lng, altitude:1.0}, 600);
+  }
+}
+
+// ── Python API ──────────────────────────────────────────────────────────────
+
+window.setGame = function(name, state, process, region, pid) {
+  gameState = {name:name, state:state, process:process, region:region, pid:pid};
+  document.getElementById('gb-game').textContent = name.toUpperCase();
+  document.getElementById('gb-state').textContent = state.toUpperCase();
+  var stateColors = {running:'#34d399',in_match:'#34d399',lobby:'#60a5fa',matchmaking:'#fbbf24',network_active:'#34d399',network_inactive:'#F87979'};
+  document.getElementById('gb-state').style.color = stateColors[state] || '#5F6178';
+  document.getElementById('gb-process').textContent = process + ' (PID ' + pid + ')' + (region ? ' . ' + region : '');
+  document.getElementById('gb-latency').innerHTML = '';
+};
+
+window.clearGame = function() {
+  gameState = null; userNode = null; gameEndpoint = null;
+  hopNodes = []; routeArcs = [];
+  document.getElementById('gb-game').textContent = 'NO GAME';
+  document.getElementById('gb-state').textContent = '';
+  document.getElementById('gb-process').textContent = 'Waiting for game detection...';
+  document.getElementById('gb-latency').innerHTML = '';
+  document.getElementById('info-panel').style.display = 'none';
+  document.getElementById('btn-playback').style.display = 'none';
+  updateRoutePanel([]);
+  updateGlobe();
+  globe.pointOfView({lat:30, lng:-30, altitude:2.2}, 1000);
+};
+
+window.setUser = function(lat, lng, city, country, isp, asn) {
+  userNode = {
+    lat:lat, lng:lng, label:city || 'You', ip:'you',
+    city:city || '', country:country || '', asn:asn || 0, asn_name:isp || '',
+    color:'#34d399', radius:0.09, role:'YOUR LOCATION', alt:0.015, source:'ip-api.com',
+  };
+  updateGlobe();
+  if (hopNodes.length === 0 && !gameEndpoint) {
+    globe.pointOfView({lat:lat, lng:lng, altitude:1.5}, 1000);
+    autoRotate = false;
+    setTimeout(() => {autoRotate = true;}, 3000);
+  }
+};
+
+window.setGameEndpoint = function(ip, lat, lng, city, country, asn, asn_name, classification, score, confidence) {
+  gameEndpoint = {
+    lat:lat, lng:lng, label:asn_name || ip, ip:ip,
+    city:city || '', country:country || '', asn:asn || 0, asn_name:asn_name || '',
+    color:'#60a5fa', radius:0.08, role:classification || 'GAME ENDPOINT', alt:0.015,
+    score:score || 0, confidence:confidence || 'unknown', source:'observed',
+  };
+  updateGlobe();
+};
+
+window.clearGameEndpoint = function() {
+  gameEndpoint = null;
+  updateGlobe();
+};
+
+window.setHops = function(hops) {
+  hopNodes = [];
+  routeArcs = [];
+  var prevLat = userNode ? userNode.lat : 0;
+  var prevLng = userNode ? userNode.lng : 0;
+
+  for (var i = 0; i < hops.length; i++) {
+    var h = hops[i];
+    var color = '#a78bfa', role = 'TRANSIT';
+    if (h.type === 'gateway' || h.hop_number <= 2) {color = '#fbbf24'; role = 'GATEWAY';}
+    else if (h.type === 'ixp') {color = '#f472b6'; role = 'IXP';}
+    else if (h.type === 'destination') {color = '#60a5fa'; role = 'DESTINATION';}
+
+    if (h.lat && h.lng) {
+      hopNodes.push({
+        lat:h.lat, lng:h.lng, label:h.city || h.ip || ('Hop ' + h.hop_number),
+        ip:h.ip || '', city:h.city || '', country:h.country || '',
+        asn:h.asn || 0, asn_name:h.asn_name || '',
+        hop_number:h.hop_number, rtt:h.rtt_ms || 0,
+        color:color, radius:0.05, role:role, alt:0.012, source:'tracert',
+      });
+
+      if (prevLat && prevLng) {
+        var delta = '';
+        if (h.rtt_ms > 0 && i > 0 && hops[i-1].rtt_ms > 0) {
+          delta = (h.rtt_ms - hops[i-1].rtt_ms).toFixed(1) + 'ms delta';
+        } else if (h.rtt_ms > 0) {
+          delta = h.rtt_ms.toFixed(1) + 'ms';
+        }
+        routeArcs.push({
+          startLat:prevLat, startLng:prevLng, endLat:h.lat, endLng:h.lng,
+          color:color, dashLen:0.4, dashGap:0.15, stroke:0.6,
+          label:(h.city || h.ip || '') + (h.asn_name ? ' (AS' + h.asn + ')' : ''),
+          rtt:delta || (h.rtt_ms > 0 ? h.rtt_ms.toFixed(1) + 'ms' : ''),
+          asn_text:h.asn ? 'AS' + h.asn : '',
+          from_label:i > 0 ? (hops[i-1].city || hops[i-1].ip || '') : (userNode ? userNode.city || 'You' : ''),
+          to_label:h.city || h.ip || '',
+          state:'measured',
+        });
+      }
+      prevLat = h.lat; prevLng = h.lng;
+    }
+  }
+
+  if (gameEndpoint && prevLat && prevLng) {
+    routeArcs.push({
+      startLat:prevLat, startLng:prevLng, endLat:gameEndpoint.lat, endLng:gameEndpoint.lng,
+      color:'#60a5fa', dashLen:0.4, dashGap:0.15, stroke:0.6,
+      label:'-> ' + (gameEndpoint.asn_name || gameEndpoint.ip),
+      from_label:hopNodes.length ? (hopNodes[hopNodes.length-1].city || '') : '',
+      to_label:gameEndpoint.city || gameEndpoint.ip,
+      state:'measured',
+    });
+  }
+
+  updateGlobe();
+
+  document.getElementById('btn-playback').style.display = (hopNodes.length > 0) ? 'block' : 'none';
+};
+
+window.setRouteInfo = function(hops, latency, jitter, loss, asPath) {
+  updateRoutePanel(hops, latency, jitter, loss, asPath);
+};
+
+function updateRoutePanel(hops, latency, jitter, loss, asPath) {
+  var panel = document.getElementById('route-panel');
+  var html = '<div class="rp-header">DIAGNOSTIC ROUTE</div>';
+  if (!hops || !hops.length) {
+    html += '<div class="rp-line rp-dim">No route data</div>';
+  } else {
+    html += '<div class="rp-line rp-dim">' + hops.length + ' hops' + (latency ? ' . ' + latency.toFixed(1) + 'ms' : '') + '</div>';
+    if (jitter > 0) html += '<div class="rp-line rp-dim">Jitter: ' + jitter.toFixed(1) + 'ms</div>';
+    if (loss > 0) html += '<div class="rp-line" style="color:#F87979">Loss: ' + loss.toFixed(0) + '%</div>';
+    if (asPath && asPath.length) {
+      html += '<div class="rp-line rp-hl">' + asPath.slice(0, 5).join(' -> ') + (asPath.length > 5 ? ' -> ...' : '') + '</div>';
+    }
+    html += '<div class="ip-section"></div>';
+    var keyHops = hops.filter(function(h, i) { return i === 0 || i === hops.length - 1 || h.city || h.asn; });
+    for (var j = 0; j < Math.min(keyHops.length, 10); j++) {
+      var h = keyHops[j];
+      var dotColor = '#a78bfa';
+      if (h.type === 'gateway' || h.hop_number <= 2) dotColor = '#fbbf24';
+      else if (h.type === 'destination') dotColor = '#60a5fa';
+      else if (h.type === 'ixp') dotColor = '#f472b6';
+
+      var parts = [];
+      if (h.hop_number) parts.push('#' + h.hop_number);
+      if (h.city) parts.push(h.city);
+      if (h.asn) parts.push('AS' + h.asn);
+      if (h.rtt_ms > 0) parts.push(h.rtt_ms.toFixed(0) + 'ms');
+
+      html += '<div class="rp-hop"><span class="rp-dot" style="background:' + dotColor + '"></span><span class="rp-line">' + parts.join(' ') + '</span></div>';
+    }
+  }
+  panel.innerHTML = html;
+}
+
+window.focusOn = function(lat, lng, altitude) {
+  globe.pointOfView({lat:lat, lng:lng, altitude:altitude || 1.0}, 1000);
+  autoRotate = false;
+  setTimeout(() => {autoRotate = true;}, 5000);
+};
+
+window.setLatency = function(ms) {
+  var el = document.getElementById('gb-latency');
+  if (ms > 0) {
+    el.textContent = ms.toFixed(0) + 'ms';
+    var cls = ms < 60 ? '#34d399' : ms < 120 ? '#fbbf24' : '#F87979';
+    el.style.color = cls;
+  } else {
+    el.textContent = '';
+  }
+};
+
+window.closeInfoPanel = function() {
+  document.getElementById('info-panel').style.display = 'none';
+  selectedNode = null;
+};
+
+// ── View ────────────────────────────────────────────────────────────────────
+function resetView() {
+  globe.pointOfView({lat:30, lng:-30, altitude:2.2}, 1000);
+  autoRotate = true;
+  document.getElementById('info-panel').style.display = 'none';
+}
+
+// ── Auto-rotate ─────────────────────────────────────────────────────────────
+function rotateLoop() {
+  if (autoRotate) {
+    rotAngle += 0.001;
+    globe.pointOfView({lat:30 + Math.sin(rotAngle)*5, lng:-30 + rotAngle*50, altitude:2.2});
+  }
+  requestAnimationFrame(rotateLoop);
+}
+rotateLoop();
+container.addEventListener('mousedown', () => {autoRotate = false;});
+container.addEventListener('mouseup', () => {setTimeout(() => {autoRotate = true;}, 3000);});
+container.addEventListener('wheel', () => {autoRotate = false; setTimeout(() => {autoRotate = true;}, 3000);});
+
+document.addEventListener('mousemove', e => {
+  if (tooltip.style.display === 'block') {
+    tooltip.style.left = (e.clientX + 15) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+  }
+});
+
+globe.pointOfView({lat:30, lng:-30, altitude:2.2}, 0);
+console.log('Globe initialized — ' + (typeof COUNTRIES !== 'undefined' ? COUNTRIES.length : 0) + ' countries');
+</script>
+</body>
+</html>

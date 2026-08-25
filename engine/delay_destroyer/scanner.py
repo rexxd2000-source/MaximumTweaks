@@ -191,8 +191,8 @@ class RAMInfo:
     memory_compression: bool = False
     superfetch_enabled: bool = True
     large_system_cache: bool = False
-    dpc_latency_us: float = 0.0
-    isr_latency_us: float = 0.0
+    dpc_rate_per_sec: float = 0.0
+    isr_rate_per_sec: float = 0.0
     dpc_top_offenders: list[dict] = field(default_factory=list)
     isr_top_offenders: list[dict] = field(default_factory=list)
 
@@ -769,9 +769,27 @@ class SystemScanner:
         # ── Real-time data (always from psutil, these are reliable) ──
         c.usage_percent = psutil.cpu_percent(interval=0.5)
 
-        perf = psutil.cpu_stats()
-        c.context_switches_per_sec = perf.ctx_switches
-        c.interrupts_per_sec = perf.interrupts
+        # Context switches and interrupts are CUMULATIVE counters —
+        # we must sample twice and divide by elapsed time to get a rate.
+        try:
+            s1 = psutil.cpu_stats()
+            time.sleep(1.0)
+            s2 = psutil.cpu_stats()
+            elapsed = 1.0
+            ctx_rate = round((s2.ctx_switches - s1.ctx_switches) / elapsed)
+            int_rate = round((s2.interrupts - s1.interrupts) / elapsed)
+            # Validate: context switches > 1M/s or negative = bad sample
+            if 0 <= ctx_rate <= 1_000_000:
+                c.context_switches_per_sec = ctx_rate
+            else:
+                c.context_switches_per_sec = 0.0
+            if 0 <= int_rate <= 500_000:
+                c.interrupts_per_sec = int_rate
+            else:
+                c.interrupts_per_sec = 0.0
+        except Exception:
+            c.context_switches_per_sec = 0.0
+            c.interrupts_per_sec = 0.0
 
         # ── Power plan ──
         try:
@@ -951,12 +969,22 @@ class SystemScanner:
             if "hdd" in mt or "disk" in bt:
                 s.has_hdd = True
 
-        # Disk I/O
+        # Disk I/O — CUMULATIVE counters, must sample twice for throughput
         try:
-            dio = psutil.disk_io_counters()
-            if dio:
-                s.disk_read_mb_s = round(dio.read_bytes / (1024 * 1024), 1)
-                s.disk_write_mb_s = round(dio.write_bytes / (1024 * 1024), 1)
+            dio1 = psutil.disk_io_counters()
+            if dio1:
+                time.sleep(1.0)
+                dio2 = psutil.disk_io_counters()
+                if dio2:
+                    elapsed = 1.0
+                    read_mbs = (dio2.read_bytes - dio1.read_bytes) / elapsed / (1024 * 1024)
+                    write_mbs = (dio2.write_bytes - dio1.write_bytes) / elapsed / (1024 * 1024)
+                    # Validate: NVMe max ~7000 MB/s, SATA max ~550 MB/s
+                    # If > 10000 MB/s, the counter is bogus
+                    if 0 <= read_mbs <= 10000:
+                        s.disk_read_mb_s = round(read_mbs, 1)
+                    if 0 <= write_mbs <= 10000:
+                        s.disk_write_mb_s = round(write_mbs, 1)
         except Exception:
             pass
 
@@ -1453,9 +1481,9 @@ class SystemScanner:
             ".CounterSamples | Select-Object -First 1 -ExpandProperty CookedValue;"
             "Write-Output ([math]::Round(($c2 - $c1) / 2, 1))")
         try:
-            r.ram.dpc_latency_us = float((dpc_out or "0").strip())
+            r.ram.dpc_rate_per_sec = float((dpc_out or "0").strip())
         except (ValueError, TypeError):
-            r.ram.dpc_latency_us = 0.0
+            r.ram.dpc_rate_per_sec = 0.0
 
         # DPC top offenders via process DPC activity
         dpc_offenders = _ps(

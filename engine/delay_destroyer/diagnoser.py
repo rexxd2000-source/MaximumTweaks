@@ -29,6 +29,8 @@ class Finding:
     severity: str = "info"
     impact: str = "low"
     is_measured: bool = True
+    confidence: str = "high"  # "high", "medium", "low"
+    delay_type: str = "system"  # "input", "system", "frame", "display", "network"
 
 
 class Diagnoser:
@@ -77,6 +79,34 @@ class Diagnoser:
                 severity="critical",
                 impact="high",
                 is_measured=True,
+                confidence="high",
+                delay_type="system",
+            ))
+
+        # Balanced plan = may limit boost under load
+        is_balanced = "381b4222" in c.power_plan_guid.lower()
+        if is_balanced and not is_power_saver:
+            f.append(Finding(
+                id="delay_cpu_balanced",
+                title="CPU on Balanced plan — boost behavior may be limited under load",
+                description=(
+                    "The Balanced power plan dynamically adjusts CPU "
+                    "frequency. Under sustained load, it may reduce "
+                    "boost clocks to save power. For consistent gaming "
+                    "performance, High Performance or Ultimate Performance "
+                    "is recommended."
+                ),
+                evidence=(
+                    f"Power plan: {c.power_plan_name} ({c.power_plan_guid}), "
+                    f"Boost mode: {c.boost_mode}"
+                ),
+                risk=Risk.LOW,
+                category="cpu",
+                severity="warning",
+                impact="medium",
+                is_measured=True,
+                confidence="medium",
+                delay_type="system",
             ))
 
         # Boost disabled (but not on Power Saver, which already covers this)
@@ -96,6 +126,8 @@ class Diagnoser:
                 severity="warning",
                 impact="high",
                 is_measured=True,
+                confidence="high",
+                delay_type="system",
             ))
 
         # Thermal throttling
@@ -114,6 +146,8 @@ class Diagnoser:
                 severity="critical",
                 impact="high",
                 is_measured=True,
+                confidence="high",
+                delay_type="system",
             ))
         elif c.temp_celsius > 80:
             f.append(Finding(
@@ -130,6 +164,8 @@ class Diagnoser:
                 severity="warning",
                 impact="medium",
                 is_measured=True,
+                confidence="high",
+                delay_type="system",
             ))
 
         # MMCSS not running — multimedia thread scheduling
@@ -149,6 +185,8 @@ class Diagnoser:
                 severity="info",
                 impact="medium",
                 is_measured=True,
+                confidence="high",
+                delay_type="frame",
             ))
 
     # ------------------------------------------------------------------
@@ -177,6 +215,8 @@ class Diagnoser:
                 severity="warning",
                 impact="high",
                 is_measured=True,
+                confidence="high",
+                delay_type="system",
             ))
         elif rm.pressure > 0.70 and rm.total_gb < 16:
             f.append(Finding(
@@ -225,20 +265,20 @@ class Diagnoser:
     def _dpc_isr_latency(self, s: ScanResult, f: list[Finding]) -> None:
         rm = s.ram
 
-        if rm.dpc_latency_us > 500:
+        if rm.dpc_rate_per_sec > 500:
             offender_names = ", ".join(
                 o.get("name", "?") for o in rm.dpc_top_offenders[:3])
             f.append(Finding(
                 id="delay_dpc_high",
                 title="DPC latency elevated — driver blocking the CPU",
                 description=(
-                    f"DPC rate: {rm.dpc_latency_us:.0f}/s. A driver is "
+                    f"DPC rate: {rm.dpc_rate_per_sec:.0f}/s. A driver is "
                     "spending excessive time in kernel mode, preventing "
                     "the CPU from handling real-time tasks. This directly "
                     "causes audio dropouts, input lag, and frame stutters."
                 ),
                 evidence=(
-                    f"DPC rate: {rm.dpc_latency_us:.0f}/s, "
+                    f"DPC rate: {rm.dpc_rate_per_sec:.0f}/s, "
                     f"top offenders: {offender_names}"
                 ),
                 risk=Risk.HIGH,
@@ -248,17 +288,17 @@ class Diagnoser:
                 is_measured=True,
             ))
 
-        if rm.isr_latency_us > 500:
+        if rm.isr_rate_per_sec > 500:
             f.append(Finding(
                 id="delay_isr_high",
                 title="ISR latency elevated — hardware interrupts consuming CPU",
                 description=(
-                    f"ISR rate: {rm.isr_latency_us:.0f}/s. Hardware "
+                    f"ISR rate: {rm.isr_rate_per_sec:.0f}/s. Hardware "
                     "interrupts are consuming excessive CPU time, preventing "
                     "the system from responding to user input and application "
                     "requests in a timely manner."
                 ),
-                evidence=f"ISR rate: {rm.isr_latency_us:.0f}/s",
+                evidence=f"ISR rate: {rm.isr_rate_per_sec:.0f}/s",
                 risk=Risk.HIGH,
                 category="drivers",
                 severity="warning",
@@ -480,6 +520,28 @@ class Diagnoser:
                 is_measured=True,
             ))
 
+        # DWM composition
+        if d.dwm_enabled:
+            f.append(Finding(
+                id="delay_dwm_active",
+                title="DWM composition active — adds frame presentation latency",
+                description=(
+                    "Desktop Window Manager (DWM) composites all windows "
+                    "into a single framebuffer. Every frame passes through "
+                    "the compositor before reaching the display, adding "
+                    "at least one frame of latency. On high-refresh-rate "
+                    "displays this overhead is more noticeable."
+                ),
+                evidence=f"DWM: enabled, Refresh rate: {', '.join(d.refresh_rates) if d.refresh_rates else 'unknown'}",
+                risk=Risk.LOW,
+                category="display",
+                severity="info",
+                impact="medium",
+                is_measured=True,
+                confidence="medium",
+                delay_type="display",
+            ))
+
         # Multi-monitor with driver errors
         if d.multi_monitor and d.display_driver_errors:
             errors_str = "; ".join(d.display_driver_errors[:3])
@@ -505,24 +567,7 @@ class Diagnoser:
     # ------------------------------------------------------------------
 
     def _network_delay(self, s: ScanResult, f: list[Finding]) -> None:
-        net = s.network
-
-        if not net.nagle_disabled and net.adapter_type != "unknown":
-            f.append(Finding(
-                id="delay_nagle",
-                title="Nagle algorithm adding network latency",
-                description=(
-                    "Nagle's algorithm batches small network packets, "
-                    "adding 200-400ms of latency to real-time game server "
-                    "communication and online interactions."
-                ),
-                evidence="TcpNoDelay: not set (Nagle active)",
-                risk=Risk.LOW,
-                category="network",
-                severity="info",
-                impact="medium",
-                is_measured=True,
-            ))
+        pass  # Network findings require real measurements (see network_measure.py)
 
     # ------------------------------------------------------------------
     # 9. Background Contention
@@ -758,7 +803,7 @@ class Diagnoser:
 
         # HID/USB + DPC = input delay
         has_input_issues = (s.input.hid_driver_issues or s.input.usb_driver_issues)
-        dpc_elevated = s.ram.dpc_latency_us > 500
+        dpc_elevated = s.ram.dpc_rate_per_sec > 500
         if has_input_issues and dpc_elevated:
             f.append(Finding(
                 id="delay_input_dpc",
@@ -770,7 +815,7 @@ class Diagnoser:
                 ),
                 evidence=(
                     f"HID/USB issues: {len(s.input.hid_driver_issues) + len(s.input.usb_driver_issues)}, "
-                    f"DPC: {s.ram.dpc_latency_us:.0f}/s"
+                    f"DPC: {s.ram.dpc_rate_per_sec:.0f}/s"
                 ),
                 risk=Risk.MODERATE,
                 category="input",

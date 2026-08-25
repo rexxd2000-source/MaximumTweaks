@@ -4,7 +4,7 @@ Phases: Landing -> Scan -> Results -> Apply -> Complete
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
@@ -35,7 +35,7 @@ class _ScanWorker(QThread):
             engine = DebloatEngine()
             result = engine.scan(
                 progress_callback=lambda msg, pct: self.progress.emit(msg, pct))
-            self.finished.emit(result)
+            self.finished.emit({"engine": engine, "result": result})
         except Exception as e:
             self.error.emit(str(e))
 
@@ -362,9 +362,10 @@ class DebloatPage(QWidget):
         if new_idx > self._scan_idx:
             self._scan_idx = new_idx
 
-    def _on_finished(self, result):
+    def _on_finished(self, payload):
+        result = payload.get("result")
+        self._engine = payload.get("engine")
         self._result = result
-        self._engine = result
         if not result or not result.items:
             self._build_error("Scan completed with no unnecessary applications found.")
             return
@@ -767,24 +768,44 @@ class DebloatPage(QWidget):
         self._overlay = QWidget(self)
         self._overlay.setGeometry(self.rect())
         self._overlay.setStyleSheet(
-            f"background:{_alpha('#000000', 0.7)};")
+            f"background:{_alpha('#000000', 0.75)};")
         self._overlay.show()
         self._overlay.raise_()
 
         count = len(self._selected_items)
         dialog = QWidget(self._overlay)
-        dialog.setFixedSize(500, 420)
+        dialog.setFixedSize(540, 500)
         dialog.setStyleSheet(
-            f"background:{T['card']};border:1px solid {T['border']};"
-            f"border-radius:12px;")
+            f"background:{_alpha('#0d1117', 0.95)};"
+            f"border:1px solid {_alpha(T['accent'], 0.25)};"
+            f"border-radius:16px;"
+            f"QPushButton{{border:none;border-radius:8px;font-weight:700;font-size:12px;"
+            f"font-family:'Segoe UI',sans-serif;}}"
+            f"QPushButton#cancel_btn{{background:transparent;color:{T['text_faint']};"
+            f"border:1px solid {T['border']};border-radius:8px;}}"
+            f"QPushButton#cancel_btn:hover{{color:{T['text']};border-color:{T['accent']};}}"
+            f"QPushButton#apply_btn{{background:qlineargradient("
+            f"x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {_alpha(T['accent'], 0.9)},stop:1 {_alpha(T['accent'], 0.7)});"
+            f"color:#fff;border-radius:8px;padding:10px 20px;font-size:12px;}}"
+            f"QPushButton#apply_btn:hover{{background:qlineargradient("
+            f"x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {T['accent']},stop:1 {_alpha(T['accent'], 0.85)});}}")
         dialog.move(
-            (self.width() - 500) // 2,
-            (self.height() - 420) // 2,
+            (self.width() - 540) // 2,
+            (self.height() - 500) // 2,
         )
+
+        _fade = QPropertyAnimation(dialog, b"pos")
+        _fade.setDuration(250)
+        _fade.setStartValue(QPoint(dialog.x(), dialog.y() + 20))
+        _fade.setEndValue(QPoint(dialog.x(), dialog.y()))
+        _fade.setEasingCurve(QEasingCurve.OutCubic)
+        _fade.start(_fade.DeletionPolicy.DeleteWhenStopped)
         dialog.show()
 
         dlay = QVBoxLayout(dialog)
-        dlay.setContentsMargins(32, 28, 32, 24)
+        dlay.setContentsMargins(36, 30, 36, 28)
         dlay.setSpacing(0)
 
         dlay.addWidget(self._make_label(
@@ -797,29 +818,35 @@ class DebloatPage(QWidget):
             _style("subtitle"), wrap=True))
         dlay.addSpacing(16)
 
-        # Show selected items
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setMaximumHeight(160)
-        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                             "QScrollArea>QWidget>QWidget{background:transparent;}")
+        scroll.setMaximumHeight(180)
+        scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}")
         sel_widget = QWidget()
         sel_lay = QVBoxLayout(sel_widget)
         sel_lay.setContentsMargins(0, 0, 0, 0)
-        sel_lay.setSpacing(2)
+        sel_lay.setSpacing(4)
 
         if self._result:
             for item in self._result.items:
                 if item.id in self._selected_items:
-                    sel_lay.addWidget(self._make_label(
-                        f"\u2022  {item.name}  ({item.risk.value})",
-                        _style("item_desc"), align=Qt.AlignLeft))
+                    row = QLabel(f"\u2022  {item.name}  ({item.risk.value})")
+                    row.setStyleSheet(
+                        f"font-size:12px;color:{T['text_dim']};"
+                        f"background:{_alpha(T['accent'], 0.06)};"
+                        f"padding:6px 10px;border-radius:6px;"
+                        f"border:1px solid {_alpha(T['accent'], 0.1)};")
+                    row.setWordWrap(True)
+                    sel_lay.addWidget(row)
 
+        sel_lay.addStretch()
         scroll.setWidget(sel_widget)
         dlay.addWidget(scroll)
 
-        dlay.addSpacing(12)
+        dlay.addSpacing(16)
         dlay.addWidget(self._hline())
         dlay.addSpacing(16)
 
@@ -828,6 +855,7 @@ class DebloatPage(QWidget):
         btn_row.setAlignment(Qt.AlignCenter)
 
         cancel = QPushButton("CANCEL")
+        cancel.setObjectName("cancel_btn")
         cancel.setFixedWidth(140)
         cancel.setFixedHeight(42)
         cancel.setCursor(Qt.PointingHandCursor)
@@ -835,7 +863,7 @@ class DebloatPage(QWidget):
         btn_row.addWidget(cancel)
 
         apply_btn = QPushButton("APPLY CHANGES")
-        apply_btn.setObjectName("Primary")
+        apply_btn.setObjectName("apply_btn")
         apply_btn.setFixedWidth(180)
         apply_btn.setFixedHeight(42)
         apply_btn.setCursor(Qt.PointingHandCursor)
