@@ -66,6 +66,7 @@ DB_AFFECTS = {
     "Laptop": "Laptop",
     "Performance": "Performance",
     "FPS Boost": "FPS Boost",
+    "Delay Destroyer": "Delay Destroyer",
 }
 
 # Extra "affects" labels refined by tag (deduped against DB_AFFECTS).
@@ -297,19 +298,28 @@ CATEGORY_GROUPS = {
                 "core parking, GPU power management and more.",
         "db": ["FPS Boost"],
     },
+    "delay_destroyer": {
+        "key": "delay_destroyer",
+        "title": "Delay Destroyer",
+        "icon": "\u26a1",
+        "logo": "performance",
+        "color": "#FF6B35",
+        "blurb": "Input latency, system responsiveness, frame pacing, network and USB tweaks — one card per optimization.",
+        "db": ["Delay Destroyer"],
+    },
 }
 
 GROUP_ORDER = [
     "cpu", "gpu", "ram", "power", "mouse", "keyboard", "input",
     "network", "storage", "audio", "system", "performance", "fortnite",
-    "games", "profiles", "tools", "laptop", "fpsboost",
+    "games", "profiles", "tools", "laptop", "fpsboost", "delay_destroyer",
 ]
 
 # Sidebar "Tweaks" sub-categories (no profiles/tools â€” those are top-level nav).
 TWEAK_ORDER = [
     "cpu", "gpu", "ram", "power", "mouse", "keyboard", "input",
     "network", "storage", "audio", "system", "performance", "fortnite",
-    "games", "laptop", "fpsboost",
+    "games", "laptop", "fpsboost", "delay_destroyer",
 ]
 
 # Raw category -> owning group key (every raw category maps to one group).
@@ -358,6 +368,7 @@ CATEGORY_LABELS = {
     "games": "Games",
     "laptop": "Laptop",
     "power": "Power",
+    "delay_destroyer": "Delay Destroyer",
 }
 
 # All browsable groups in display order (excludes profiles/tools nav sections).
@@ -381,6 +392,7 @@ SIDEBAR_TWEAKS = [
     ("laptop", "Laptop"),
     ("power", "Power"),
     ("fpsboost", "FPS Boost"),
+    ("delay_destroyer", "DELAY DESTROYER"),
 ]
 
 
