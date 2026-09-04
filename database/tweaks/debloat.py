@@ -121,4 +121,13 @@ TWEAKS = validate_module("debloat", [
       changes="Disables all Windows Spotlight features.",
       risk="safe", impact="very low", recommended="recommended",
       tags=["spotlight", "lockscreen", "cloud"]),
+    T("db-021", "Disable Widgets News & Interests",
+      "Disables the Widgets news feed via the Dsh policy (AllowNewsAndInterests).",
+      actions=[("reg", "HKLM", r"SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", 0, "DWORD")],
+      revert=[("regdel", "HKLM", r"SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests")],
+      why="Widgets pull news, weather, and ads in a background WebView feed pipeline.",
+      changes="Sets AllowNewsAndInterests to 0 to disable the widgets news feed.",
+      risk="safe", impact="very low", recommended="recommended", admin=True,
+      win="10,11",
+      tags=["widgets", "news", "dsh", "feed"]),
 ])

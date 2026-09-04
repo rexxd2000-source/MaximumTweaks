@@ -257,6 +257,7 @@ TWEAKS = validate_module("laptop", [
           "consistent at the cost of slight battery drain.",
       changes="Disables Bluetooth adapter power saving.",
       risk="safe", impact="low", recommended="optional",
+      admin=True,
       tags=["bluetooth", "power", "latency"]),
 
     # ── PCIe Power Management ──────────────────────────────────────

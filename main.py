@@ -24,17 +24,96 @@ REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, 
 
 def run_gui():
     from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
+
+    # Standard Windows DPI hardening: opt the process into per-monitor-v2 DPI
+    # awareness up-front so Qt never composites through legacy bitmap scaling
+    # (the main cause of soft/blurry text in desktop Qt apps). Harmless at 100%
+    # scaling, correct at any fractional desktop scale.
+    import ctypes as _dpi_ct
+    try:
+        _PDM2 = _dpi_ct.c_void_p(-4)  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        _dpi_ct.windll.user32.SetProcessDpiAwarenessContext(_PDM2)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Single instance: a second launch would double every scanner/auditor and
+    # flood the machine with child command processes. Exit quietly instead.
+    import ctypes as _ct
+    _h = _ct.windll.kernel32.CreateMutexW(None, False,
+                                          "Local\\MaximumTweaks.SingleInstance")
+    if _ct.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        try:
+            hwnd = _ct.windll.user32.FindWindowW(None, "Maximum Tweaks v2.2.0")
+            if hwnd:
+                _ct.windll.user32.ShowWindow(hwnd, 9)   # SW_RESTORE
+                _ct.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        return
 
     from config.app_config import APP_VERSION
     from engine import license as license_mgr
     from ui import license as license_ui
     from ui.splash import CinematicSplash
     from ui.styles import build_qss
+    from ui.fonts import register_fonts
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    register_fonts()
     app.setStyleSheet(build_qss())
+
+    # Runtime window/app icon: the taskbar/alt-tab/title icon should match the
+    # packaging icon rather than PySide's default.
+    try:
+        from config.app_config import DIRS as _DIRS
+        _ico = _DIRS["assets"] / "rex_app.ico"
+        if _ico.is_file():
+            app.setWindowIcon(QIcon(str(_ico)))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Belt & braces: force CREATE_NO_WINDOW onto every child process the app
+    # spawns, so no code path — current or future — can flash a console.
+    # Also audit every unique command once, so mystery popups can be traced.
+    import subprocess as _sp
+    _CNW = 0x08000000
+    _seen_cmds: set = set()
+
+    def _sp_desc(a):
+        try:
+            first = a[0] if a and isinstance(a[0], (list, tuple, str)) else a
+            if isinstance(first, (list, tuple)):
+                first = " ".join(str(x) for x in first[:6])
+            return str(first)[:160]
+        except Exception:
+            return "?"
+
+    for _fn in ("run", "Popen", "call", "check_call", "check_output"):
+        _orig = getattr(_sp, _fn)
+
+        def _make(fn=_orig):
+            def wrapper(*a, **k):
+            # noqa: E306 - nested factory keeps late binding correct
+                if k.get("creationflags") is None:
+                    k["creationflags"] = _CNW
+                elif not (int(k["creationflags"]) & _CNW):
+                    k["creationflags"] = int(k["creationflags"]) | _CNW
+                try:
+                    from rexlog import logger as _lg
+                    key = _sp_desc(a)
+                    if key not in _seen_cmds:
+                        _seen_cmds.add(key)
+                        _lg.info(f"spawn: {key}"
+                                 + ("  [shell=True]" if k.get("shell")
+                                    else ""))
+                except Exception:
+                    pass
+                return fn(*a, **k)
+            return wrapper
+        setattr(_sp, _fn, _make())
 
     # Global exception handler: prevent silent crashes by logging unhandled
     # exceptions on the main thread instead of letting Qt terminate the process.
@@ -46,10 +125,24 @@ def run_gui():
     sys.excepthook = _excepthook
 
     screen = app.primaryScreen().availableGeometry()
+
+    # Boot/autostart: --minimized (set by the HKCU Run entry) used to skip
+    # the splash and land straight in the taskbar. We still show the splash
+    # every time (so the loading screen is always visible), but flag the
+    # autostart case so the window parks minimized in the taskbar afterwards
+    # instead of maximizing into the foreground.
+    autostart = any(a.lower() in ("--minimized", "--autostart", "/min")
+                    for a in sys.argv[1:])
+
     splash = CinematicSplash()
-    splash.resize(900, 720)
-    splash.move(screen.center().x() - 450, screen.center().y() - 360)
-    splash.show()
+    # Fullscreen boot (CSS .screen is 100vh): cover the whole primary monitor.
+    # Pin the window onto the primary screen's geometry BEFORE showFullScreen,
+    # otherwise Qt resolves the fullscreen target from the window's default
+    # position, which lands on the wrong monitor in multi-monitor setups.
+    _prim = app.primaryScreen().geometry()
+    splash.setGeometry(_prim)
+    splash.move(_prim.topLeft())
+    splash.showFullScreen()
     splash.start()
 
     # Refresh the persisted license token in the background so a valid license
@@ -133,7 +226,14 @@ def run_gui():
 
     def reveal_window():
         win = build_window()
-        win.showMaximized()
+        # Same multi-monitor pin: place on the primary screen before showing.
+        win.setGeometry(app.primaryScreen().availableGeometry())
+        if autostart:
+            # Boot/autostart: splash has already played, so park the app in
+            # the taskbar instead of stealing foreground focus.
+            win.showMinimized()
+        else:
+            win.showMaximized()
         return win
 
     def on_finished():
@@ -309,6 +409,181 @@ def cmd_stats():
         print(f"  {k:<12} {n}")
 
 
+def cmd_detect(seconds: float, use_qt: bool) -> int:
+    """Diagnostic probe for live game-server detection (mimics the GUI path)."""
+    import sys as _sys
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    if use_qt:
+        from PySide6.QtCore import QCoreApplication, QTimer, QThread, Signal
+
+        class _ProbeWorker(QThread):
+            done = Signal(object)
+            _game = "Fortnite"
+            _sec = seconds
+
+            def run(self):
+                from engine.netmonitor.targeting import resolve_game_server
+                self.done.emit(
+                    resolve_game_server(self._game, duration=max(1.0, self._sec)))
+
+        app = QCoreApplication([])
+        worker = _ProbeWorker()
+        outcome = {}
+
+        def _on_done(res):
+            outcome["res"] = res
+            app.quit()
+
+        worker.done.connect(_on_done)
+        worker.start()
+        QTimer.singleShot(int(seconds + 30) * 1000, app.quit)
+        app.exec()
+        res = outcome.get("res")
+    else:
+        from engine.netmonitor.targeting import resolve_game_server
+        res = resolve_game_server("Fortnite", duration=max(1.0, seconds))
+
+    if res is None:
+        print("PROBE: no result (timed out)")
+        return 2
+    print(f"PROBE found={res.found} confidence={res.confidence} "
+          f"ip={res.ip or '-'} candidates={res.candidate_count}")
+    print(f"PROBE reason={res.reason}")
+    return 0
+
+
+def cmd_trace(target: str, max_hops: int) -> int:
+    """One bounded scapy traceroute probe (mirrors the monitor's scan path)."""
+    import sys as _sys
+    import time as _time
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    from engine.netmonitor.traceroute import run_traceroute
+
+    t0 = _time.time()
+    route = run_traceroute(target, max_hops=max_hops, timeout=2.0)
+    print(f"PROBE traced {route.destination} -> {route.destination_ip} "
+          f"hops={len(route.hops)} total={route.total_latency:.1f}ms "
+          f"dt={_time.time() - t0:.1f}s")
+    for h in route.hops:
+        print(f"  hop {h.number}: {h.ip or '-'}  {h.latency:.1f}ms  {h.status.value}")
+    return 0
+
+
+def cmd_monitor(seconds: float) -> int:
+    """Detect + start_monitoring + short run (mirrors the auto-trace after detect)."""
+    import sys as _sys
+    import time as _time
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    from engine.netmonitor.targeting import resolve_game_server, TargetMatch
+    from engine.netmonitor.engine import NetworkMonitorEngine
+    from engine.netmonitor.types import ProbeMethod
+
+    tgt = resolve_game_server("Fortnite", duration=2.0)
+    print(f"PROBE detect found={tgt.found} ip={tgt.ip or '-'} "
+          f"ports={tgt.remote_ports} clients={tgt.client_ports}")
+    if not (tgt.found and tgt.ip):
+        print("PROBE no target — nothing to monitor")
+        return 0
+
+    tm = TargetMatch(
+        found=True, game="Fortnite", ip=tgt.ip,
+        remote_ports=tgt.remote_ports, client_ports=tgt.client_ports,
+        confidence="signature", reason="probe", protocol=ProbeMethod.UDP,
+    )
+    eng = NetworkMonitorEngine()
+    eng.on_event(lambda e: print(f"  event:[{e.level}] {e.message}"))
+    t0 = _time.time()
+    eng.start_monitoring(tgt.ip, target=tm)
+    print(f"PROBE monitoring started (dt={_time.time() - t0:.2f}s)")
+    _time.sleep(max(2.0, seconds))
+    eng.stop()
+    r = eng.get_route()
+    print(f"PROBE stopped. route hops={len(r.hops) if r else 0} "
+          f"total={r.total_latency if r else 0:.1f}ms")
+    return 0
+
+
+def cmd_verify(target: str) -> int:
+    """Side-by-side fidelity check: our traceroute vs native `tracert`."""
+    import re as _re
+    import subprocess as _sp
+    import sys as _sys
+    import time as _time
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    from engine.netmonitor.traceroute import run_traceroute
+
+    print(f"VERIFY target={target}")
+    print("  running our traceroute ...")
+    t0 = _time.time()
+    route = run_traceroute(target, max_hops=30, timeout=2.0)
+    print(f"  ours: {len(route.hops)} hops in {_time.time() - t0:.1f}s")
+
+    ours = {}
+    for h in route.hops:
+        ours[h.number] = (h.ip or "", round(h.latency, 1))
+
+    print("  running native tracert -d -h 30 ...")
+    try:
+        proc = _sp.run(
+            ["tracert", "-d", "-h", "30", target],
+            capture_output=True, text=True, timeout=120,
+            creationflags=0x08000000,
+        )
+        native = {}
+        for line in proc.stdout.splitlines():
+            m = _re.match(r"\s*(\d+)\s+(\d+)\s+ms\s+(\d+)\s+ms\s+([\d.]+|Request timed out)", line)
+            if m:
+                num = int(m.group(1))
+                ip = m.group(4)
+                native[num] = ip if ip != "Request timed out" else ""
+            else:
+                m2 = _re.match(r"\s*(\d+)\s+<1\s+ms\s+<1\s+ms\s+([\d.]+)", line)
+                if m2:
+                    native[int(m2.group(1))] = m2.group(2)
+    except Exception as exc:
+        print(f"  tracert failed: {exc}")
+        native = {}
+
+    all_nums = sorted(set(ours) | set(native))
+    print(f"\n{'hop':>4} {'ours ip':<16}{'ours ms':>9}   {'tracert ip':<16}{'match':>7}")
+    print("-" * 58)
+    matched = 0
+    ours_only = []
+    native_only = []
+    for n in all_nums:
+        o_ip, o_ms = ours.get(n, ("-", 0.0))
+        n_ip = native.get(n, "-")
+        if o_ip == "-":
+            label = "-"
+        else:
+            label = "YES" if n_ip == o_ip else "no"
+        if n_ip != "-" and o_ip == n_ip:
+            matched += 1
+        elif o_ip != "-" and n_ip == "-":
+            ours_only.append(n)
+        elif n_ip != "-" and o_ip == "-":
+            native_only.append(n)
+        o_disp = o_ip if o_ip else "-"
+        print(f"{n:>4} {o_disp:<16}{o_ms:>8.1f}   {n_ip:<16}{label:>7}")
+
+    print(f"\nAGREEMENT: {matched} hop(s) identical",
+          f"| ours-only: {ours_only or '-'}",
+          f"| tracert-only: {native_only or '-'}")
+    if ours_only:
+        print("  NOTE: hops visible to us but not tracert — these are partial/"
+              "rate-limited responders our windowed sweep still picks up.")
+    if native_only:
+        print("  NOTE: hops visible to tracert but not us — strong rate-limiting;"
+              "the TTL was probed but the responder only answers ICMP echo.")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="rex", description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="preview actions without executing")
@@ -329,8 +604,22 @@ def main(argv=None):
     p_revert.add_argument("id")
     p_rep = sub.add_parser("report", help="preview a tweak's actions")
     p_rep.add_argument("id")
+    p_det = sub.add_parser("detect", help="probe live game-server detection (diagnostic)")
+    p_det.add_argument("--seconds", type=float, default=5.0)
+    p_det.add_argument("--qt", action="store_true")
+    p_tr = sub.add_parser("trace", help="run one bounded scapy traceroute probe (diagnostic)")
+    p_tr.add_argument("target")
+    p_tr.add_argument("--hops", type=int, default=6)
+    p_vf = sub.add_parser("verify", help="side-by-side fidelity check vs native tracert (diagnostic)")
+    p_vf.add_argument("target")
+    p_mon = sub.add_parser("monitor", help="run detect + full monitoring (diagnostic)")
+    p_mon.add_argument("--seconds", type=float, default=12.0)
 
-    args = parser.parse_args(argv)
+    # Unknown top-level flags (e.g. --minimized/--autostart set by the HKCU Run
+    # entry) must never fail the launch — they're consumed inside run_gui().
+    # parse_known_args lets unrecognized args pass through and we still head to
+    # the GUI (the CLI code path is chosen below when --cli + a command is given).
+    args, _unknown = parser.parse_known_args(argv)
     if not args.cli and not args.command:
         run_gui()
         return
@@ -350,6 +639,14 @@ def main(argv=None):
         cmd_apply(args.id, "revert", args.dry_run)
     elif args.command == "report":
         cmd_report(args.id)
+    elif args.command == "detect":
+        raise SystemExit(cmd_detect(args.seconds, args.qt))
+    elif args.command == "trace":
+        raise SystemExit(cmd_trace(args.target, args.hops))
+    elif args.command == "verify":
+        raise SystemExit(cmd_verify(args.target))
+    elif args.command == "monitor":
+        raise SystemExit(cmd_monitor(args.seconds))
     else:
         parser.print_help()
 

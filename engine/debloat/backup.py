@@ -288,11 +288,11 @@ class BackupManager:
 
         elif item_id.startswith("startup_"):
             # Startup entries are harder to restore — note this in the log
-            logger.warning(f"Startup entry {entry.item_name} was removed; manual restoration may be needed")
+            logger.warn(f"Startup entry {entry.item_name} was removed; manual restoration may be needed")
 
         elif item_id.startswith("3p_") or item_id.startswith("oem_"):
             # Third-party/OEM apps: if we have an uninstall string, we can't easily reinstall
-            logger.warning(f"Application {entry.item_name} was uninstalled; manual reinstallation may be needed")
+            logger.warn(f"Application {entry.item_name} was uninstalled; manual reinstallation may be needed")
 
     def list_sessions(self) -> list[dict]:
         """List all backup sessions."""

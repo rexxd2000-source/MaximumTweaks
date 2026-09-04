@@ -27,10 +27,10 @@ def risk_label(risk: Risk) -> str:
 
 def risk_color(risk: Risk) -> str:
     return {
-        Risk.LOW: "#22C55E",
+        Risk.LOW: "#3DDC97",
         Risk.MODERATE: "#EAB308",
         Risk.HIGH: "#F97316",
-        Risk.CRITICAL: "#EF4444",
+        Risk.CRITICAL: "#FF6F6F",
     }[risk]
 
 

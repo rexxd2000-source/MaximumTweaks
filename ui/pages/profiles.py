@@ -1,771 +1,1347 @@
-"""Game Profiles page — split-pane master-detail with scanning overlay,
-profile presets, live tuning dashboard, and changes preview.
-
-Left panel (~35%): scrollable list of premium game cards.
-Right panel (~65%): full-featured game inspector with hero banner,
-preset bar, fine-tuning grid, NvAPI flags accordion, and apply/reset.
-"""
+"""Game Profiles — premium per-game NIP driver profiles."""
 from __future__ import annotations
 
-import ctypes
+import math
+import traceback
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QPropertyAnimation, QEasingCurve, QRectF
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import (
+    Qt, Signal, QThread, QPropertyAnimation, QEasingCurve,
+    QRectF, QPointF, QTimer, Property,
+)
+from PySide6.QtGui import (
+    QColor, QLinearGradient, QRadialGradient, QPainter, QPen, QBrush,
+    QFont, QPainterPath, QPixmap,
+)
 from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
+    QVBoxLayout, QWidget, QMessageBox, QStackedWidget,
 )
 
 from config.app_config import THEME as T
 from engine import nvprofiles
 from engine import state as state_mgr
-from ui.categories import GAME_PROFILE_IDS
-from ui.premium_widgets import (
-    AnimatedToast,
-    ChangesPreviewDialog,
-    GameListItem,
-    GlassCheckbox,
-    GlassComboBox,
-    LoadingCard,
-    NvapiFlagsAccordion,
-    ProfilePresetBar,
-    ResolutionPicker,
-    SystemInfoBadge,
-    _draw_game_icon,
-    toast,
-)
+from rexlog import logger
+
+_ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets" / "profiles"
+_LOGOS_DIR = Path(__file__).resolve().parents[2] / "assets" / "game_logos"
 
 
-def is_admin() -> bool:
+def _is_admin() -> bool:
+    import ctypes
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
 
 
-def _form_label(text: str) -> QLabel:
-    lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        f"color: {T['text_faint']}; font-size: 10px; font-weight: 700;"
-        "letter-spacing: 1px; padding-bottom: 2px; background: transparent; border: none;")
-    return lbl
+def _rgba(h: str, a: int) -> str:
+    c = h.lstrip("#")
+    r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    return f"rgba({r},{g},{b},{a})"
 
 
-def _section_label(text: str) -> QLabel:
-    lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        f"color: {T['text_faint']}; font-size: 10px; font-weight: 700;"
-        "letter-spacing: 1.5px; padding: 4px 0; background: transparent; border: none;")
-    return lbl
+# ═══════════════════════════════════════════════════════════════════════
+#  NVIDIA PROFILE INSPECTOR LOCATOR
+# ═══════════════════════════════════════════════════════════════════════
+
+_NPI_EXE = "NVIDIA Profile Inspector.exe"
+
+# Locations to probe for a packaged NVIDIA Profile Inspector build. The exe can
+# move / be installed elsewhere, so the hardcoded dev path is only the first
+# candidate — never the sole assumption.
+_NPI_CANDIDATES = [
+    Path(r"C:\Users\Admin\Documents\NVIDIA-Profile-Inspector\dist") / _NPI_EXE,
+    Path(r"C:\Program Files\NVIDIA Profile Inspector") / _NPI_EXE,
+    Path(r"C:\Program Files (x86)\NVIDIA Profile Inspector") / _NPI_EXE,
+]
 
 
-# ──────────────────────────────────────────────────────────────
-# Worker threads
-# ──────────────────────────────────────────────────────────────
+def _find_npi_exe() -> Path | None:
+    """Locate the NVIDIA Profile Inspector executable.
 
-class InstalledWorker(QThread):
+    Searches known locations and the Windows uninstall registry so the path is
+    never blindly hardcoded. Returns a ``Path`` when found, else ``None``.
+    """
+    for cand in _NPI_CANDIDATES:
+        if cand.is_file():
+            return cand
+    # Registry uninstall entries (DisplayIcon) — catches custom install dirs.
+    try:
+        import winreg
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for key in (r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"):
+                try:
+                    with winreg.OpenKey(root, key) as k:
+                        for i in range(winreg.QueryInfoKey(k)[0]):
+                            sub = winreg.EnumKey(k, i)
+                            try:
+                                with winreg.OpenKey(k, sub) as sk:
+                                    icon = ""
+                                    try:
+                                        icon, _ = winreg.QueryValueEx(sk, "DisplayIcon")
+                                    except OSError:
+                                        pass
+                                    if icon:
+                                        p = Path(str(icon).strip('"'))
+                                        if p.is_file() and _NPI_EXE.lower() in p.name.lower():
+                                            return p
+                            except OSError:
+                                continue
+                except OSError:
+                    continue
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  LOGOS
+# ═══════════════════════════════════════════════════════════════════════
+
+_logo_cache: dict[str, QPixmap | None] = {}
+
+
+def _logo(name: str) -> QPixmap | None:
+    key = name.lower().replace(" ", "").replace("'", "")
+    if key in _logo_cache:
+        return _logo_cache[key]
+    for pat in [key, name.lower().replace(" ", "_")]:
+        for ext in (".png", ".jpg"):
+            p = _LOGOS_DIR / f"{pat}{ext}"
+            if p.exists():
+                pm = QPixmap(str(p))
+                if not pm.isNull():
+                    _logo_cache[key] = pm
+                    return pm
+    _logo_cache[key] = None
+    return None
+
+
+_COLORS = {
+    "Fortnite": "#9333EA",
+    "Valorant": "#FF4655",
+    "CS2": "#E8A317",
+}
+
+
+def _color(name: str) -> str:
+    return _COLORS.get(name, T["accent"])
+
+
+_GAME_INFO = {
+    "Fortnite": {
+        "desc": "More FPS, way less input delay, zero stuttering. GPU stays "
+                "pinned at max clocks so you never drop frames mid-fight.",
+    },
+    "CS2": {
+        "desc": "A general competitive setup. Turns off the things that add "
+                "delay and keeps your framerate steady, so the game just "
+                "feels cleaner and more responsive overall.",
+    },
+    "Valorant": {
+        "desc": "A general competitive setup. Focuses on lowering input "
+                "delay and keeping framerate stable, so aiming feels more "
+                "direct and consistent during a game.",
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  NIP LOADER
+# ═══════════════════════════════════════════════════════════════════════
+
+def _load_nips() -> dict:
+    try:
+        from engine.nip_parser import load_all_profiles
+        return load_all_profiles(_ASSETS_DIR)
+    except Exception:
+        return {}
+
+
+class _Loader(QThread):
     done = Signal(dict)
-    error = Signal(str)
-
     def run(self):
-        from engine import game_detector
-        try:
-            self.done.emit(game_detector.detect_games())
-        except Exception as exc:
-            self.error.emit(str(exc))
+        self.done.emit(_load_nips())
 
 
-class ProfileWorker(QThread):
-    done = Signal(str, dict)
-    error = Signal(str, str)
+# ═══════════════════════════════════════════════════════════════════════
+#  APPLY BUTTON
+# ═══════════════════════════════════════════════════════════════════════
 
-    def __init__(self, game_id: str, mode: str, config_values: dict | None = None,
-                 parent=None):
+class _ApplyBtn(QPushButton):
+    def __init__(self, accent: str, parent=None):
         super().__init__(parent)
-        self.game_id = game_id
-        self.mode = mode
-        self.config_values = config_values or {}
+        self._accent = accent
+        self._state = "idle"
+        self._dot_n = 0.0
+        self._auto = QTimer(self)
+        self._auto.setSingleShot(True)
+        self._auto.timeout.connect(self._reset_idle)
+        self._spin = QTimer(self)
+        self._spin.timeout.connect(self._spin_tick)
 
-    def run(self):
-        try:
-            from engine import game_config
-            if self.mode == "apply":
-                nv_report = nvprofiles.apply_profile(self.game_id)
-                game_report = game_config.write_game_config(
-                    self.game_id, self.config_values)
-                combined = {**nv_report}
-                combined["game_config"] = game_report
-                self.done.emit(self.game_id, combined)
-            elif self.mode == "apply_recommended":
-                recommended = game_config.read_game_config(self.game_id)
-                nv_report = nvprofiles.apply_profile(self.game_id)
-                game_report = game_config.write_game_config(
-                    self.game_id, recommended)
-                combined = {**nv_report}
-                combined["game_config"] = game_report
-                combined["recommended_applied"] = True
-                self.done.emit(self.game_id, combined)
-            else:
-                report = nvprofiles.reset_profile(self.game_id)
-                self.done.emit(self.game_id, report)
-        except Exception as exc:
-            self.error.emit(self.game_id, str(exc))
+        self.setFixedSize(170, 36)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setText("  Apply Profile")
+        self._style_idle()
+
+    def set_state(self, s: str):
+        self._state = s
+        self._auto.stop()
+        self._spin.stop()
+        if s == "idle":
+            self.setText("  Apply Profile")
+            self._style_idle()
+        elif s == "applying":
+            self._dot_n = 0
+            self.setText("Applying...")
+            self._style_muted()
+            self._spin.start(60)
+        elif s == "applied":
+            self.setText("  Applied!")
+            self._style_success()
+            self._auto.start(2800)
+        elif s == "error":
+            self.setText("  Failed")
+            self._style_error()
+            self._auto.start(3500)
+
+    def _reset_idle(self):
+        self.set_state("idle")
+
+    def _spin_tick(self):
+        self._dot_n += 1
+        d = "." * (1 + self._dot_n % 3)
+        self.setText(f"Applying{d}")
+
+    def _style_idle(self):
+        cn = self._accent
+        cl = QColor(cn).lighter(130).name()
+        ch = QColor(cn).lighter(115).name()
+        cd = QColor(cn).darker(112).name()
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 {cd}, stop:0.3 {cn}, stop:0.7 {cl}, stop:1 {cn});
+                color: #fff; border: 2px solid {_rgba(cn, 0x50)};
+                border-radius: 10px; font-size: 13px; font-weight: 700;
+                letter-spacing: 0.5px; padding: 0 16px;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 {cn}, stop:0.5 {cl}, stop:1 {ch});
+                border-color: {_rgba(cn, 0x80)};
+            }}
+            QPushButton:pressed {{ background: {cd}; border-color: {cn}; }}
+        """)
+
+    def _style_muted(self):
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: {T['bg_alt']}; color: {T['text_dim']};
+                border: 2px solid {T['border']}; border-radius: 10px;
+                font-size: 13px; font-weight: 700;
+            }}
+        """)
+
+    def _style_success(self):
+        bg = T.get("success", "#16A34A")
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg}; color: #fff;
+                border: 2px solid {_rgba(bg, 0x60)}; border-radius: 10px;
+                font-size: 13px; font-weight: 700;
+            }}
+        """)
+
+    def _style_error(self):
+        bg = T.get("danger", "#DC2626")
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg}; color: #fff;
+                border: 2px solid {_rgba(bg, 0x60)}; border-radius: 10px;
+                font-size: 13px; font-weight: 700;
+            }}
+        """)
 
 
-# ──────────────────────────────────────────────────────────────
-# Right panel: premium game inspector / configurator
-# ──────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  GAME CARD
+# ═══════════════════════════════════════════════════════════════════════
 
-class GameInspector(QFrame):
-    """Premium inspector with hero banner, preset bar, fine-tuning grid."""
-
-    apply_clicked = Signal(str, dict)
+class GameCard(QFrame):
+    apply_clicked = Signal(str)
     reset_clicked = Signal(str)
-    recommended_clicked = Signal(str)
+    explore_clicked = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, gid: str, nip=None, parent=None):
         super().__init__(parent)
-        self.setObjectName("Card")
-        self._game_id: str | None = None
-        self._form_widgets: dict[str, QWidget] = {}
-        self._banner_opacity = 0.0
+        self.gid = gid
+        self.nip = nip
+        meta = nvprofiles.GAMES.get(gid, {})
+        self.gname = meta.get("name", gid)
+        self.exes = meta.get("exes", [])
+        self._c = QColor(_color(self.gname))
+        ginfo = _GAME_INFO.get(self.gname, {})
+        self.desc = ginfo.get("desc", "")
+        self._hv = 0.0
+        self._applied = state_mgr.get_nv_profile_snapshot(gid) is not None
+        self._pulse = 0.0
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        self.setFixedHeight(170)
+        self.setMouseTracking(True)
 
-        # ── Hero Banner (painted). ──
-        self._banner = QWidget()
-        self._banner.setFixedHeight(140)
-        self._banner.setStyleSheet("background: transparent;")
-        root.addWidget(self._banner)
+        self._anim = QPropertyAnimation(self, b"hv")
+        self._anim.setDuration(150)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
 
-        # ── Content. ──
-        content = QWidget()
-        content.setStyleSheet("background: transparent;")
-        cl = QVBoxLayout(content)
-        cl.setContentsMargins(24, 0, 24, 16)
-        cl.setSpacing(12)
+        self._ptimer = QTimer(self)
+        self._ptimer.timeout.connect(self._tick)
+        self._ptimer.start(40)
 
-        # Header row.
-        header = QHBoxLayout()
-        header.setSpacing(12)
-        self._game_icon = QLabel()
-        self._game_icon.setFixedSize(48, 48)
-        self._game_icon.setStyleSheet("background: transparent; border: none;")
-        header.addWidget(self._game_icon)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        hb = QVBoxLayout()
-        hb.setSpacing(2)
-        self.title_lbl = QLabel("Select a Game")
-        self.title_lbl.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {T['text']}; background: transparent; border: none;")
-        self.publisher_lbl = QLabel("")
-        self.publisher_lbl.setStyleSheet(f"font-size: 12px; color: {T['text_dim']}; background: transparent; border: none;")
-        hb.addWidget(self.title_lbl)
-        hb.addWidget(self.publisher_lbl)
-        header.addLayout(hb, 1)
+        logo_frame = QFrame()
+        logo_frame.setFixedWidth(130)
+        logo_frame.setStyleSheet("background: transparent; border: none;")
+        outer.addWidget(logo_frame)
 
-        self._sys_badge = SystemInfoBadge()
-        header.addWidget(self._sys_badge, 0, Qt.AlignTop)
-        cl.addLayout(header)
+        info = QVBoxLayout()
+        info.setContentsMargins(4, 14, 16, 14)
+        info.setSpacing(2)
 
-        # Status banner.
-        self.status_frame = QFrame()
-        self.status_frame.setObjectName("Card")
-        self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.18); border-radius: 10px;")
-        sf_lay = QHBoxLayout(self.status_frame)
-        sf_lay.setContentsMargins(14, 10, 14, 10)
-        self.status_icon = QLabel("\u2713")
-        self.status_icon.setStyleSheet(f"color: {T['success']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-        sf_lay.addWidget(self.status_icon)
-        self.status_msg = QLabel("Select a game from the list to configure its profile.")
-        self.status_msg.setStyleSheet(f"color: {T['text_dim']}; font-size: 12px; background: transparent; border: none;")
-        self.status_msg.setWordWrap(True)
-        sf_lay.addWidget(self.status_msg, 1)
-        cl.addWidget(self.status_frame)
+        r1 = QHBoxLayout()
+        r1.setSpacing(10)
+        name_lbl = QLabel(self.gname)
+        name_lbl.setStyleSheet(
+            f"font-size: 20px; font-weight: 700; color: {T['text']}; "
+            "background: transparent; border: none; letter-spacing: -0.3px;")
+        r1.addWidget(name_lbl)
 
-        # Preset bar.
-        self._preset_bar = ProfilePresetBar()
-        self._preset_bar.preset_changed.connect(self._on_preset_changed)
-        cl.addWidget(self._preset_bar)
+        if self._applied:
+            snap = state_mgr.get_nv_profile_snapshot(gid)
+            st = f"Applied  {snap.get('applied_at', '')}" if snap else "Applied"
+            sc = T.get("success", "#4ADE80")
+        else:
+            st = "Ready"
+            sc = T["text_faint"]
+        sl = QLabel(st)
+        sl.setStyleSheet(
+            f"color: {sc}; font-size: 9px; font-weight: 600; letter-spacing: 1px; "
+            "background: transparent; border: none;")
+        r1.addWidget(sl)
+        r1.addStretch()
+        info.addLayout(r1)
 
-        # Action buttons.
-        btns = QHBoxLayout()
-        btns.setSpacing(8)
-        self.btn_apply = QPushButton("Apply Profile")
-        self.btn_apply.setObjectName("Primary")
-        self.btn_apply.setEnabled(False)
-        self.btn_apply.clicked.connect(self._on_apply)
-        btns.addWidget(self.btn_apply)
+        if self.desc:
+            d = QLabel(self.desc)
+            d.setStyleSheet(
+                f"color: {T['text_dim']}; font-size: 10.5px; line-height: 1.4; "
+                "background: transparent; border: none;")
+            d.setWordWrap(True)
+            info.addWidget(d)
 
-        self.btn_view = QPushButton("View Driver & File Edits")
-        self.btn_view.setObjectName("Ghost")
-        self.btn_view.setEnabled(False)
-        self.btn_view.clicked.connect(self._on_view_changes)
-        btns.addWidget(self.btn_view)
+        set_n = len(nip.settings) if nip else 0
+        exe_str = ", ".join(self.exes[:2]) if self.exes else ""
+        detail = f"{set_n} driver settings"
+        if exe_str:
+            detail += f"  \u00b7  {exe_str}"
+        dl = QLabel(detail)
+        dl.setStyleSheet(
+            f"color: {T['text_faint']}; font-size: 9.5px; "
+            "background: transparent; border: none;")
+        info.addWidget(dl)
 
-        self.btn_reset = QPushButton("Reset")
-        self.btn_reset.setObjectName("Danger")
-        self.btn_reset.setEnabled(False)
-        self.btn_reset.clicked.connect(self._on_reset)
-        btns.addWidget(self.btn_reset)
+        info.addStretch()
 
-        btns.addStretch()
-        cl.addLayout(btns)
+        reset_row = QHBoxLayout()
+        reset_btn = QPushButton("Reset")
+        reset_btn.setObjectName("ResetBtn")
+        reset_btn.setFixedSize(56, 28)
+        reset_btn.setCursor(Qt.PointingHandCursor)
+        reset_btn.clicked.connect(lambda: self.reset_clicked.emit(self.gid))
+        reset_row.addWidget(reset_btn)
+        reset_row.addStretch()
+        info.addLayout(reset_row)
 
-        # Divider.
-        div = QFrame()
-        div.setFixedHeight(1)
-        div.setStyleSheet(f"background-color: {T['border']};")
-        cl.addWidget(div)
+        outer.addLayout(info, 1)
 
-        # Settings scroll area.
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background: transparent; border: none;")
-        self.settings_container = QWidget()
-        self.settings_container.setStyleSheet("background: transparent;")
-        self.settings_layout = QVBoxLayout(self.settings_container)
-        self.settings_layout.setContentsMargins(0, 0, 0, 0)
-        self.settings_layout.setSpacing(16)
-        self.settings_layout.addStretch()
-        scroll.setWidget(self.settings_container)
-        cl.addWidget(scroll, 1)
+        self._apply_btn = _ApplyBtn(self._c.name())
+        self._apply_btn.clicked.connect(lambda: self.apply_clicked.emit(self.gid))
 
-        root.addWidget(content)
+        explore_btn = QPushButton("Explore More")
+        explore_btn.setObjectName("ExploreBtn")
+        explore_btn.setFixedSize(108, 32)
+        explore_btn.setCursor(Qt.PointingHandCursor)
+        explore_btn.clicked.connect(lambda: self.explore_clicked.emit(self.gid))
+
+        right_col = QVBoxLayout()
+        right_col.setContentsMargins(0, 0, 16, 0)
+        right_col.setSpacing(8)
+        right_col.addStretch(1)
+        right_col.addWidget(self._apply_btn, 0, Qt.AlignRight)
+        right_col.addWidget(explore_btn, 0, Qt.AlignRight)
+        right_col.addStretch(1)
+        outer.addLayout(right_col)
+
+        cn = self._c.name()
+        self.setStyleSheet(f"""
+            QPushButton#ResetBtn {{
+                background: transparent; color: {T['text_faint']};
+                border: 1px solid {_rgba(T['text_faint'], 0x25)}; border-radius: 6px;
+                font-size: 10px; font-weight: 600;
+            }}
+            QPushButton#ResetBtn:hover {{
+                background: {T['card_hover']}; color: {T['text']};
+                border-color: {T['text_faint']};
+            }}
+            QPushButton#ExploreBtn {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 {_rgba(T["accent"], 0x28)},
+                    stop:1 {_rgba(T["accent"], 0x14)});
+                color: {T["accent"]};
+                border: 1px solid {_rgba(T["accent"], 0x55)}; border-radius: 8px;
+                font-size: 11px; font-weight: 700;
+            }}
+            QPushButton#ExploreBtn:hover {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                    stop:0 {_rgba(T["accent"], 0x42)},
+                    stop:1 {_rgba(T["accent"], 0x28)});
+                color: #fff;
+                border-color: {T["accent"]};
+            }}
+        """)
+
+    def _tick(self):
+        self._pulse += 0.08
+        if self._applied:
+            self.update()
+
+    def _get_hv(self):
+        return self._hv
+
+    def _set_hv(self, v):
+        self._hv = v
+        self.update()
+
+    hv = Property(float, _get_hv, _set_hv)
+
+    def enterEvent(self, e):
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def leaveEvent(self, e):
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(0.0)
+        self._anim.start()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        if self._game_id and self._banner_opacity > 0:
-            p.setOpacity(self._banner_opacity * 0.12)
-            _draw_game_icon(p, QRectF(self._banner.rect()), self._game_id, 140)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        w, h = self.width(), self.height()
+        R = 12.0
+        rect = QRectF(0.5, 0.5, w - 1, h - 1)
+        path = QPainterPath()
+        path.addRoundedRect(rect, R, R)
+        hv = self._hv
+        c = self._c
+
+        bg0 = QColor(T["card"])
+        bg1 = QColor(T["card_hover"])
+        bg = QColor(
+            int(bg0.red() + (bg1.red() - bg0.red()) * hv),
+            int(bg0.green() + (bg1.green() - bg0.green()) * hv),
+            int(bg0.blue() + (bg1.blue() - bg0.blue()) * hv),
+        )
+        p.fillPath(path, bg)
+
+        wa = 0.03 + hv * 0.05
+        gw = QLinearGradient(0, 0, w * 0.45, h * 0.8)
+        gw.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), int(255 * wa)))
+        gw.setColorAt(0.4, QColor(c.red(), c.green(), c.blue(), 0))
+        p.fillPath(path, gw)
+
+        bar = QPainterPath()
+        bar.addRoundedRect(QRectF(0, 14, 2.5, h - 28), 1.25, 1.25)
+        p.fillPath(bar, QColor(c.red(), c.green(), c.blue(), int(50 + hv * 90)))
+
+        bdr = int(20 + hv * 50)
+        gb = QLinearGradient(0, 0, w, h)
+        gb.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), bdr))
+        gb.setColorAt(0.4, QColor(255, 255, 255, int(1 + hv * 6)))
+        gb.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), int(bdr * 0.25)))
+        p.setPen(QPen(QBrush(gb), 0.6 + hv * 0.3))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(rect, R, R)
+
+        if self._applied:
+            pulse = (math.sin(self._pulse) + 1) / 2
+            p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(12 + pulse * 16)), 3))
+            p.drawRoundedRect(rect.adjusted(-1.5, -1.5, 1.5, 1.5), R + 1, R + 1)
+
+        logo_px = 76.0
+        logo_x = (130 - logo_px) / 2.0
+        logo_y = (h - logo_px) / 2.0
+        logo_rect = QRectF(logo_x, logo_y, logo_px, logo_px)
+        logo_R = 16.0
+
+        glow = QRadialGradient(65.0, h / 2.0, logo_px * 0.7)
+        glow.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 22))
+        glow.setColorAt(0.6, QColor(c.red(), c.green(), c.blue(), 6))
+        glow.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+        p.setBrush(QBrush(glow))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(logo_rect.adjusted(-10, -10, 10, 10), logo_R + 4, logo_R + 4)
+
+        logo = _logo(self.gname)
+        if logo and not logo.isNull():
+            p.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(logo_rect, logo_R, logo_R)
+            p.setClipPath(clip)
+            lw, lh = logo.width(), logo.height()
+            scale = max(logo_px / lw, logo_px / lh)
+            sw, sh = int(lw * scale), int(lh * scale)
+            scaled = logo.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            dx = logo_x + (logo_px - scaled.width()) / 2
+            dy = logo_y + (logo_px - scaled.height()) / 2
+            p.drawPixmap(int(dx), int(dy), scaled)
+            p.restore()
+            p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(30 + hv * 40)), 1.0))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(logo_rect, logo_R, logo_R)
+        else:
+            grad = QRadialGradient(logo_x + logo_px * 0.4, logo_y + logo_px * 0.4, logo_px * 0.6)
+            grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue()))
+            grad.setColorAt(1.0, QColor(max(0, c.red() - 50),
+                                         max(0, c.green() - 50),
+                                         max(0, c.blue() - 50)))
+            p.setBrush(QBrush(grad))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(logo_rect, logo_R, logo_R)
+            p.setPen(QColor(255, 255, 255, 220))
+            f = QFont("Segoe UI", 26, QFont.Weight.Bold)
+            p.setFont(f)
+            p.drawText(logo_rect, Qt.AlignCenter, self.gname[0].upper())
+
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(18 + hv * 25)), 1.0))
+        p.drawLine(130, 20, 130, h - 20)
+
         p.end()
-        super().paintEvent(event)
 
-    def _update_banner(self, game_id):
-        anim = QPropertyAnimation(self, b"bannerOpacity")
-        anim.setDuration(400)
-        anim.setEasingCurve(QEasingCurve.OutCubic)
-        anim.setStartValue(self._banner_opacity)
-        anim.setEndValue(1.0 if game_id else 0.0)
-        anim.start()
-        self._banner_anim = anim
 
-    def _get_banner_opacity(self):
-        return self._banner_opacity
+# ═══════════════════════════════════════════════════════════════════════
+#  EXPLORE MORE
+# ═══════════════════════════════════════════════════════════════════════
 
-    def _set_banner_opacity(self, val):
-        self._banner_opacity = val
-        self.update()
+_EXPLORE = {
+    "Fortnite": [
+        {
+            "preset": "potato",
+            "title": "Potato Graphics",
+            "tag": "MAX FPS",
+            "desc": "Potato graphics for low end PCs. Textures, AA and shadows "
+                    "turned way down so even a weak PC holds a steady high FPS. "
+                    "Made for low-spec rigs or stretched-res players.",
+            "badge": "INSTALLED",
+        },
+    ],
+    "CS2": [],
+    "Valorant": [
+        {
+            "preset": "potato",
+            "title": "Potato Graphics",
+            "tag": "MAX FPS",
+            "desc": "For older or weaker PCs. Turns off anti-aliasing, "
+                    "ambient occlusion and other visual effects so the game "
+                    "runs faster. Lowers the graphics quality a fair amount, "
+                    "but you gain a good chunk of performance.",
+            "badge": "INSTALLED",
+        },
+    ],
+}
 
-    bannerOpacity = property(_get_banner_opacity, _set_banner_opacity)
+_EXPLORE_COMING = {
+    "CS2": "More CS2 profiles coming soon.",
+}
 
-    # ── public interface ──
 
-    def set_game(self, game_id, nv_applied=False, nv_profile=None,
-                 installed=False, enabled=True):
-        self._game_id = game_id
+class ExplorePage(QWidget):
+    back_clicked = Signal()
+    apply_explore = Signal(str, str)
 
-        try:
-            from engine import nvprofile as nv_mod
-            gpu = nv_mod.Nvapi().gpu_names() if nv_mod.Nvapi.available() else []
-            self._sys_badge.set_info(gpu_name=gpu[0] if gpu else "", nvapi_ready=nv_mod.Nvapi.available())
-        except Exception:
-            self._sys_badge.set_info(nvapi_ready=False)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(12)
 
-        if game_id is None:
-            self.title_lbl.setText("Select a Game")
-            self.publisher_lbl.setText("")
-            self.btn_apply.setEnabled(False)
-            self.btn_view.setEnabled(False)
-            self.btn_reset.setEnabled(False)
-            self.status_msg.setText("Select a game from the list to configure its profile.")
-            self.status_icon.setText("\u25cb")
-            self.status_icon.setStyleSheet(f"color: {T['text_faint']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: transparent; border: 1px solid {T['border']}; border-radius: 10px;")
-            self._update_banner(None)
-            self._clear_form()
+        hero = QFrame()
+        hero.setFixedHeight(68)
+        hero.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0,y1:0,x2:0.7,y2:1,
+                    stop:0 {_rgba(T["accent"], 0x0A)},
+                    stop:0.3 {T['card']},
+                    stop:1 {T['card']});
+                border: 1px solid {_rgba(T["accent"], 0x18)};
+                border-radius: 12px;
+            }}
+        """)
+        hl = QHBoxLayout(hero)
+        hl.setContentsMargins(22, 8, 22, 8)
+        hl.setSpacing(12)
+
+        back_btn = QPushButton("\u2190  Back")
+        back_btn.setObjectName("BackBtn")
+        back_btn.setFixedSize(96, 32)
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.clicked.connect(self.back_clicked)
+        hl.addWidget(back_btn)
+
+        ht = QVBoxLayout()
+        ht.setSpacing(2)
+        t1 = QLabel("Explore More")
+        t1.setStyleSheet(
+            f"font-size: 20px; font-weight: 700; color: {T['text']}; "
+            "background: transparent; border: none; letter-spacing: -0.3px;")
+        ht.addWidget(t1)
+        t2 = QLabel("Extra driver presets beyond the main profile")
+        t2.setStyleSheet(
+            f"font-size: 11px; color: {T['text_dim']}; background: transparent; border: none;")
+        ht.addWidget(t2)
+        ht.addStretch()
+        hl.addLayout(ht, 1)
+        root.addWidget(hero)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent; border: none;")
+        self._cw = QWidget()
+        self._cw.setStyleSheet("background: transparent;")
+        self._clay = QVBoxLayout(self._cw)
+        self._clay.setContentsMargins(0, 0, 0, 0)
+        self._clay.setSpacing(10)
+        scroll.setWidget(self._cw)
+        root.addWidget(scroll, 1)
+
+        self.setStyleSheet(f"""
+            QPushButton#BackBtn {{
+                background: {T['card']}; color: {T['text_dim']};
+                border: 1px solid {T['border']}; border-radius: 8px;
+                font-size: 12px; font-weight: 700;
+            }}
+            QPushButton#BackBtn:hover {{
+                background: {T['card_hover']}; color: {T['text']};
+                border-color: {_rgba(T["accent"], 0x4A)};
+            }}
+        """)
+
+    def set_game(self, gid: str):
+        while self._clay.count():
+            it = self._clay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+
+        from ui.categories import GAME_PROFILE_IDS
+        gname = nvprofiles.GAMES.get(gid, {}).get("name", gid)
+        presets = _EXPLORE.get(gname, [])
+        coming = _EXPLORE_COMING.get(gname)
+
+        if not presets and not coming:
+            empty = QLabel(f"No extra presets for {gname} yet.")
+            empty.setStyleSheet(
+                f"color: {T['text_faint']}; font-size: 12px; "
+                "background: transparent; border: none; padding: 20px 4px;")
+            self._clay.addWidget(empty)
+            self._clay.addStretch()
             return
 
-        meta = nvprofiles.GAMES.get(game_id, {})
-        name = meta.get("name", game_id)
-        cands = meta.get("profile_candidates", [])
-        publisher = cands[0] if cands else ""
+        for pr in presets:
+            card = ExploreCard(gid, pr)
+            card.apply_clicked.connect(self.apply_explore)
+            self._clay.addWidget(card)
+        if coming:
+            card = ComingSoonCard(gid, coming)
+            self._clay.addWidget(card)
+        self._clay.addStretch()
 
-        self.title_lbl.setText(name)
-        self.publisher_lbl.setText(publisher)
-        self._update_banner(game_id)
-        self._build_form(game_id)
 
-        can_configure = game_id in ("gp-001",)
-        if nv_applied:
-            self.status_msg.setText(f"Profile active on \u201c{nv_profile}\u201d. Fine-tune and apply again, or reset.")
-            self.status_icon.setText("\u2713")
-            self.status_icon.setStyleSheet(f"color: {T['success']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.18); border-radius: 10px;")
-        elif installed and can_configure:
-            self.status_msg.setText("Ready to configure \u2014 Fine-tune this profile before applying.")
-            self.status_icon.setText("\u25cb")
-            self.status_icon.setStyleSheet(f"color: {T['accent']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.04); border: 1px solid rgba(139, 92, 246, 0.12); border-radius: 10px;")
-        elif installed:
-            self.status_msg.setText("Game detected \u2014 NVIDIA driver settings available.")
-            self.status_icon.setText("\u25cb")
-            self.status_icon.setStyleSheet(f"color: {T['accent']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.04); border: 1px solid rgba(139, 92, 246, 0.12); border-radius: 10px;")
+class _ComingSoonBase(QFrame):
+    """Shared robust base for cinematic 'coming soon' style cards.
+
+    Fully opaque painting + guarantee that paint errors never blank the
+    widget (which made earlier versions 'disappear' on hover).
+    """
+
+    _BG = QColor("#0A0C11")
+    _BG_HOVER = QColor("#13161F")
+    _GOLD = QColor(255, 214, 120)
+    _LAV = QColor(167, 139, 250)
+    R = 16.0
+
+    def __init__(self, accent: str, height: int, parent=None):
+        super().__init__(parent)
+        self._c = QColor(accent)
+        self._hv = 0.0
+        self._ph = 0.0
+
+        self.setFixedHeight(height)
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WA_OpaquePaintEvent)
+        self.setAutoFillBackground(False)
+
+        self._anim = QPropertyAnimation(self, b"hv")
+        self._anim.setDuration(160)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._ptimer = QTimer(self)
+        self._ptimer.timeout.connect(self._tick)
+        self._ptimer.start(50)
+
+    def _tick(self):
+        self._ph += 0.04
+        if self._ph > 100000.0:
+            self._ph = 0.0
+        self.update()
+
+    def _get_hv(self):
+        return self._hv
+
+    def _set_hv(self, v):
+        v = min(1.0, max(0.0, v))
+        self._hv = v
+        self.update()
+
+    hv = Property(float, _get_hv, _set_hv)
+
+    def enterEvent(self, e):
+        self._anim.stop()
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def leaveEvent(self, e):
+        self._anim.stop()
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(0.0)
+        self._anim.start()
+
+    def paintEvent(self, event):
+        try:
+            self._paint()
+        except Exception:
+            import traceback as _tb
+            logger.error(f"profiles: {type(self).__name__} paint failed:\n{_tb.format_exc()}")
+
+    def _paint(self):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        w, h = self.width(), self.height()
+        border = QRectF(0.5, 0.5, w - 1, h - 1)
+        path = QPainterPath()
+        path.addRoundedRect(border, self.R, self.R)
+        hv = self._hv
+        c = self._c
+
+        bg = QColor(
+            int(self._BG.red() + (self._BG_HOVER.red() - self._BG.red()) * hv),
+            int(self._BG.green() + (self._BG_HOVER.green() - self._BG.green()) * hv),
+            int(self._BG.blue() + (self._BG_HOVER.blue() - self._BG.blue()) * hv),
+        )
+        p.fillPath(path, bg)
+
+        gw = QLinearGradient(0, 0, w * 0.6, h)
+        gw.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), int(14 + hv * 16)))
+        gw.setColorAt(0.6, QColor(c.red(), c.green(), c.blue(), 0))
+        p.fillPath(path, gw)
+
+        for i in range(2):
+            yy = self._ph * 55 + i * 52
+            ga = QRadialGradient(w * 0.5, yy, 190)
+            ga.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), int(3 + hv * 5)))
+            ga.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+            p.fillPath(path, QBrush(ga))
+
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(26 + hv * 46)), 1.0))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(border, self.R, self.R)
+
+        self._draw_content(p, w, h, hv, c)
+        p.end()
+
+    def _draw_content(self, p, w, h, hv, c):
+        raise NotImplementedError
+
+    def _draw_rule(self, p, w, y, hv, c, half=170, thick=2.0):
+        a = int(50 + hv * 110)
+        col = QColor(c.red(), c.green(), c.blue(), a)
+        p.setPen(QPen(col, thick))
+        x1 = int(w * 0.5) - half
+        x2 = int(w * 0.5) - half + 100
+        p.drawLine(x1, int(y), x2, int(y))
+        p.drawLine(int(w * 0.5) + half - 100, int(y), int(w * 0.5) + half, int(y))
+
+
+class ComingSoonCard(_ComingSoonBase):
+    """Cinematic 'coming soon' teaser card (shown in the Explore tab)."""
+
+    def __init__(self, gid: str, note: str, parent=None):
+        meta = nvprofiles.GAMES.get(gid, {})
+        self.gname = meta.get("name", gid)
+        self.note = note
+        self._c0 = _color(self.gname)
+        super().__init__(self._c0, 170, parent)
+
+    def _draw_content(self, p, w, h, hv, c):
+        self._draw_rule(p, w, 24, hv, c)
+
+        flick = 0.75 + 0.25 * math.sin(self._ph * 1.7)
+        p.setPen(QPen(self._GOLD, 1))
+        ff = QFont("Segoe UI", 13, QFont.Weight.Bold)
+        ff.setLetterSpacing(QFont.AbsoluteSpacing, 6)
+        p.setFont(ff)
+        p.drawText(QRectF(0, 32, w, 30), Qt.AlignCenter, "COMING SOON")
+
+        logo_px = 52.0
+        logo_x = (w - logo_px) / 2.0
+        logo_y = 78.0
+        logo_rect = QRectF(logo_x, logo_y, logo_px, logo_px)
+        logo_R = 12.0
+
+        glow = QRadialGradient(w / 2.0, logo_y + logo_px / 2, logo_px * 0.9)
+        glow.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), int(30 + 34 * flick)))
+        glow.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawRoundedRect(logo_rect.adjusted(-12, -12, 12, 12), logo_R + 4, logo_R + 4)
+
+        logo = _logo(self.gname)
+        if logo and not logo.isNull():
+            p.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(logo_rect, logo_R, logo_R)
+            p.setClipPath(clip)
+            lw, lh = logo.width(), logo.height()
+            scale = max(logo_px / lw, logo_px / lh)
+            sw, sh = int(lw * scale), int(lh * scale)
+            scaled = logo.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            dx = logo_x + (logo_px - scaled.width()) / 2
+            dy = logo_y + (logo_px - scaled.height()) / 2
+            p.drawPixmap(int(dx), int(dy), scaled)
+            p.restore()
         else:
-            self.status_msg.setText("Game not detected \u2014 install it for full profile support.")
-            self.status_icon.setText("\u26a0")
-            self.status_icon.setStyleSheet(f"color: {T['warning']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(240, 181, 77, 0.06); border: 1px solid rgba(240, 181, 77, 0.15); border-radius: 10px;")
+            grad = QRadialGradient(logo_x + logo_px * 0.4, logo_y + logo_px * 0.4, logo_px * 0.6)
+            grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue()))
+            grad.setColorAt(1.0, QColor(max(0, c.red() - 50), max(0, c.green() - 50), max(0, c.blue() - 50)))
+            p.setBrush(QBrush(grad))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(logo_rect, logo_R, logo_R)
 
-        has_config = game_id in ("gp-001",)
-        self.btn_apply.setEnabled(enabled and installed)
-        self.btn_view.setEnabled(enabled and installed)
-        self.btn_reset.setEnabled(enabled and nv_applied)
+        p.setPen(QColor(255, 255, 255, int(60 + 120 * hv)))
+        f = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        p.setFont(f)
+        p.drawText(QRectF(0, 132, w, 18), Qt.AlignCenter, self.gname)
 
-    def _on_preset_changed(self, preset: str):
-        if preset == "max_perf":
-            if hasattr(self, '_res_picker'):
-                self._res_picker._w_combo.setCurrentIndex(0)
-            for key in ("fps_limit", "rendering_mode", "reflex"):
-                if key in self._form_widgets:
-                    w = self._form_widgets[key]
-                    if hasattr(w, 'setCurrentText'):
-                        defaults = {"fps_limit": "240", "rendering_mode": "Performance Mode", "reflex": "On + Boost"}
-                        if key in defaults:
-                            w.setCurrentText(defaults[key])
-        elif preset == "balanced":
-            if hasattr(self, '_res_picker'):
-                self._res_picker._w_combo.setCurrentIndex(0)
-            for key in ("fps_limit", "rendering_mode", "reflex"):
-                if key in self._form_widgets:
-                    w = self._form_widgets[key]
-                    if hasattr(w, 'setCurrentText'):
-                        defaults = {"fps_limit": "240", "rendering_mode": "DirectX 12", "reflex": "On"}
-                        if key in defaults:
-                            w.setCurrentText(defaults[key])
+        p.setPen(QColor(self._LAV.red(), self._LAV.green(), self._LAV.blue(), int(80 + 140 * hv)))
+        fs = QFont("Segoe UI", 11, QFont.Weight.Medium)
+        p.setFont(fs)
+        p.drawText(QRectF(0, 150, w, 18), Qt.AlignCenter, self.note)
 
-    # ── form building ──
 
-    def _clear_form(self):
-        while self.settings_layout.count():
-            item = self.settings_layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-            elif item.layout():
-                self._clear_layout(item.layout())
-        self._form_widgets.clear()
+class MoreComingSoonCard(_ComingSoonBase):
+    """Cinematic centered 'more coming soon' teaser for the main profile list."""
 
-    def _build_form(self, game_id: str):
-        self._clear_form()
+    def __init__(self, note="More profiles on the way", parent=None):
+        super().__init__(T["accent"], 150, parent)
+        self.note = note
 
-        from engine import game_config
-        cfg_cls = game_config.get_config(game_id)
-        if cfg_cls is not None:
-            current = cfg_cls.read()
+    def _draw_content(self, p, w, h, hv, c):
+        self._draw_rule(p, w, 26, hv, c, half=190, thick=1.5)
+
+        flick = 0.75 + 0.25 * math.sin(self._ph * 1.7)
+        p.setPen(QPen(self._GOLD, 1))
+        ff = QFont("Segoe UI", 15, QFont.Weight.Bold)
+        ff.setLetterSpacing(QFont.AbsoluteSpacing, 7)
+        p.setFont(ff)
+        p.drawText(QRectF(0, 40, w, 32), Qt.AlignCenter, "MORE  COMING  SOON")
+
+        p.setPen(QColor(self._LAV.red(), self._LAV.green(), self._LAV.blue(), int(80 + 150 * hv)))
+        fs = QFont("Segoe UI", 12, QFont.Weight.Medium)
+        p.setFont(fs)
+        p.drawText(QRectF(0, 84, w, 24), Qt.AlignCenter, self.note)
+
+        p.setPen(QColor(c.red(), c.green(), c.blue(), int(40 + 80 * hv)))
+        fs2 = QFont("Segoe UI", 9, QFont.Weight.DemiBold)
+        fs2.setLetterSpacing(QFont.AbsoluteSpacing, 3)
+        p.setFont(fs2)
+        p.drawText(QRectF(0, 112, w, 20), Qt.AlignCenter, "STAY TUNED")
+
+
+class ExploreCard(QFrame):
+    apply_clicked = Signal(str, str)
+
+    def __init__(self, gid: str, preset: dict, parent=None):
+        super().__init__(parent)
+        self.gid = gid
+        meta = nvprofiles.GAMES.get(gid, {})
+        self.gname = meta.get("name", gid)
+        self.preset = preset
+        self._c = QColor(_color(self.gname))
+        self._hv = 0.0
+
+        self.setFixedHeight(118)
+        self.setMouseTracking(True)
+
+        self._anim = QPropertyAnimation(self, b"hv")
+        self._anim.setDuration(150)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        logo_frame = QFrame()
+        logo_frame.setFixedWidth(120)
+        logo_frame.setStyleSheet("background: transparent; border: none;")
+        outer.addWidget(logo_frame)
+
+        info = QVBoxLayout()
+        info.setContentsMargins(4, 14, 16, 14)
+        info.setSpacing(3)
+
+        r1 = QHBoxLayout()
+        r1.setSpacing(8)
+        self.title_lbl = QLabel(preset["title"])
+        self.title_lbl.setStyleSheet(
+            f"font-size: 17px; font-weight: 700; color: {T['text']}; "
+            "background: transparent; border: none;")
+        r1.addWidget(self.title_lbl)
+        from ui.widgets import badge
+        tag = badge(preset.get("tag", ""), _color(self.gname), filled=True)
+        r1.addWidget(tag)
+        r1.addStretch()
+        info.addLayout(r1)
+
+        d = QLabel(preset["desc"])
+        d.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 10.5px; background: transparent; border: none;")
+        d.setWordWrap(True)
+        info.addWidget(d)
+        info.addStretch()
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self._apply_btn = _ApplyBtn(self._c.name())
+        self._apply_btn.setText("  Apply Preset")
+        self._apply_btn.clicked.connect(
+            lambda: self.apply_clicked.emit(self.gid, self.preset["preset"]))
+        btn_row.addStretch()
+        btn_row.addWidget(self._apply_btn)
+        info.addLayout(btn_row)
+
+        outer.addLayout(info, 1)
+
+    def _get_hv(self):
+        return self._hv
+
+    def _set_hv(self, v):
+        self._hv = v
+        self.update()
+
+    hv = Property(float, _get_hv, _set_hv)
+
+    def enterEvent(self, e):
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def leaveEvent(self, e):
+        self._anim.setStartValue(self._hv)
+        self._anim.setEndValue(0.0)
+        self._anim.start()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        w, h = self.width(), self.height()
+        R = 12.0
+        rect = QRectF(0.5, 0.5, w - 1, h - 1)
+        path = QPainterPath()
+        path.addRoundedRect(rect, R, R)
+        hv = self._hv
+        c = self._c
+
+        bg0 = QColor(T["card"])
+        bg1 = QColor(T["card_hover"])
+        bg = QColor(
+            int(bg0.red() + (bg1.red() - bg0.red()) * hv),
+            int(bg0.green() + (bg1.green() - bg0.green()) * hv),
+            int(bg0.blue() + (bg1.blue() - bg0.blue()) * hv),
+        )
+        p.fillPath(path, bg)
+
+        wa = 0.03 + hv * 0.05
+        gw = QLinearGradient(0, 0, w * 0.45, h * 0.8)
+        gw.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), int(255 * wa)))
+        gw.setColorAt(0.4, QColor(c.red(), c.green(), c.blue(), 0))
+        p.fillPath(path, gw)
+
+        logo_px = 76.0
+        logo_x = (120 - logo_px) / 2.0
+        logo_y = (h - logo_px) / 2.0
+        logo_rect = QRectF(logo_x, logo_y, logo_px, logo_px)
+        logo_R = 16.0
+
+        glow = QRadialGradient(60.0, h / 2.0, logo_px * 0.7)
+        glow.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 22))
+        glow.setColorAt(0.6, QColor(c.red(), c.green(), c.blue(), 6))
+        glow.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+        p.setBrush(QBrush(glow))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(logo_rect.adjusted(-10, -10, 10, 10), logo_R + 4, logo_R + 4)
+
+        logo = _logo(self.gname)
+        if logo and not logo.isNull():
+            p.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(logo_rect, logo_R, logo_R)
+            p.setClipPath(clip)
+            lw, lh = logo.width(), logo.height()
+            scale = max(logo_px / lw, logo_px / lh)
+            sw, sh = int(lw * scale), int(lh * scale)
+            scaled = logo.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            dx = logo_x + (logo_px - scaled.width()) / 2
+            dy = logo_y + (logo_px - scaled.height()) / 2
+            p.drawPixmap(int(dx), int(dy), scaled)
+            p.restore()
+            p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(30 + hv * 40)), 1.0))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(logo_rect, logo_R, logo_R)
         else:
-            current = {}
+            grad = QRadialGradient(logo_x + logo_px * 0.4, logo_y + logo_px * 0.4, logo_px * 0.6)
+            grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue()))
+            grad.setColorAt(1.0, QColor(max(0, c.red() - 50),
+                                         max(0, c.green() - 50),
+                                         max(0, c.blue() - 50)))
+            p.setBrush(QBrush(grad))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(logo_rect, logo_R, logo_R)
 
-        sec = self._add_section("Resolution")
-        self._res_picker = ResolutionPicker(current.get("resolution_w", "1920"), current.get("resolution_h", "1080"))
-        sec.addWidget(self._res_picker)
+        p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(18 + hv * 25)), 1.0))
+        p.drawLine(120, 20, 120, h - 20)
 
-        sec2 = self._add_section("Core Settings")
-        self._add_combo(sec2, "FPS Limit", ["Uncapped", "60", "120", "144", "165", "240", "360"],
-                        current.get("fps_limit", "Uncapped"), "fps_limit")
-        self._add_combo(sec2, "Rendering Mode",
-                        ["Performance Mode", "DirectX 11", "DirectX 12"],
-                        current.get("rendering_mode", "Performance Mode"), "rendering_mode")
-
-        grid = QHBoxLayout()
-        grid.setSpacing(12)
-        aq_col = QVBoxLayout()
-        self._add_combo(aq_col, "Audio Quality", ["Low", "Medium", "High"],
-                        current.get("audio_quality", "High"), "audio_quality")
-        grid.addLayout(aq_col)
-        ref_col = QVBoxLayout()
-        self._add_combo(ref_col, "Reflex Low Latency", ["Off", "On", "On + Boost"],
-                        current.get("reflex", "Off"), "reflex")
-        grid.addLayout(ref_col)
-        grid.addStretch()
-        sec2.addLayout(grid)
-
-        sec3 = self._add_section("System Flags")
-        self._add_checkbox(sec3, "Disable Fullscreen Optimizations (Win32 Override)",
-                           current.get("fullscreen_opts", False), "fullscreen_opts")
-        self._add_checkbox(sec3, "Run Executable as Administrator",
-                           current.get("run_admin", False), "run_admin")
-        self._add_checkbox(sec3, "Disable Windows Game Bar Telemetry", False, "gamebar_disable")
-
-        self._nvapi_accordion = NvapiFlagsAccordion()
-        self.settings_layout.addWidget(self._nvapi_accordion)
-        self.settings_layout.addStretch()
-
-    def _build_nvapi_only_form(self, game_id: str):
-        self._clear_form()
-
-        sec = self._add_section("Resolution")
-        self._res_picker = ResolutionPicker("1920", "1080")
-        sec.addWidget(self._res_picker)
-
-        sec2 = self._add_section("Core Settings")
-        self._add_combo(sec2, "FPS Limit", ["Uncapped", "60", "120", "144", "165", "240", "360"],
-                        "Uncapped", "fps_limit")
-        self._add_combo(sec2, "Rendering Mode",
-                        ["Performance Mode", "DirectX 11", "DirectX 12"],
-                        "Performance Mode", "rendering_mode")
-
-        grid = QHBoxLayout()
-        grid.setSpacing(12)
-        aq_col = QVBoxLayout()
-        self._add_combo(aq_col, "Audio Quality", ["Low", "Medium", "High"],
-                        "High", "audio_quality")
-        grid.addLayout(aq_col)
-        ref_col = QVBoxLayout()
-        self._add_combo(ref_col, "Reflex Low Latency", ["Off", "On", "On + Boost"],
-                        "Off", "reflex")
-        grid.addLayout(ref_col)
-        grid.addStretch()
-        sec2.addLayout(grid)
-
-        sec3 = self._add_section("System Flags")
-        self._add_checkbox(sec3, "Disable Fullscreen Optimizations (Win32 Override)",
-                           False, "fullscreen_opts")
-        self._add_checkbox(sec3, "Run Executable as Administrator",
-                           False, "run_admin")
-        self._add_checkbox(sec3, "Disable Windows Game Bar Telemetry", False, "gamebar_disable")
-
-        from database import BY_ID
-        tweak = BY_ID.get(game_id)
-        if tweak:
-            desc = QLabel(tweak.get("desc", ""))
-            desc.setStyleSheet(f"color: {T['text_dim']}; font-size: 12px; background: transparent; border: none;")
-            desc.setWordWrap(True)
-            self.settings_layout.addWidget(desc)
-
-        self._nvapi_accordion = NvapiFlagsAccordion()
-        self.settings_layout.addWidget(self._nvapi_accordion)
-        self.settings_layout.addStretch()
-
-    def _add_section(self, title: str) -> QVBoxLayout:
-        wrap = QWidget()
-        wrap.setStyleSheet("background: transparent;")
-        lay = QVBoxLayout(wrap)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
-        lay.addWidget(_section_label(title))
-        self.settings_layout.addWidget(wrap)
-        return lay
-
-    def _add_combo(self, container, label, options, current, key):
-        container.addWidget(_form_label(label))
-        combo = GlassComboBox(options)
-        if current in options:
-            combo.setCurrentText(current)
-        combo.currentTextChanged.connect(lambda _, k=key: self._emit_changed(k))
-        self._form_widgets[key] = combo
-        container.addWidget(combo)
-
-    def _add_checkbox(self, container, label, checked, key):
-        cb = GlassCheckbox(label, checked)
-        cb.toggled.connect(lambda _, k=key: self._emit_changed(k))
-        self._form_widgets[key] = cb
-        container.addWidget(cb)
-
-    def _emit_changed(self, key):
-        pass
-
-    def _clear_layout(self, layout):
-        while layout.count():
-            item = layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
-            elif item.layout():
-                self._clear_layout(item.layout())
-
-    def get_settings(self) -> dict:
-        result = {}
-        if hasattr(self, '_res_picker'):
-            w, h = self._res_picker.get_values()
-            result["resolution_w"] = w
-            result["resolution_h"] = h
-        for key, widget in self._form_widgets.items():
-            if hasattr(widget, 'currentText'):
-                result[key] = widget.currentText()
-            elif hasattr(widget, 'isChecked'):
-                result[key] = widget.isChecked()
-        return result
-
-    def _on_apply(self):
-        if self._game_id:
-            self.apply_clicked.emit(self._game_id, self.get_settings())
-
-    def _on_view_changes(self):
-        if self._game_id:
-            dlg = ChangesPreviewDialog(self._game_id, self.get_settings(), self)
-            dlg.exec()
-
-    def _on_reset(self):
-        if self._game_id:
-            self.reset_clicked.emit(self._game_id)
+        bdr = int(20 + hv * 50)
+        gb = QLinearGradient(0, 0, w, h)
+        gb.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), bdr))
+        gb.setColorAt(0.4, QColor(255, 255, 255, int(1 + hv * 6)))
+        gb.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), int(bdr * 0.25)))
+        p.setPen(QPen(QBrush(gb), 0.6 + hv * 0.3))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(rect, R, R)
+        p.end()
 
 
-# ──────────────────────────────────────────────────────────────
-# Main page
-# ──────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  BACKGROUND
+# ═══════════════════════════════════════════════════════════════════════
 
-class ProfilesPage(QWidget):
+class _Bg(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._ph = 0.0
+        import random
+        rng = random.Random(42)
+        self._pts = [{
+            "x": rng.random(), "y": rng.random(),
+            "vx": (rng.random() - 0.5) * 0.0004,
+            "vy": (rng.random() - 0.5) * 0.00025,
+            "sz": rng.uniform(1.2, 2.5),
+            "p": rng.random() * math.pi * 2,
+            "sp": rng.uniform(0.7, 1.5),
+        } for _ in range(20)]
+        t = QTimer(self)
+        t.timeout.connect(self._tick)
+        t.start(33)
+
+    def _tick(self):
+        self._ph += 0.04
+        for pt in self._pts:
+            pt["x"] += pt["vx"]
+            pt["y"] += pt["vy"]
+            if pt["x"] < -0.05 or pt["x"] > 1.05:
+                pt["vx"] *= -1
+            if pt["y"] < -0.05 or pt["y"] > 1.05:
+                pt["vy"] *= -1
+        self.update()
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        w, h = float(self.width()), float(self.height())
+        for yi in range(0, int(h), 3):
+            a = int(1.2 + 0.8 * math.sin(yi * 0.03 + self._ph * 0.4))
+            p.setPen(QColor(139, 92, 246, a))
+            p.drawLine(0, yi, int(w), yi)
+        for pt in self._pts:
+            px, py = pt["x"] * w, pt["y"] * h
+            a = int(10 + 6 * math.sin(self._ph * pt["sp"] + pt["p"]))
+            gr = QRadialGradient(px, py, pt["sz"] * 4)
+            gr.setColorAt(0.0, QColor(167, 139, 250, a))
+            gr.setColorAt(1.0, QColor(167, 139, 250, 0))
+            p.setBrush(QBrush(gr))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QPointF(px, py), pt["sz"] * 4, pt["sz"] * 4)
+        p.end()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  PROFILES PAGE
+# ═══════════════════════════════════════════════════════════════════════
+
+class ProfilesPage(QStackedWidget):
     def __init__(self, ctx, parent=None):
         super().__init__(parent)
         self.ctx = ctx
-        self.workers: dict[str, ProfileWorker] = {}
-        self.scan_worker: InstalledWorker | None = None
-        self._gpu: list[str] = []
-        self._selected_game: str | None = None
-        self._installed: dict[str, bool] = {}
+        self._nip = {}
+        self._cards: dict[str, GameCard] = {}
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(14)
+        self._list_page = QWidget()
+        root = QVBoxLayout(self._list_page)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        from ui.widgets import PageHeader
-        root.addWidget(PageHeader(
-            "Game Profiles",
-            "Manage game-specific optimizations and performance settings"))
+        self._bg = _Bg(self)
 
-        # Toolbar.
-        bar = QHBoxLayout()
-        bar.setSpacing(10)
-        self.btn_scan = QPushButton("Rescan Installed")
-        self.btn_scan.setObjectName("Ghost")
-        self.btn_scan.clicked.connect(self.scan_installed)
-        bar.addWidget(self.btn_scan)
-        self.scan_status = QLabel("Scanning for installed games\u2026")
-        self.scan_status.setStyleSheet(f"color: {T['text_dim']}; background: transparent; border: none;")
-        bar.addWidget(self.scan_status)
-        bar.addStretch()
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(28, 24, 28, 24)
+        cl.setSpacing(12)
+
+        hero = QFrame()
+        hero.setFixedHeight(68)
+        hero.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0,y1:0,x2:0.7,y2:1,
+                    stop:0 {_rgba(T["accent"], 0x0A)},
+                    stop:0.3 {T['card']},
+                    stop:1 {T['card']});
+                border: 1px solid {_rgba(T["accent"], 0x18)};
+                border-radius: 12px;
+            }}
+        """)
+        hl = QHBoxLayout(hero)
+        hl.setContentsMargins(22, 8, 22, 8)
+        hl.setSpacing(12)
+        ht = QVBoxLayout()
+        ht.setSpacing(2)
+        t1 = QLabel("Game Profiles")
+        t1.setStyleSheet(
+            f"font-size: 20px; font-weight: 700; color: {T['text']}; "
+            "background: transparent; border: none; letter-spacing: -0.3px;")
+        ht.addWidget(t1)
+        t2 = QLabel("NVIDIA driver profiles tuned for maximum performance")
+        t2.setStyleSheet(
+            f"font-size: 11px; color: {T['text_dim']}; background: transparent; border: none;")
+        ht.addWidget(t2)
+        ht.addStretch()
+        hl.addLayout(ht, 1)
+        info = QHBoxLayout()
+        info.setSpacing(6)
         self.gpu_lbl = QLabel("")
-        self.gpu_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 11px; background: transparent; border: none;")
-        bar.addWidget(self.gpu_lbl)
+        self.gpu_lbl.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 10px; background: transparent; border: none;")
+        info.addWidget(self.gpu_lbl)
         from ui.widgets import badge
-        bar.addWidget(badge("ADMIN", T["accent"], filled=True) if is_admin() else badge("NOT ADMIN", T["warning"]))
-        root.addLayout(bar)
+        info.addWidget(badge("ADMIN", T["accent"], filled=True) if _is_admin()
+                       else badge("NOT ADMIN", T.get("warning", "#FFB454")))
+        info.addStretch()
+        hl.addLayout(info)
+        cl.addWidget(hero)
 
-        # Split pane — fixed left, flex right.
-        split = QHBoxLayout()
-        split.setSpacing(12)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent; border: none;")
+        self._cw = QWidget()
+        self._cw.setStyleSheet("background: transparent;")
+        self._clay = QVBoxLayout(self._cw)
+        self._clay.setContentsMargins(0, 0, 0, 0)
+        self._clay.setSpacing(8)
+        scroll.setWidget(self._cw)
+        cl.addWidget(scroll, 1)
 
-        left = QFrame()
-        left.setObjectName("Card")
-        left.setFixedWidth(320)
-        left_lay = QVBoxLayout(left)
-        left_lay.setContentsMargins(8, 8, 8, 8)
-        left_lay.setSpacing(4)
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        left_scroll.setStyleSheet("background: transparent; border: none;")
-        self.game_list = QWidget()
-        self.game_list.setStyleSheet("background: transparent;")
-        self.game_list_lay = QVBoxLayout(self.game_list)
-        self.game_list_lay.setContentsMargins(4, 4, 4, 4)
-        self.game_list_lay.setSpacing(4)
-        self.game_list_lay.addStretch()
-        left_scroll.setWidget(self.game_list)
-        left_lay.addWidget(left_scroll)
-        split.addWidget(left)
+        root.addWidget(content)
+        self.addWidget(self._list_page)
 
-        self.inspector = GameInspector()
-        self.inspector.apply_clicked.connect(self._apply)
-        self.inspector.reset_clicked.connect(self._reset)
-        self.inspector.recommended_clicked.connect(self._apply_recommended)
-        split.addWidget(self.inspector, 1)
+        self._explore_page = ExplorePage()
+        self.addWidget(self._explore_page)
+        self._explore_page.back_clicked.connect(lambda: self.setCurrentWidget(self._list_page))
+        self._explore_page.apply_explore.connect(self._apply_explore)
 
-        root.addLayout(split, 1)
+        self._load_gpu()
+        self._loader = _Loader()
+        self._loader.done.connect(self._on_nips)
+        self._loader.start()
 
-        # Build game list.
-        self.game_items: dict[str, GameListItem] = {}
-        for game_id in GAME_PROFILE_IDS:
-            if game_id not in nvprofiles.GAMES:
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._bg:
+            self._bg.setGeometry(self.rect())
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if self._bg:
+            self._bg.lower()
+            self._bg.setGeometry(self.rect())
+
+    def _load_gpu(self):
+        try:
+            gpus = nvprofiles.gpu_names()
+            if gpus:
+                self.gpu_lbl.setText("GPU: " + ", ".join(gpus))
+        except Exception:
+            pass
+
+    def _on_nips(self, nips):
+        self._nip = nips
+        self._build()
+
+    def _build(self):
+        while self._clay.count():
+            it = self._clay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        self._cards.clear()
+
+        from ui.categories import GAME_PROFILE_IDS
+        from engine.nip_parser import game_id_for_profile
+
+        nip_by_gid = {}
+        for stem, nip in self._nip.items():
+            gid = game_id_for_profile(nip)
+            if gid:
+                nip_by_gid[gid] = nip
+
+        for gid in GAME_PROFILE_IDS:
+            if gid not in nvprofiles.GAMES:
                 continue
-            item = GameListItem(game_id)
-            item.clicked.connect(self._select_game)
-            self.game_items[game_id] = item
-            self.game_list_lay.insertWidget(self.game_list_lay.count() - 1, item)
+            nip = nip_by_gid.get(gid)
+            card = GameCard(gid, nip=nip)
+            card.apply_clicked.connect(self._apply)
+            card.reset_clicked.connect(self._reset)
+            card.explore_clicked.connect(self._open_explore)
+            self._cards[gid] = card
+            self._clay.addWidget(card)
 
-        # Loading card.
-        self._loading_card = LoadingCard(self)
-        self._loading_card.loading_complete.connect(self._on_loading_complete)
+        self._clay.addWidget(MoreComingSoonCard())
 
-        self.ctx.state_changed.connect(self.refresh)
-        self.refresh()
-        self.scan_installed()
+        self._clay.addStretch()
 
-    # ── loading card ──
+    def _nip_for(self, gid):
+        from engine.nip_parser import game_id_for_profile
+        for nip in self._nip.values():
+            if game_id_for_profile(nip) == gid:
+                return nip
+        return None
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        if not self._loading_card.isVisible():
-            self._loading_card.setGeometry(self.rect())
-            self._loading_card.start()
+    def _open_explore(self, gid):
+        self._explore_page.set_game(gid)
+        self.setCurrentWidget(self._explore_page)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, '_loading_card'):
-            self._loading_card.setGeometry(self.rect())
-
-    def _on_loading_complete(self):
-        first = next(
-            (gid for gid in GAME_PROFILE_IDS if self._installed.get(gid)), None)
-        if first and not self._selected_game:
-            self._select_game(first)
-
-    # ── game selection ──
-
-    def _select_game(self, game_id: str):
-        if self._selected_game and self._selected_game in self.game_items:
-            self.game_items[self._selected_game].set_selected(False)
-        self._selected_game = game_id
-        if game_id in self.game_items:
-            self.game_items[game_id].set_selected(True)
-        snap = state_mgr.get_nv_profile_snapshot(game_id)
-        self.inspector.set_game(
-            game_id,
-            nv_applied=snap is not None,
-            nv_profile=(snap or {}).get("profile"),
-            installed=self._installed.get(game_id, False),
-            enabled=nvprofiles.driver_available())
-
-    # ── refresh / scan ──
-
-    def refresh(self):
-        available = nvprofiles.driver_available()
-        if not self._gpu:
-            self._gpu = nvprofiles.gpu_names()
-        self.gpu_lbl.setText(" \u00b7 ".join(self._gpu) if self._gpu else "")
-
-        for game_id, item in self.game_items.items():
-            if self.workers.get(game_id):
-                continue
-            snap = state_mgr.get_nv_profile_snapshot(game_id)
-            item.set_applied(snap is not None)
-            item.set_installed(self._installed.get(game_id, False))
-
-        if self._selected_game:
-            snap = state_mgr.get_nv_profile_snapshot(self._selected_game)
-            self.inspector.set_game(
-                self._selected_game,
-                nv_applied=snap is not None,
-                nv_profile=(snap or {}).get("profile"),
-                installed=self._installed.get(self._selected_game, False),
-                enabled=available)
-
-    def scan_installed(self):
-        if self.scan_worker and self.scan_worker.isRunning():
+    def _apply_explore(self, gid, preset):
+        from ui.premium_widgets import toast
+        import subprocess
+        name = nvprofiles.GAMES.get(gid, {}).get("name", gid)
+        npi_exe = _find_npi_exe()
+        if npi_exe is None:
+            toast("NVIDIA Profile Inspector is not installed. Install it to "
+                  "apply extra presets.", "warning")
             return
-        self.btn_scan.setEnabled(False)
-        self.scan_status.setText("Scanning for installed games\u2026")
-        self.scan_worker = InstalledWorker(self)
-        self.scan_worker.done.connect(self._scan_done)
-        self.scan_worker.error.connect(self._scan_error)
-        self.scan_worker.start()
+        try:
+            subprocess.Popen(
+                [str(npi_exe), "--game", name, "--preset", preset],
+                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception as exc:
+            logger.error(f"profiles: failed to launch NPI explore: {traceback.format_exc()}")
+            toast(f"Failed to launch NVIDIA Profile Inspector: {exc}", "error")
 
-    def _scan_done(self, found: dict):
-        self.btn_scan.setEnabled(True)
-        self._installed = found
-        n = sum(1 for g in self.game_items if found.get(g))
-        self.scan_status.setText(f"{n} of {len(self.game_items)} games found on disk.")
-        for game_id, item in self.game_items.items():
-            item.set_installed(bool(found.get(game_id)))
-        self.scan_worker = None
-        if self._selected_game:
-            snap = state_mgr.get_nv_profile_snapshot(self._selected_game)
-            self.inspector.set_game(
-                self._selected_game,
-                nv_applied=snap is not None,
-                nv_profile=(snap or {}).get("profile"),
-                installed=found.get(self._selected_game, False),
-                enabled=nvprofiles.driver_available())
-        elif not self._selected_game:
-            first_installed = next(
-                (gid for gid in GAME_PROFILE_IDS if found.get(gid)), None)
-            if first_installed:
-                self._select_game(first_installed)
+    def _apply(self, gid):
+        from ui.premium_widgets import toast
+        name = nvprofiles.GAMES.get(gid, {}).get("name", gid)
+        card = self._cards.get(gid)
 
-    def _scan_error(self, msg: str):
-        self.btn_scan.setEnabled(True)
-        self.scan_status.setText(f"Scan failed: {msg}")
-        self.scan_status.setStyleSheet(f"color: {T['danger']};")
-        self.scan_worker = None
+        if card:
+            card._apply_btn.set_state("applying")
 
-    # ── apply / reset ──
-
-    def _apply(self, game_id: str, config_values: dict):
-        if self.workers.get(game_id):
+        if not nvprofiles.driver_available():
+            logger.error(f"profiles: NVIDIA driver/DRS unavailable for apply of {name}")
+            if card:
+                card._apply_btn.set_state("error")
+            toast("NVIDIA driver could not be accessed.\n"
+                  "Reinstall the NVIDIA driver (Game Ready) and try again.",
+                  "warning")
             return
-        worker = ProfileWorker(game_id, "apply", config_values, self)
-        self.workers[game_id] = worker
-        worker.done.connect(self._op_done)
-        worker.error.connect(self._op_error)
-        worker.finished.connect(lambda gid=game_id: self._op_finished(gid))
-        worker.start()
 
-    def _apply_recommended(self, game_id: str):
-        if self.workers.get(game_id):
+        try:
+            # Apply via the in-app NvAPI DRS engine, which reads back each
+            # setting and reports applied/skipped/failed — not a blind launch.
+            report = nvprofiles.apply_profile(gid)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"profiles: apply {name} failed: {traceback.format_exc()}")
+            if card:
+                card._apply_btn.set_state("error")
+            toast(f"Failed to apply driver profile for {name}: {exc}", "error")
             return
-        worker = ProfileWorker(game_id, "apply_recommended", parent=self)
-        self.workers[game_id] = worker
-        worker.done.connect(self._op_done)
-        worker.error.connect(self._op_error)
-        worker.finished.connect(lambda gid=game_id: self._op_finished(gid))
-        worker.start()
 
-    def _reset(self, game_id: str):
-        if self.workers.get(game_id):
+        if report.get("failed"):
+            # Partially applied — surface which settings failed rather than
+            # declaring a clean PASS.
+            if card:
+                card._apply_btn.set_state("error")
+            fails = ", ".join(item[0] for item in report["failed"])
+            toast(f"Profile for {name} applied with errors: {fails}", "warning")
             return
-        worker = ProfileWorker(game_id, "reset", parent=self)
-        self.workers[game_id] = worker
-        worker.done.connect(self._op_done)
-        worker.error.connect(self._op_error)
-        worker.finished.connect(lambda gid=game_id: self._op_finished(gid))
-        worker.start()
 
-    def _op_done(self, game_id: str, report: dict):
-        n = len(report.get("applied", []))
-        created = " (new driver profile created)" if report.get("created") else ""
-        game_cfg = report.get("game_config", {})
-        cfg_n = len(game_cfg.get("applied", []))
-        game_name = report.get("game", game_id)
-        msg = f"{game_name} Competitive Profile Successfully Applied!"
-        if n:
-            msg += f" \u2014 {n} driver settings"
-        if cfg_n:
-            msg += f", {cfg_n} game settings"
-        msg += created
-        toast(msg, "success", self)
+        if not report.get("applied"):
+            if card:
+                card._apply_btn.set_state("error")
+            toast(f"No driver settings could be applied for {name}.", "warning")
+            return
+
+        if card:
+            card._apply_btn.set_state("applied")
+        state_mgr.set_active_profile(name)
         self.ctx.note_state_change()
+        toast(f"Applied {len(report['applied'])} settings to {name}", "success")
 
-    def _op_error(self, game_id: str, msg: str):
-        if game_id in self.game_items:
-            snap = state_mgr.get_nv_profile_snapshot(game_id)
-            self.game_items[game_id].set_applied(snap is not None)
-        lower = msg.lower()
-        if "admin" in lower or "elevat" in lower or "access" in lower or "0x" in msg:
-            toast(f"Apply failed \u2014 needs elevated (admin) run: {msg}", "error", self)
-        else:
-            toast(f"Failed: {msg}", "error", self)
-        self.ctx.note_state_change()
-
-    def _op_finished(self, game_id: str):
-        self.workers.pop(game_id, None)
-        self.refresh()
+    def _reset(self, gid):
+        name = nvprofiles.GAMES.get(gid, {}).get("name", gid)
+        if QMessageBox.question(self, "Reset",
+                                f"Reset {name} to defaults?",
+                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            return
+        from ui.premium_widgets import toast
+        try:
+            rpt = nvprofiles.reset_profile(gid)
+            if state_mgr.get_active_profile() == name:
+                state_mgr.clear_active_profile()
+            toast(f"{name} reset  \u2022  {len(rpt.get('applied', []))} settings restored",
+                  "success")
+            self.ctx.note_state_change()
+            self._build()
+        except Exception as exc:
+            toast(f"Failed to reset: {exc}", "error")

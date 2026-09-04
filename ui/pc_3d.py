@@ -50,7 +50,7 @@ class Comp:
     pulse: float = 0.0
     w: float = 40.0
     h: float = 30.0
-    color: str = "#8B5CF6"
+    color: str = "#8B6BFF"
 
     def reset(self):
         self.cx, self.cy = self.ox, self.oy
@@ -77,7 +77,7 @@ _ANIM_MS, _TICK_MS = 460, 16
 _COL_CASE   = "#1A1D2E"
 _CASE_EDGE  = "#252840"
 _CASE_DARK  = "#12141F"
-_GLASS_TINT = "#8B5CF6"
+_GLASS_TINT = "#8B6BFF"
 _FRAME      = "#2A2D42"
 _LED_ON     = "#4ADE80"
 

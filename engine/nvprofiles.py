@@ -31,6 +31,7 @@ from rexlog import logger
 #  value labels shown in the UI; the applied value comes from "default".
 
 SETTINGS: dict[str, dict] = {
+    # ── Latency / frame pacing ──────────────────────────────────────
     "pwr_mgmt": {
         "name": "Power management mode",
         "names": ["Power management mode"],
@@ -46,21 +47,21 @@ SETTINGS: dict[str, dict] = {
     "max_prerender": {
         "name": "Maximum pre-rendered frames",
         "names": ["Maximum pre-rendered frames"],
-        "desc": "One buffered frame lowers input latency (\"Low Latency\").",
+        "desc": "Minimise the render queue — 1 = lowest input latency.",
         "kind": "int",
-        "values": {
-            "1 frame": 1,
-        },
+        "values": {"1 frame": 1},
         "default": 1,
     },
-    "threaded_opt": {
-        "name": "Threaded optimization",
-        "names": ["Threaded optimization"],
-        "desc": "Let the driver balance the CPU render threads.",
+    "max_frame_latency": {
+        "name": "Low Latency Mode",
+        "names": ["Low Latency Mode"],
+        "desc": "Ultra Low Latency — the driver submits frames just-in-time "
+                "to the GPU, giving the absolute lowest input delay.",
         "kind": "enum",
         "values": {
-            "Off": 0x1,
-            "On (Auto)": 0x2,
+            "Off": 0x0,
+            "On": 0x1,
+            "Ultra": 0x2,
         },
         "default": 0x2,
     },
@@ -75,6 +76,44 @@ SETTINGS: dict[str, dict] = {
             "Use the 3D application setting": 0x18888888,
         },
         "default": 0x60925292,
+    },
+    "triple_buf": {
+        "name": "Triple buffering",
+        "names": ["Triple buffering"],
+        "desc": "Off — reduces memory usage and avoids extra frame buffering.",
+        "kind": "enum",
+        "values": {
+            "Off": 0x0,
+            "On": 0x1,
+        },
+        "default": 0x0,
+    },
+    "threaded_opt": {
+        "name": "Threaded optimization",
+        "names": ["Threaded optimization"],
+        "desc": "Let the driver balance the CPU render threads.",
+        "kind": "enum",
+        "values": {
+            "Off": 0x1,
+            "On (Auto)": 0x2,
+        },
+        "default": 0x2,
+    },
+
+    # ── Texture filtering (max FPS) ─────────────────────────────────
+    "tex_quality": {
+        "name": "Texture filtering - Quality",
+        "names": ["Texture filtering - Quality"],
+        "desc": "High Performance — trades a tiny amount of sharpness "
+                "for noticeably higher FPS.",
+        "kind": "enum",
+        "values": {
+            "High quality": 0x0,
+            "Quality": 0x1,
+            "Performance": 0x2,
+            "High performance": 0x3,
+        },
+        "default": 0x3,
     },
     "tex_aniso_filter_opt": {
         "name": "Texture filtering - Anisotropic filter optimization",
@@ -101,7 +140,7 @@ SETTINGS: dict[str, dict] = {
     "tex_trilinear_opt": {
         "name": "Texture filtering - Trilinear optimization",
         "names": ["Texture filtering - Trilinear optimization"],
-        "desc": "Disable trilinear optimisation for sharper sampling.",
+        "desc": "Enable trilinear optimisation for faster filtering.",
         "kind": "enum",
         "values": {
             "Off": 0x0,
@@ -120,6 +159,70 @@ SETTINGS: dict[str, dict] = {
         },
         "default": 0x0,
     },
+    "aniso_override": {
+        "name": "Anisotropic filtering mode",
+        "names": ["Anisotropic filtering mode"],
+        "desc": "Override with application-controlled AF (avoids driver "
+                "forcing expensive AF on top of in-game settings).",
+        "kind": "enum",
+        "values": {
+            "Application-controlled": 0x0,
+            "Override (off)": 0x1,
+            "Override (16x)": 0x2,
+        },
+        "default": 0x0,
+    },
+
+    # ── Anti-aliasing / post-processing (off for competitive) ───────
+    "aa_mode": {
+        "name": "Antialiasing - Mode",
+        "names": ["Antialiasing - Mode"],
+        "desc": "Off — no driver-side MSAA override; in-game AA is untouched.",
+        "kind": "enum",
+        "values": {
+            "Application-controlled": 0x0,
+            "Enhance the application setting": 0x1,
+            "Override any application setting": 0x2,
+            "Off": 0x3,
+        },
+        "default": 0x3,
+    },
+    "fxaa": {
+        "name": "Enable FXAA",
+        "names": ["Enable FXAA"],
+        "desc": "Disable FXAA — it blurs edges and costs GPU time.",
+        "kind": "enum",
+        "values": {
+            "Off": 0x0,
+            "On": 0x1,
+        },
+        "default": 0x0,
+    },
+    "ao": {
+        "name": "Ambient Occlusion",
+        "names": ["Ambient Occlusion"],
+        "desc": "Disable ambient occlusion — big FPS gain, no competitive loss.",
+        "kind": "enum",
+        "values": {
+            "Off": 0x0,
+            "Quality": 0x1,
+            "Performance": 0x2,
+        },
+        "default": 0x0,
+    },
+    "mfaa": {
+        "name": "Multi-Frame Sampled AA (MFAA)",
+        "names": ["Multi-Frame Sampled AA (MFAA)"],
+        "desc": "Off — saves GPU cycles.",
+        "kind": "enum",
+        "values": {
+            "Off": 0x0,
+            "On": 0x1,
+        },
+        "default": 0x0,
+    },
+
+    # ── Shader / cache ──────────────────────────────────────────────
     "shader_cache": {
         "name": "Shader Cache",
         "names": ["Shader Cache"],
@@ -131,22 +234,34 @@ SETTINGS: dict[str, dict] = {
         },
         "default": 0x1,
     },
-    "ao": {
-        "name": "Ambient Occlusion",
-        "names": ["Ambient Occlusion"],
-        "desc": "Disable ambient occlusion for free FPS on light scenes.",
+    "shader_cache_size": {
+        "name": "Shader Disk Cache Maximum Size",
+        "names": ["Shader Disk Cache Maximum Size"],
+        "desc": "Allow a massive shader cache so compiles happen once.",
+        "kind": "int",
+        "values": {"102400 MB": 102400},
+        "default": 102400,
+    },
+
+    # ── G-Sync / refresh ────────────────────────────────────────────
+    "gsync": {
+        "name": "G-SYNC",
+        "names": ["G-SYNC"],
+        "desc": "Off — VRR adds latency in competitive titles.",
         "kind": "enum",
         "values": {
             "Off": 0x0,
-            "Quality": 0x1,
-            "Performance": 0x2,
+            "On (full screen)": 0x1,
+            "On (full screen and windowed)": 0x2,
         },
         "default": 0x0,
     },
-    "fxaa": {
-        "name": "Enable FXAA",
-        "names": ["Enable FXAA"],
-        "desc": "Disable FXAA — it blurs edges and costs a little GPU time.",
+
+    # ── GPU compute ─────────────────────────────────────────────────
+    "cuda_thread_count": {
+        "name": "CUDA - Force P2 state",
+        "names": ["CUDA - Force P2 state"],
+        "desc": "Off — prevent the GPU from clocking down during compute.",
         "kind": "enum",
         "values": {
             "Off": 0x0,
@@ -154,18 +269,16 @@ SETTINGS: dict[str, dict] = {
         },
         "default": 0x0,
     },
-    "aa_mode": {
-        "name": "Antialiasing - Mode",
-        "names": ["Antialiasing - Mode"],
-        "desc": "No driver-side MSAA override; in-game AA is untouched.",
+    "image_sharpening": {
+        "name": "Image Sharpening",
+        "names": ["Image Sharpening"],
+        "desc": "Off — no post-process sharpening to save GPU time.",
         "kind": "enum",
         "values": {
-            "Application-controlled": 0x0,
-            "Enhance the application setting": 0x1,
-            "Override any application setting": 0x2,
-            "Off": 0x3,
+            "Off": 0x0,
+            "On (ignored)": 0x1,
         },
-        "default": 0x3,
+        "default": 0x0,
     },
 }
 
@@ -252,21 +365,87 @@ GAMES: dict[str, dict] = {
                                "Call of Duty: Modern Warfare III"],
         "exes": ["Warzone.exe", "cod.exe", "modernwarfare.exe"],
     },
+    "gp-013": {
+        "name": "Rainbow Six Siege",
+        "profile_candidates": ["Tom Clancy's Rainbow Six Siege", "Rainbow Six Siege"],
+        "exes": ["RainbowSix.exe", "RainbowSix_Vulkan.exe"],
+    },
+    "gp-014": {
+        "name": "PUBG",
+        "profile_candidates": ["PUBG: BATTLEGROUNDS", "PUBG"],
+        "exes": ["TslGame.exe"],
+    },
+    "gp-015": {
+        "name": "The Finals",
+        "profile_candidates": ["THE FINALS"],
+        "exes": ["Discovery.exe"],
+    },
+    "gp-016": {
+        "name": "XDefiant",
+        "profile_candidates": ["XDefiant"],
+        "exes": ["XDefiant.exe"],
+    },
+    "gp-017": {
+        "name": "Battlefield",
+        "profile_candidates": ["Battlefield 2042", "Battlefield V",
+                               "Battlefield 1", "Battlefield 4"],
+        "exes": ["BF2042.exe", "bfv.exe", "bf1.exe", "bf4.exe"],
+    },
+    "gp-018": {
+        "name": "ARC Raiders",
+        "profile_candidates": ["ARC Raiders"],
+        "exes": ["ARCRaiders.exe"],
+    },
+    "gp-019": {
+        "name": "Destiny 2",
+        "profile_candidates": ["Destiny 2"],
+        "exes": ["destiny2.exe"],
+    },
+    "gp-020": {
+        "name": "Elden Ring",
+        "profile_candidates": ["ELDEN RING"],
+        "exes": ["eldenring.exe"],
+    },
+    "gp-021": {
+        "name": "GTA V",
+        "profile_candidates": ["Grand Theft Auto V", "GTA V"],
+        "exes": ["GTA5.exe", "GTA5Enhanced.exe"],
+    },
 }
 
 COMPETITIVE_SET: list[tuple[str, int]] = [
-    ("pwr_mgmt", 0x3),
-    ("max_prerender", 1),
-    ("threaded_opt", 0x2),
-    ("vsync", 0x60925292),
-    ("tex_aniso_filter_opt", 0x1),
-    ("tex_aniso_sample_opt", 0x1),
-    ("tex_trilinear_opt", 0x1),
-    ("tex_neg_lod", 0x0),
-    ("shader_cache", 0x1),
-    ("ao", 0x0),
-    ("fxaa", 0x0),
-    ("aa_mode", 0x3),
+    # ── Latency / frame pacing ──────────────────────────────────────
+    ("pwr_mgmt", 0x3),          # Prefer maximum performance
+    ("max_prerender", 1),       # 1 frame render queue
+    ("max_frame_latency", 0x2), # Ultra Low Latency
+    ("vsync", 0x60925292),      # V-Sync OFF
+    ("triple_buf", 0x0),        # Triple buffering OFF
+    ("threaded_opt", 0x2),      # Threaded optimization ON
+
+    # ── Texture filtering (max FPS) ─────────────────────────────────
+    ("tex_quality", 0x3),            # High Performance
+    ("tex_aniso_filter_opt", 0x1),   # Aniso filter optimization ON
+    ("tex_aniso_sample_opt", 0x1),   # Aniso sample optimization ON
+    ("tex_trilinear_opt", 0x1),      # Trilinear optimization ON
+    ("tex_neg_lod", 0x0),            # Allow negative LOD bias
+    ("aniso_override", 0x0),         # App-controlled AF
+
+    # ── Anti-aliasing / post-processing (off) ───────────────────────
+    ("aa_mode", 0x3),  # AA Off
+    ("fxaa", 0x0),     # FXAA Off
+    ("ao", 0x0),       # Ambient Occlusion Off
+    ("mfaa", 0x0),     # MFAA Off
+
+    # ── Shader / cache ──────────────────────────────────────────────
+    ("shader_cache", 0x1),       # Shader Cache ON
+    ("shader_cache_size", 102400),# Unlimited cache
+
+    # ── G-Sync / refresh ────────────────────────────────────────────
+    ("gsync", 0x0),  # G-Sync OFF
+
+    # ── GPU compute ─────────────────────────────────────────────────
+    ("cuda_thread_count", 0x0),  # Force P2 state OFF
+    ("image_sharpening", 0x0),   # Image Sharpening OFF
 ]
 
 PROFILE_NAMES = {g["name"]: g for g in GAMES.values()}
@@ -285,7 +464,7 @@ def gpu_names() -> list[str]:
     try:
         return nv.Nvapi().gpu_names()
     except nv.NvapiError as exc:  # noqa: BLE001
-        logger.warning(f"nvprofiles: gpu_names failed: {exc}")
+        logger.warn(f"nvprofiles: gpu_names failed: {exc}")
         return []
 
 
@@ -325,7 +504,7 @@ def apply_profile(game_id: str) -> dict:
             setting_id = drs.setting_id(entry["names"])
             if setting_id is None:
                 report["skipped"].append((entry["name"], value))
-                logger.warning(f"nvprofiles: setting {entry['name']!r} not on this driver")
+                logger.warn(f"nvprofiles: setting {entry['name']!r} not on this driver")
                 continue
             try:
                 before = drs.get_setting(hprof, setting_id)
@@ -338,7 +517,7 @@ def apply_profile(game_id: str) -> dict:
                 report["applied"].append((entry["name"], value))
             except nv.NvapiError as exc:  # noqa: BLE001
                 report["failed"].append((entry["name"], str(exc)))
-                logger.warning(f"nvprofiles: set {entry['name']} failed: {exc}")
+                logger.warn(f"nvprofiles: set {entry['name']} failed: {exc}")
 
         drs.save()
 
@@ -418,3 +597,112 @@ def profile_status(game_id: str) -> dict:
         "gpu": gpu_names() or [],
         "profile": state_mgr.get_nv_profile_snapshot(game_id, {}).get("profile"),
     }
+
+
+# ─── NIP profile support ────────────────────────────────────────────
+
+def apply_nip_profile(game_id: str, nip_settings: list) -> dict:
+    """Apply a parsed .nip profile (from nip_parser.NipProfile.settings).
+
+    nip_settings: list of NipSetting objects (name, setting_id, value, value_type).
+
+    Returns a report dict like apply_profile.
+    """
+    game = GAMES.get(game_id)
+    if game is None:
+        raise nv.NvapiError(f"Unknown game profile id {game_id!r}")
+
+    report = {"game_id": game_id, "game": game["name"], "profile": None,
+              "created": False, "applied": [], "skipped": [], "failed": []}
+    nvapi = nv.Nvapi()
+    with nvapi.session() as drs:
+        hprof, created, used_name = _find_or_create(drs, game)
+        report["profile"] = used_name
+        report["created"] = created
+
+        snapshot = {}
+        for ns in nip_settings:
+            setting_id = ns.setting_id
+            if ns.value_type == "Dword":
+                value = ns.value_as_int()
+                if value is None:
+                    report["skipped"].append((ns.name, ns.value))
+                    continue
+            else:
+                continue  # skip string settings for now
+
+            try:
+                before = drs.get_setting(hprof, setting_id)
+                drs.set_setting_dword(hprof, setting_id, value)
+                snapshot[hex(setting_id)] = {
+                    "name": ns.name,
+                    "was_set": before is not None,
+                    "value": before.current.u32 if before is not None else None,
+                }
+                report["applied"].append((ns.name, value))
+            except nv.NvapiError as exc:  # noqa: BLE001
+                report["failed"].append((ns.name, str(exc)))
+                logger.warn(f"nvprofiles: set {ns.name} failed: {exc}")
+
+        drs.save()
+
+    state_mgr.set_nv_profile_snapshot(game_id, {
+        "profile": used_name,
+        "settings": snapshot,
+        "applied_at": time.strftime("%Y-%m-%d %H:%M"),
+        "source": "nip",
+    })
+    activity.emit("profile", f"NIP profile applied for {game['name']} "
+                  f"({len(report['applied'])} settings)")
+    logger.info(f"nvprofiles: NIP applied {game['name']} -> "
+                f"{len(report['applied'])} settings")
+    return report
+
+
+def apply_community_profile(game_id: str, settings: list) -> dict:
+    """Apply a built-in community profile (list of (setting_key, value) tuples).
+
+    Uses the same SETTINGS dict as apply_profile but with custom values.
+    """
+    game = GAMES.get(game_id)
+    if game is None:
+        raise nv.NvapiError(f"Unknown game profile id {game_id!r}")
+
+    report = {"game_id": game_id, "game": game["name"], "profile": None,
+              "created": False, "applied": [], "skipped": [], "failed": []}
+    nvapi = nv.Nvapi()
+    with nvapi.session() as drs:
+        hprof, created, used_name = _find_or_create(drs, game)
+        report["profile"] = used_name
+        report["created"] = created
+
+        snapshot = {}
+        for key, value in settings:
+            entry = SETTINGS[key]
+            setting_id = drs.setting_id(entry["names"])
+            if setting_id is None:
+                report["skipped"].append((entry["name"], value))
+                continue
+            try:
+                before = drs.get_setting(hprof, setting_id)
+                drs.set_setting_dword(hprof, setting_id, value)
+                snapshot[hex(setting_id)] = {
+                    "name": entry["name"],
+                    "was_set": before is not None,
+                    "value": before.current.u32 if before is not None else None,
+                }
+                report["applied"].append((entry["name"], value))
+            except nv.NvapiError as exc:
+                report["failed"].append((entry["name"], str(exc)))
+
+        drs.save()
+
+    state_mgr.set_nv_profile_snapshot(game_id, {
+        "profile": used_name,
+        "settings": snapshot,
+        "applied_at": time.strftime("%Y-%m-%d %H:%M"),
+        "source": "community",
+    })
+    activity.emit("profile", f"Community profile applied for {game['name']} "
+                  f"({len(report['applied'])} settings)")
+    return report

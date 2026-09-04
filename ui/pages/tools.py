@@ -1,20 +1,16 @@
-"""Tools page: quick-launch, diagnostics and repair tools in one clean grid.
+"""Tools page — Diagnostics-style clean layout.
 
-Top down (mirrors the Tweaks page so the layout math is identical):
-  * Page header (title + subtitle)
-  * Toolbar - search field, live "N TOOLS" counter, Scan Hardware (primary)
-  * Category pills - All / Quick Launch / System Tools / Diagnostics / Repair
-  * Responsive tool-card grid + pagination
-
-Each card is a proper card (icon, name, description, chips) whose whole
-surface is clickable; the primary action runs the tool or opens the guide.
+A single centered column: header (title + dot stats + slim actions),
+one search line, then the tools grouped into mono-labelled glass lists.
+One row per tool: icon chip, name, one-line description, action button.
+No pills, no card grid, no pagination — everything scrolls.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QThread, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QRadialGradient
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,24 +24,28 @@ from PySide6.QtWidgets import (
 from config.app_config import THEME as T
 from engine.tools_runner import launch_tool, run_tweak
 from ui.categories import group_tweaks
-from ui.widgets import IconTile, chip, clear_layout, toast
+from ui.widgets import toast
 
-# Fixed chrome heights (must match TweaksPage so cards fit the window).
-HEADER_H = 92
-TOOLBAR_H = 48
-PILLS_H = 46
-PAGER_H = 46
+_BG = "#08060F"
+_VIOLET = "#8B6BFF"
+_INK_100 = "#F6F4FC"
+_INK_400 = "#928AAD"
+_INK_600 = "#514A70"
+_BORDER = "rgba(255,255,255,0.09)"
+_BORDER_SOFT = "rgba(255,255,255,0.06)"
+_GLASS = "rgba(255,255,255,0.03)"
+_DISPLAY = '"Segoe UI", sans-serif'
+_MONO = '"JetBrains Mono", monospace'
 
 ALL_KEY = "__all__"
 QL_KEY = "Quick Launch"
-PILL_KEYS = [ALL_KEY, QL_KEY, "System Tools", "Diagnostics", "Repair"]
+CAT_ORDER = [QL_KEY, "System Tools", "Diagnostics", "Repair"]
 
-# Category -> icon + accent color for tool cards.
 TOOL_META = {
-    QL_KEY: ("\u25c9", T["accent"]),
-    "System Tools": ("\u2699", T["accent"]),
-    "Diagnostics": ("\u2661", "#38bdf8"),
-    "Repair": ("\u2692", "#fbbf24"),
+    QL_KEY: ("\u25c9", "#FFB454"),
+    "System Tools": ("\u2699", "#6C93FF"),
+    "Diagnostics": ("\u2661", "#4BE8D8"),
+    "Repair": ("\u2692", "#FFB454"),
 }
 
 QUICK_LAUNCH = [
@@ -79,6 +79,18 @@ def _has_cmd(tweak: dict) -> bool:
                for a in tweak.get("actions", []))
 
 
+def _dedupe(items: list[dict]) -> list[dict]:
+    """A quick-launch shortcut and a tweak of the same tool are one row."""
+    out, seen = [], set()
+    for t in items:
+        k = t["name"].strip().lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+    return out
+
+
 class ToolRunner(QThread):
     """Runs a tool/launcher in the background so a UAC prompt or console
     wait never freezes the UI thread. Emits (ok, kind) when done."""
@@ -102,451 +114,352 @@ class ToolRunner(QThread):
         self.finished_ok.emit(ok, kind)
 
 
-class ToolCard(QFrame):
-    """Card-style tool: icon, name, description, chips + run/guide button.
+class _Atmosphere(QWidget):
+    def paintEvent(self, _):
+        p = QPainter(self)
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), QColor(_BG))
+        ga = QRadialGradient(QPointF(340, 20), 420)
+        ga.setColorAt(0.0, QColor(255, 180, 84, 16))
+        ga.setColorAt(1.0, QColor(255, 180, 84, 0))
+        p.fillRect(self.rect(), ga)
+        gb = QRadialGradient(QPointF(w - 120, h), 440)
+        gb.setColorAt(0.0, QColor(139, 107, 255, 20))
+        gb.setColorAt(1.0, QColor(139, 107, 255, 0))
+        p.fillRect(self.rect(), gb)
+        cx, cy = 0.6 * w, 0.18 * h
+        rx, ry = 0.7 * w, 0.6 * h
+        if rx > 0 and ry > 0:
+            y = 17.0
+            while y < h:
+                x = 17.0
+                while x < w:
+                    t = (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2) ** 0.5
+                    if t < 0.85:
+                        a = int(40 * (1.0 - t / 0.85))
+                        if a > 3:
+                            p.setPen(QColor(200, 190, 240, a))
+                            p.drawPoint(QPointF(x, y))
+                    x += 34.0
+                y += 34.0
+        p.end()
 
-    Styled exactly like the tweak cards (objectName "ActionCard") so it reads
-    as a first-class card, and the whole card is clickable for fast launch.
-    """
 
-    GRID_HEIGHT = 186
+class _DotStat(QLabel):
+    def __init__(self, color, text):
+        super().__init__()
+        self.color = color
+        self.setText(text)
 
-    def __init__(self, item: dict, on_click, parent=None):
-        super().__init__(parent)
-        self.setObjectName("ActionCard")
-        self.setCursor(Qt.PointingHandCursor)
-        self._on_click = on_click
-        self.setToolTip(item.get("why") or item.get("desc") or item["name"])
+    def setText(self, text):
+        self.setTextFormat(Qt.RichText)
+        QLabel.setText(
+            self,
+            f"<span style='color:{self.color};'>\u25cf</span>"
+            f"<span style='color:{_INK_400};'>&nbsp; {text}</span>")
 
-        cat = item["category"]
-        icon, color = TOOL_META.get(cat, ("\u2699", T["accent"]))
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 14, 16, 12)
-        outer.setSpacing(8)
+class _ToolRow(QFrame):
+    clicked = Signal(dict)
 
-        # ---- Head: icon tile + name
-        head = QHBoxLayout()
-        head.setSpacing(10)
-        head.addWidget(IconTile(icon, color, size=40, font_scale=0.5,
-                                radius=10, bg="#1A202C"))
+    def __init__(self, item):
+        super().__init__()
+        self.item = item
+        self.setToolTip(
+            item["name"] + " — " + (item.get("desc") or ""))
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setObjectName("TRow")
+        self.setStyleSheet(
+            "#TRow{background:transparent;border:none;border-bottom:1px "
+            "solid " + _BORDER_SOFT + ";}"
+            "#TRow:hover{background:rgba(255,255,255,0.02);}")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(22, 13, 22, 13)
+        lay.setSpacing(14)
+        cat = item.get("category") or QL_KEY
+        glyph, color = TOOL_META.get(cat, ("\u2699", _VIOLET))
+        ic = QLabel(glyph)
+        ic.setFixedSize(30, 30)
+        ic.setAlignment(Qt.AlignCenter)
+        ic.setStyleSheet(
+            "QLabel{font-size:13px;color:" + color + ";"
+            "background:rgba(255,255,255,0.03);"
+            "border:1px solid " + _BORDER + ";border-radius:8px;}")
+        lay.addWidget(ic, 0, Qt.AlignVCenter)
         box = QVBoxLayout()
-        box.setSpacing(1)
-        name_lbl = QLabel(item["name"])
-        name_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #F2F5F9;")
-        name_lbl.setWordWrap(True)
-        box.addWidget(name_lbl)
-        head.addLayout(box, 1)
-        outer.addLayout(head)
-
-        # ---- Description
-        desc = QLabel(item.get("desc", ""))
-        desc.setObjectName("PageSub")
-        desc.setWordWrap(True)
-        desc.setMinimumHeight(34)
-        outer.addWidget(desc)
-
-        # ---- Chips row: admin warning + category
-        chips = QHBoxLayout()
-        chips.setSpacing(6)
+        box.setSpacing(2)
+        nm = QLabel(item["name"])
+        nm.setStyleSheet(
+            "font-size:13.5px;font-weight:600;color:" + _INK_100
+            + ";background:transparent;")
+        de = QLabel(item.get("desc", ""))
+        de.setStyleSheet(
+            "font-size:11.5px;color:" + _INK_600 + ";background:transparent;")
+        de.setWordWrap(False)
+        self._full_desc = item.get("desc", "")
+        self._de = de
+        box.addWidget(nm)
+        box.addWidget(de)
+        lay.addLayout(box, 1)
         if item.get("admin"):
-            chips.addWidget(chip("\u26a0 ADMIN", T["warning"]))
-        chips.addWidget(chip(cat, color))
-        chips.addStretch()
-        outer.addLayout(chips)
-
-        outer.addStretch(1)
-
-        # ---- Footer: primary action
-        foot = QHBoxLayout()
-        foot.setSpacing(8)
-        self.btn = QPushButton(self._btn_text(item))
-        self.btn.setObjectName("Primary")
+            ad = QLabel("ADMIN")
+            ad.setStyleSheet(
+                "font-family:" + _MONO + ";font-size:9px;color:#FFB454;"
+                "background:rgba(255,180,84,0.08);"
+                "border:1px solid rgba(255,180,84,0.28);border-radius:6px;"
+                "padding:3px 7px;")
+            lay.addWidget(ad, 0, Qt.AlignVCenter)
+        text = item.get("btn_text") or ("Run" if _has_cmd(item) else "Guide")
+        self.btn = QPushButton(text)
+        self.btn.setObjectName("Secondary")
         self.btn.setFixedHeight(30)
-        self.btn.clicked.connect(on_click)
-        foot.addWidget(self.btn)
-        foot.addStretch()
-        outer.addLayout(foot)
+        self.btn.clicked.connect(
+            lambda _=False, it=item: self.clicked.emit(it))
+        lay.addWidget(self.btn, 0, Qt.AlignVCenter)
 
-    @staticmethod
-    def _btn_text(item: dict) -> str:
-        if item.get("btn_text"):
-            return item["btn_text"]
-        return "Run" if _has_cmd(item) else "Guide"
+    def _elide(self):
+        from PySide6.QtGui import QFontMetrics
+        avail = max(60, self._de.width())
+        fm = QFontMetrics(self._de.font())
+        self._de.setText(
+            fm.elidedText(self._full_desc, Qt.ElideRight, avail))
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self._on_click is not None \
-                and self.btn.isEnabled():
-            self._on_click()
-            event.accept()
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._elide()
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton and self.btn.isEnabled():
+            self.clicked.emit(self.item)
             return
-        super().mousePressEvent(event)
+        super().mousePressEvent(ev)
 
 
 class ToolsPage(QWidget):
-    MIN_CARD_W = 240
-    MAX_COLS = 4
-    GAP = 14
-
     def __init__(self, ctx, navigate, parent=None):
         super().__init__(parent)
         self.ctx = ctx
         self.navigate = navigate
         self.key = ALL_KEY
-        self.page = 1
-        self._pages = 1
-        self._filtered: list[dict] = []
-        self._cards: dict[str, ToolCard] = {}
         self._orig_text: dict[str, str] = {}
-        self._relayout_pending = False
         self._workers: list[ToolRunner] = []
+        self._rows: dict[str, _ToolRow] = {}
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self._atmo = _Atmosphere(self)
+        self._atmo.lower()
 
-        root.addWidget(self._build_header())
-        root.addWidget(self._build_toolbar())
-        root.addWidget(self._build_pills())
-
-        # ---- Card grid (stretches so multiple rows fill the page height)
-        self.grid_host = QWidget()
-        self.grid_host.installEventFilter(self)
-        self.grid = QGridLayout(self.grid_host)
-        self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setSpacing(self.GAP)
-        root.addWidget(self.grid_host, 1)
-
-        # ---- Pager
-        self.pager = QWidget()
-        self.pager.setObjectName("PageBar")
-        self.pager.setFixedHeight(PAGER_H)
-        self.pager_lay = QHBoxLayout(self.pager)
-        self.pager_lay.setContentsMargins(0, 10, 0, 0)
-        self.pager_lay.setSpacing(6)
-        root.addWidget(self.pager)
-
-        QTimer.singleShot(0, self.refresh)
-
-    # ---------------- Header ----------------
-
-    def _build_header(self) -> QFrame:
-        head = QFrame()
-        head.setFixedHeight(HEADER_H)
-        hl = QVBoxLayout(head)
-        hl.setContentsMargins(0, 0, 0, 0)
-        hl.setSpacing(4)
-        top = QHBoxLayout()
-        top.setSpacing(14)
-        top.addWidget(IconTile("\u2699", "#94a3b8", size=46, font_scale=0.5,
-                               radius=11, bg="#1A202C"))
-        box = QVBoxLayout()
-        box.setSpacing(1)
-        title = QLabel("System Tools")
-        title.setStyleSheet("font-size: 23px; font-weight: 800;")
-        sub = QLabel("Diagnostics, repair actions and quick-access utilities "
-                     "for your system.")
-        sub.setObjectName("PageSub")
-        sub.setWordWrap(True)
-        box.addWidget(title)
-        box.addWidget(sub)
-        top.addLayout(box, 1)
-        hl.addLayout(top)
-        return head
-
-    # ---------------- Toolbar ----------------
-
-    def _build_toolbar(self) -> QWidget:
-        bar = QWidget()
-        bar.setFixedHeight(TOOLBAR_H)
-        lay = QHBoxLayout(bar)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(10)
-
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search tools\u2026")
-        self.search.setClearButtonEnabled(True)
-        self.search.textChanged.connect(lambda _: self._on_filters())
-
-        search_box = QFrame()
-        search_box.setObjectName("SearchBox")
-        sl = QHBoxLayout(search_box)
-        sl.setContentsMargins(10, 0, 6, 0)
-        sl.setSpacing(6)
-        icon = QLabel("\u2315")
-        icon.setObjectName("SearchIcon")
-        sl.addWidget(icon)
-        sl.addWidget(self.search, 1)
-        lay.addWidget(search_box, 1)
-
-        self.counter_lbl = QLabel()
-        self.counter_lbl.setObjectName("StatChip")
-        lay.addWidget(self.counter_lbl)
-
-        btn_scan = QPushButton("Scan Hardware")
-        btn_scan.setObjectName("Primary")
-        btn_scan.setMinimumHeight(34)
-        btn_scan.clicked.connect(lambda: self.navigate("detect"))
-        lay.addWidget(btn_scan)
-
-        btn_opt = QPushButton("Quick Optimize")
-        btn_opt.setObjectName("Secondary")
-        btn_opt.setMinimumHeight(34)
-        btn_opt.clicked.connect(lambda: self.navigate("optimize"))
-        lay.addWidget(btn_opt)
-
-        btn_logs = QPushButton("Logs")
-        btn_logs.setObjectName("Secondary")
-        btn_logs.setMinimumHeight(34)
-        btn_logs.clicked.connect(lambda: self.navigate("logs"))
-        lay.addWidget(btn_logs)
-
-        return bar
-
-    # ---------------- Category pills ----------------
-
-    def _build_pills(self) -> QScrollArea:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setFixedHeight(PILLS_H)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }")
-        content = QWidget()
-        lay = QHBoxLayout(content)
-        lay.setContentsMargins(0, 6, 0, 6)
-        lay.setSpacing(8)
-        self.pill_btns = {}
-        for key in PILL_KEYS:
-            label = "All" if key == ALL_KEY else key
-            btn = QPushButton(label)
-            btn.setObjectName("FilterPill")
-            btn.setProperty("active", "false")
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(lambda _=False, k=key: self.select(k))
-            lay.addWidget(btn)
-            self.pill_btns[key] = btn
-        lay.addStretch()
-        scroll.setWidget(content)
-        return scroll
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}")
+        body = QWidget()
+        root = QVBoxLayout(body)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
 
-    # ---------------- Public API ----------------
+        col = QWidget()
+        cl = QVBoxLayout(col)
+        cl.setContentsMargins(44, 40, 44, 60)
+        cl.setSpacing(0)
+        wrap = QHBoxLayout()
+        wrap.addWidget(col)
+        root.addLayout(wrap)
+
+        # ---- header
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        hbox = QVBoxLayout()
+        hbox.setSpacing(4)
+        title = QLabel("Tools")
+        title.setStyleSheet(
+            "font-family:" + _DISPLAY + ";font-size:26px;font-weight:600;"
+            "color:" + _INK_100 + ";background:transparent;")
+        hbox.addWidget(title)
+        self.stats = QHBoxLayout()
+        self.stats.setSpacing(16)
+        self.stat_count = _DotStat("#FFB454", "0 tools")
+        self.stats.addWidget(self.stat_count)
+        hbox.addLayout(self.stats)
+        bar.addLayout(hbox, 1)
+        for label, obj, slot in (
+                ("Scan Hardware", "Secondary", "detect"),
+                ("Quick Optimize", "Secondary", "optimize"),
+                ("Logs", "Secondary", "logs")):
+            b = QPushButton(label)
+            b.setObjectName(obj)
+            b.setFixedHeight(34)
+            b.clicked.connect(lambda _=False, s=slot: self.navigate(s))
+            bar.addWidget(b)
+        cl.addLayout(bar)
+        cl.addSpacing(20)
+
+        # ---- search
+        search_row = QHBoxLayout()
+        search_row.setSpacing(10)
+        box = QFrame()
+        box.setFixedHeight(38)
+        box.setAttribute(Qt.WA_StyledBackground, True)
+        box.setObjectName("SearchBox")
+        box.setStyleSheet(
+            "#SearchBox{background:" + _GLASS + ";border:1px solid "
+            + _BORDER + ";border-radius:10px;}")
+        bl = QHBoxLayout(box)
+        bl.setContentsMargins(12, 0, 10, 0)
+        bl.setSpacing(8)
+        ico = QLabel("\u2315")
+        ico.setStyleSheet(
+            "font-size:13px;color:" + _INK_600 + ";background:transparent;")
+        bl.addWidget(ico)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search tools\u2026")
+        self.search.setClearButtonEnabled(True)
+        self.search.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;"
+            "color:" + _INK_100 + ";}"
+            "QLineEdit::placeholder{color:" + _INK_600 + ";}")
+        self.search.textChanged.connect(lambda _: self.refresh())
+        bl.addWidget(self.search, 1)
+        search_row.addWidget(box)
+        cl.addLayout(search_row)
+        cl.addSpacing(22)
+
+        self._list_host = QVBoxLayout()
+        self._list_host.setSpacing(22)
+        cl.addLayout(self._list_host)
+        cl.addStretch()
+
+        self.refresh()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._atmo.setGeometry(self.rect())
+        self._atmo.lower()
+
+    # ---------------- data ----------------
 
     def select(self, key: str):
-        changed = key != self.key
         self.key = key
-        if changed:
-            self.page = 1
-            self.search.clear()
-        self._mark_pills()
+        self.search.clear()
         self.refresh()
 
-    def refresh(self):
-        self._filtered = self._visible_tools()
-        self._set_stats()
-        self._mark_pills()
-        self._schedule_relayout()
-
-    def _on_filters(self):
-        self.page = 1
-        self.refresh()
-
-    # ---------------- Data ----------------
-
-    def _source_tools(self) -> list[dict]:
+    def _visible(self) -> list[dict]:
         if self.key == ALL_KEY:
-            return _quick_launch_items() + group_tweaks("tools")
-        if self.key == QL_KEY:
-            return _quick_launch_items()
-        return [t for t in group_tweaks("tools") if t["category"] == self.key]
-
-    def _visible_tools(self) -> list[dict]:
+            tools = _quick_launch_items() + group_tweaks("tools")
+        elif self.key == QL_KEY:
+            tools = _quick_launch_items()
+        else:
+            tools = [t for t in group_tweaks("tools")
+                     if t.get("category") == self.key]
         text = self.search.text().strip().lower()
-        tools = self._source_tools()
         if not text:
-            return tools
-        return [
+            return _dedupe(tools)
+        return _dedupe([
             t for t in tools
             if text in t["id"].lower()
             or text in t["name"].lower()
             or text in (t.get("desc") or "").lower()
             or text in (t.get("category") or "").lower()
-        ]
+        ])
 
-    def _set_stats(self):
-        count = len(self._filtered)
-        color = T["accent"] if count else T["text_dim"]
-        self.counter_lbl.setText(
-            f"<span style='color:{color}; font-size:13px; font-weight:800;'>"
-            f"{count}</span>"
-            f"<span style='color:{T['text_faint']}; font-size:10px; "
-            f"font-weight:700;'>&nbsp;&nbsp;TOOLS</span>")
+    # ---------------- render ----------------
 
-    def _mark_pills(self):
-        for key, btn in self.pill_btns.items():
-            active = key == self.key
-            if btn.property("active") != ("true" if active else "false"):
-                btn.setProperty("active", "true" if active else "false")
-                btn.style().unpolish(btn)
-                btn.style().polish(btn)
-
-    # ---------------- Grid layout / pagination ----------------
-
-    def _geometry(self) -> tuple[int, int]:
-        width = max(10, self.grid_host.width())
-        cols = max(1, min(self.MAX_COLS, (width + self.GAP) // (self.MIN_CARD_W + self.GAP)))
-        host_h = max(10, self.grid_host.height())
-        rows = max(1, host_h // (ToolCard.GRID_HEIGHT + self.GAP))
-        return cols, rows
-
-    def _schedule_relayout(self):
-        if self._relayout_pending:
+    def refresh(self):
+        tools = self._visible()
+        self.stat_count.setText(f"{len(tools)} tools")
+        for i in reversed(range(self._list_host.count())):
+            it = self._list_host.takeAt(i)
+            if it and it.widget():
+                it.widget().setParent(None)
+                it.widget().deleteLater()
+        self._rows.clear()
+        if not tools:
+            e = QLabel("No tools match this search.")
+            e.setAlignment(Qt.AlignCenter)
+            e.setStyleSheet(
+                "font-size:12.5px;color:" + _INK_600 + ";"
+                "background:transparent;padding:26px;")
+            self._list_host.addWidget(e)
             return
-        self._relayout_pending = True
-        QTimer.singleShot(0, self._do_relayout)
+        grouped: dict[str, list[dict]] = {}
+        for t in tools:
+            grouped.setdefault(
+                t.get("category") or "Tools", []).append(t)
+        order = [c for c in CAT_ORDER if c in grouped]
+        order += [c for c in grouped if c not in order]
+        for cat in order:
+            items = grouped[cat]
+            label = QLabel(cat.upper())
+            f = QFont(label.font())
+            f.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
+            label.setFont(f)
+            label.setStyleSheet(
+                "font-family:" + _MONO + ";font-size:10.5px;color:"
+                + _INK_400 + ";background:transparent;")
+            host = QVBoxLayout()
+            host.setSpacing(10)
+            card = QFrame()
+            card.setAttribute(Qt.WA_StyledBackground, True)
+            card.setObjectName("TList")
+            card.setStyleSheet(
+                "#TList{background:" + _GLASS + ";border:1px solid "
+                + _BORDER + ";border-radius:16px;}")
+            cl2 = QVBoxLayout(card)
+            cl2.setContentsMargins(0, 0, 0, 0)
+            cl2.setSpacing(0)
+            for i, it in enumerate(items):
+                row = _ToolRow(it)
+                row.clicked.connect(self._run)
+                cl2.addWidget(row)
+                if i < len(items) - 1:
+                    sep = QFrame()
+                    sep.setFixedHeight(1)
+                    sep.setStyleSheet(
+                        "background:" + _BORDER_SOFT + ";border:none;")
+                    cl2.addWidget(sep)
+                self._rows[it["id"]] = row
+            host.addWidget(label)
+            host.addWidget(card)
+            w = QWidget()
+            w.setLayout(host)
+            self._list_host.addWidget(w)
 
-    def _do_relayout(self):
-        self._relayout_pending = False
-        self._relayout()
-
-    def _relayout(self):
-        cols, rows = self._geometry()
-        per_page = cols * rows
-        total = len(self._filtered)
-        self._pages = max(1, (total + per_page - 1) // per_page)
-        if self.page > self._pages:
-            self.page = self._pages
-        # Idempotency guard: rebuilding clears + recreates every card, and the
-        # layout churn emits Resize events that re-trigger this method, so skip
-        # the rebuild entirely when the visible state is unchanged. The ids are
-        # part of the signature so switching section/page/search always rebuilds.
-        start = (self.page - 1) * per_page
-        cards = self._filtered[start:start + per_page]
-        width = max(10, self.grid_host.width())
-        card_w = max(self.MIN_CARD_W, (width - self.GAP * (cols - 1)) // cols)
-        sig = (cols, rows, self.page, self._pages, total,
-               tuple(item["id"] for item in cards), card_w)
-        if sig == getattr(self, "_built_sig", None):
-            return
-        self._built_sig = sig
-        self._rebuild_grid(cols, rows, per_page)
-        self._rebuild_pager()
-
-    def _rebuild_grid(self, cols, rows, per_page):
-        # Reset stale row/column stretches from the previous build so a
-        # leftover stretch row can never push cards around on a category switch.
-        for r in range(self.grid.rowCount()):
-            self.grid.setRowStretch(r, 0)
-        for c in range(self.grid.columnCount()):
-            self.grid.setColumnStretch(c, 0)
-        clear_layout(self.grid)
-        self._cards.clear()
-        start = (self.page - 1) * per_page
-        cards = self._filtered[start:start + per_page]
-        width = max(10, self.grid_host.width())
-        card_w = max(self.MIN_CARD_W, (width - self.GAP * (cols - 1)) // cols)
-        n_rows = max(1, (len(cards) + cols - 1) // cols)
-        # Size cards to fill the host exactly so there is no leftover space for
-        # the grid to spread between rows (uniform 14px gaps, cards top-seated).
-        host_h = max(10, self.grid_host.height())
-        card_h = ToolCard.GRID_HEIGHT
-        if n_rows > 1:
-            card_h = max(ToolCard.GRID_HEIGHT,
-                         (host_h - self.GAP * (n_rows - 1)) // n_rows)
-        for idx, item in enumerate(cards):
-            card = ToolCard(item, lambda _=False, it=item: self._run(it))
-            self._cards[item["id"]] = card
-            card.setFixedSize(card_w, card_h)
-            r, c = divmod(idx, cols)
-            self.grid.addWidget(card, r, c)
-        # Absorb any residual space below a partial/single row.
-        self.grid.setRowStretch(n_rows, 1)
-
-    def _rebuild_pager(self):
-        clear_layout(self.pager_lay)
-        if self._pages <= 1:
-            self.pager.setVisible(False)
-            return
-        self.pager.setVisible(True)
-        prev = QPushButton("\u2039  Prev")
-        prev.setObjectName("PageNav")
-        prev.setEnabled(self.page > 1)
-        prev.clicked.connect(lambda: self._go(self.page - 1))
-        self.pager_lay.addWidget(prev)
-        self.pager_lay.addSpacing(4)
-        for num in self._page_window():
-            btn = QPushButton(str(num))
-            btn.setObjectName("PageNum")
-            btn.setProperty("current", "true" if num == self.page else "false")
-            btn.clicked.connect(lambda _=False, n=num: self._go(n))
-            self.pager_lay.addWidget(btn)
-        self.pager_lay.addSpacing(4)
-        nxt = QPushButton("Next  \u203a")
-        nxt.setObjectName("PageNav")
-        nxt.setEnabled(self.page < self._pages)
-        nxt.clicked.connect(lambda: self._go(self.page + 1))
-        self.pager_lay.addWidget(nxt)
-        self.pager_lay.addStretch()
-
-    def _page_window(self) -> list[int]:
-        total, cur = self._pages, self.page
-        if total <= 7:
-            return list(range(1, total + 1))
-        pages = {1, total, cur - 1, cur, cur + 1}
-        if cur <= 3:
-            pages.update({2, 3, 4})
-        if cur >= total - 2:
-            pages.update({total - 3, total - 2, total - 1})
-        return sorted(p for p in pages if 1 <= p <= total)
-
-    def _go(self, page):
-        if 1 <= page <= self._pages:
-            self.page = page
-            self._relayout()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._schedule_relayout()
-
-    def eventFilter(self, obj, event):
-        if obj is self.grid_host and event.type() == QEvent.Type.Resize:
-            self._schedule_relayout()
-        return super().eventFilter(obj, event)
-
-    # ---------------- Run / Guide ----------------
+    # ---------------- run ----------------
 
     def _run(self, item: dict):
-        key = item["id"]
-        card = self._cards.get(key)
-        if card is None:
+        row = self._rows.get(item["id"])
+        if row is None:
             return
-        self._begin_busy(key, "Running\u2026")
+        self._orig_text[item["id"]] = row.btn.text()
+        row.btn.setEnabled(False)
+        row.btn.setText("Running\u2026")
         worker = ToolRunner(item)
-        # Bound methods (not lambdas): emitted from the worker thread, these
-        # are queued back onto the GUI thread where the widgets live.
-        worker.finished_ok.connect(self._finish_busy_slot)
+        worker.finished_ok.connect(self._finish_slot)
         worker.finished.connect(self._on_worker_finished)
         self._workers.append(worker)
         worker.start()
 
-    def _finish_busy_slot(self, ok, kind):
+    def _finish_slot(self, ok, kind):
         worker = self.sender()
         if worker is None:
             return
-        self._finish_busy(worker.key, ok, worker.item, kind)
+        self._finish(worker.key, ok, worker.item, kind)
 
     def _on_worker_finished(self):
-        # Queued onto the GUI thread: drop workers that already returned.
         self._workers = [w for w in self._workers if not w.isFinished()]
 
-    def _finish_busy(self, key, ok, item, kind="run"):
-        card = self._cards.get(key)
-        if card is not None:
-            card.btn.setEnabled(True)
-            card.btn.setText(self._orig_text.get(key, "Run"))
+    def _finish(self, key, ok, item, kind="run"):
+        row = self._rows.get(key)
+        if row is not None:
+            row.btn.setEnabled(True)
+            row.btn.setText(self._orig_text.get(key, "Run"))
         name = item["name"]
         if not ok:
             msg = f"Failed to launch {name}."
@@ -559,20 +472,11 @@ class ToolsPage(QWidget):
         else:
             toast(f"Launched {name} successfully.", "success", self)
 
-    def _begin_busy(self, key, text):
-        card = self._cards.get(key)
-        if card is None:
-            return
-        self._orig_text[key] = card.btn.text()
-        card.btn.setEnabled(False)
-        card.btn.setText(text)
-
     def _show_guidance(self, tweak: dict):
-        """Show the actionable guide steps front and center (not hidden
-        behind a "Show Details" toggle)."""
         text = ""
         for action in tweak.get("actions", []):
-            if isinstance(action, (tuple, list)) and action and action[0] == "guidance":
+            if (isinstance(action, (tuple, list)) and action
+                    and action[0] == "guidance"):
                 text = action[1] if len(action) > 1 else ""
                 break
         if not text:

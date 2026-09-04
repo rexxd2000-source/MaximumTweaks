@@ -19,7 +19,7 @@ BALANCED = {
     ),
     "risk": "safe",
     "tweaks": [
-        "power-001",   # High Performance plan
+        "pp-013",      # Maximum Power Plan
         "power-004",   # Sleep never
         "power-005",   # Display 15 min
         "game-001",    # Game Mode
@@ -28,10 +28,10 @@ BALANCED = {
         "win-006",     # Visual effects: best performance
         "reg-001",     # Foreground lock timeout
         "mouse-001",   # Mouse acceleration off
-        "cpu-013",     # MMCSS gaming priority
+        "mmcss_game_priority",  # MMCSS gaming priority
         "audio-003",   # Audio MMCSS task
-        "eth-002",     # TCP ack frequency
-        "eth-003",     # Nagle off
+        "dd-013",      # TCP ack frequency
+        "dd-014",      # Nagle off
         "net-009",     # Network throttling off
         "bg-009",      # Tips & suggestions off
     ],
@@ -51,16 +51,16 @@ COMPETITIVE = {
         "power-002",   # USB selective suspend off
         "power-003",   # PCIe ASPM off
         "power-009",   # Min processor state 20%
-        "sched-001",   # Core parking off
-        "cpu-005",     # Performance boost mode aggressive
-        "cpu-002",     # Win32 priority separation (low)
+        "core_parking_disable",  # Core parking off
+        "perf-034",    # Processor performance decrease policy
+        "perf-032",    # Win32 priority separation
         "reg-002",     # Active window tracking timeout 0
         "reg-003",     # Menu show delay 0
         "win-001",     # Game DVR off
         "kbd-001",     # Key repeat delay zero
         "game-004",    # Fullscreen optimizations off
         "net-010",     # TCP window scaling
-        "net-011",     # TCP ECN
+        "net-004",     # TCP ECN
     ],
 }
 
@@ -76,19 +76,19 @@ MAXIMUM = {
     ),
     "risk": "moderate",
     "tweaks": COMPETITIVE["tweaks"] + [
-        "sched-006",   # Hyper-V off
-        "sched-007",   # VBS off
+        "exp-003",     # Hypervisor off (bcdedit)
+        "fpsb-001",    # VBS off
         "adv-006",     # Processor scheduling to programs
-        "adv-012",     # Memory compression off
-        "ram-006",     # I/O page lock limit
-        "stor-003",    # Last access timestamps off
+        "perf-004",    # Memory compression off
+        "ram-058",     # I/O page lock limit
+        "stor-016",    # Last access timestamps off
         "stor-002",    # 8.3 short names off
-        "svc-003",     # DiagTrack off
-        "svc-004",     # WER off
+        "ram-030",     # Telemetry service off
+        "sys-004",     # WER off
         "tel-001",     # Telemetry: security
         "db-003",      # OneDrive sync off
         "db-002",      # Startup apps cleanup
-        "bg-001",      # Background apps off
+        "fpsb-007",    # Background apps off
         "win-018",     # Delivery optimization off
         "win-012",     # Advertising ID off
         "rep-008",     # Create a System Restore Point

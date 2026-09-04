@@ -67,7 +67,8 @@ def _gpu_sample() -> dict | None:
             ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,"
              "temperature.gpu",
              "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=2.5)
+            capture_output=True, text=True, timeout=2.5,
+            creationflags=0x08000000)
         line = out.stdout.strip().splitlines()
         if not line:
             return None

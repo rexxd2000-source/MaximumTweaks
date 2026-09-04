@@ -214,7 +214,7 @@ class _Funcs:
                 "NVIDIA driver does not expose the required NvAPI entry points.",
                 NVAPI_NOT_SUPPORTED)
         if missing:
-            logger.warning(f"nvprofile: missing entry points: {', '.join(missing)}")
+            logger.warn(f"nvprofile: missing entry points: {', '.join(missing)}")
 
     def fnp(self, name, argtypes, restype=ctypes.c_int):
         """Return a callable ctypes function for a named entry point."""
@@ -270,7 +270,7 @@ class DrsSession:
 
     def _check(self, code: int, what: str) -> int:
         if code != NVAPI_OK and code not in _EXPECTED:
-            logger.warning(f"nvprofile: {what} -> {code} ({self._f.error_text(code)})")
+            logger.warn(f"nvprofile: {what} -> {code} ({self._f.error_text(code)})")
         return code
 
     # ---- profiles -------------------------------------------------------
@@ -337,7 +337,7 @@ class DrsSession:
             try:
                 self.create_application(h, exe)
             except NvapiError as exc:  # noqa: BLE001
-                logger.warning(f"nvprofile: attach {exe!r} to {name!r}: {exc}")
+                logger.warn(f"nvprofile: attach {exe!r} to {name!r}: {exc}")
         return h, created
 
     # ---- applications ---------------------------------------------------

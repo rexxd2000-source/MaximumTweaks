@@ -12,7 +12,8 @@ cards flip instantly and the UI never blocks.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QThread, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, QThread, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QRadialGradient
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpacerItem,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -111,7 +113,7 @@ class TweaksPage(QWidget):
 
     MIN_CARD_W = 240
     MAX_COLS = 4
-    GAP = 10
+    GAP = 14
 
     def __init__(self, ctx, parent=None, fixed_group=None):
         super().__init__(parent)
@@ -138,6 +140,12 @@ class TweaksPage(QWidget):
         # Scrollable content (header + toolbar + card grid) fills the page and
         # scrolls internally; the pager is pinned below it so it is never
         # clipped off the bottom of the window.
+        # Background: reference .main atmosphere (blobs + masked dot grid),
+        # fixed behind the scrolling content.
+        self._atmo = _TweakAtmosphere(self)
+        self._atmo.setGeometry(0, 0, 10, 10)
+        self._atmo.lower()
+
         self.scroll = QScrollArea(self)
         scroll = self.scroll
         scroll.setWidgetResizable(True)
@@ -145,24 +153,34 @@ class TweaksPage(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}")
 
         wrapper = QWidget()
         wrapper.setObjectName("category-view-wrapper")
+        # NOTE: scope with #objectName — a bare "background:transparent" on
+        # an ancestor cascades to ALL children and overrides app-level
+        # QPushButton#Primary fills (button would render unfilled).
+        wrapper.setStyleSheet(
+            "#category-view-wrapper{background:transparent;}")
         root = QVBoxLayout(wrapper)
-        root.setContentsMargins(14, 10, 14, 16)
+        # .content { padding: 40px 44px 60px }
+        root.setContentsMargins(44, 40, 44, 60)
         root.setSpacing(8)
 
         if not fixed_group:
             self.header = self._build_header()
             self.header.setObjectName("category-header")
             root.addWidget(self.header)
-            root.addSpacing(10)
+            root.addSpacing(14)
             toolbar = self._build_toolbar()
             toolbar.setObjectName("search-bar-container")
             root.addWidget(toolbar)
-            root.addSpacing(10)
+            root.addSpacing(12)
             self.opt_host = self._build_optimizer_bar()
             root.addWidget(self.opt_host)
+            root.addSpacing(18)
             self.ram_selector = self._build_ram_selector()
             root.addWidget(self.ram_selector)
             self.gpu_selector = self._build_gpu_selector()
@@ -200,21 +218,22 @@ class TweaksPage(QWidget):
     # ---------------- Header ----------------
 
     def _build_header(self):
+        # Reference .top-bar: h1 + subtitle on the left, dot stats on the
+        # right. No icon tile, no pills — pure typography.
         head = QFrame()
         head.setFixedHeight(HEADER_H)
         hl = QVBoxLayout(head)
-        hl.setContentsMargins(0, 12, 0, 0)
+        hl.setContentsMargins(0, 10, 0, 0)
         hl.setSpacing(4)
         top = QHBoxLayout()
-        top.setSpacing(12)
+        top.setSpacing(16)
         top.setAlignment(Qt.AlignVCenter)
-        self.head_icon = IconTile("\u26a1", "#94a3b8", size=46, font_scale=0.5,
-                                  radius=11, bg="#1A202C")
-        top.addWidget(self.head_icon)
         box = QVBoxLayout()
-        box.setSpacing(4)
+        box.setSpacing(5)
         self.title_lbl = QLabel("Optimize Your PC")
-        self.title_lbl.setStyleSheet("font-size: 23px; font-weight: 800;")
+        self.title_lbl.setStyleSheet(
+            "font-family: \"Space Grotesk\", \"Segoe UI\";"
+            " font-size: 26px; font-weight: 600; background: transparent;")
         self.blurb_lbl = QLabel(
             "Toggle the optimizations you want \u2014 tweaks are pre-checked for "
             "your hardware, and each flips instantly.")
@@ -223,8 +242,26 @@ class TweaksPage(QWidget):
         box.addWidget(self.title_lbl)
         box.addWidget(self.blurb_lbl)
         top.addLayout(box, 1)
+        # Reference .top-stats: green dot "N recommended" + violet dot
+        # "N catalogued", stacked right of the title.
+        self.top_stats = QVBoxLayout()
+        self.top_stats.setSpacing(6)
+        self.stat_rec = QLabel()
+        self.stat_rec.setStyleSheet(
+            "font-size: 12.5px; color: #928AAD; background: transparent;")
+        self.stat_cat = QLabel()
+        self.stat_cat.setStyleSheet(
+            "font-size: 12.5px; color: #928AAD; background: transparent;")
+        self.top_stats.addWidget(self.stat_rec)
+        self.top_stats.addWidget(self.stat_cat)
+        top.addLayout(self.top_stats, 0)
         hl.addLayout(top)
         return head
+
+    @staticmethod
+    def _dot_stat(color: str, text: str) -> str:
+        return (f"<span style='color:{color};'>\u25cf</span>"
+                f"<span style='color:#928AAD;'>&nbsp; {text}</span>")
 
     def _header_for(self, key) -> tuple[str, str]:
         if key == ALL_KEY:
@@ -243,27 +280,26 @@ class TweaksPage(QWidget):
         title, blurb = self._header_for(self.key)
         self.title_lbl.setText(title)
         self.blurb_lbl.setText(blurb)
-        meta = CATEGORY_GROUPS.get(self.key)
-        if meta:
-            color = meta["color"]
-            self.head_icon.set_logo(logo_path(self.key))
-            self.head_icon.setStyleSheet(
-                f"background-color: {qss_rgba(color, 0x22)}; color: {color};"
-                f" border-radius: 11px; font-size: 23px; font-weight: 900;"
-                f" border: 1px solid {qss_rgba(color, 0x33)};")
-        else:
-            color = T["accent"]
-            self.head_icon.set_logo(None)
-            self.head_icon.setText(HEADER_ICONS.get(self.key, "\u26a1"))
-            self.head_icon.setStyleSheet(
-                f"background-color: {qss_rgba(color, 0x22)}; color: {color};"
-                f" border-radius: 11px; font-size: 23px; font-weight: 900;"
-                f" border: 1px solid {qss_rgba(color, 0x33)};")
-        self.head_icon.setToolTip(title)
+        self.title_lbl.setToolTip(title)
+        # .top-stats (recommended / catalogued) for the active view.
+        src = self._source_tweaks() if hasattr(self, "_source_tweaks") else []
+        try:
+            rec = recommended_count(src)
+            cat = len(src)
+        except Exception:
+            rec = cat = 0
+        if hasattr(self, "stat_rec"):
+            self.stat_rec.setText(
+                self._dot_stat("#3DDC97", f"{rec} recommended"))
+            self.stat_cat.setText(
+                self._dot_stat("#C9C0FF", f"{cat} catalogued"))
+            self.stat_rec.setVisible(True)
+            self.stat_cat.setVisible(True)
 
-    # ---------------- Toolbar ----------------
+    # ---------------- Toolbar (search row) ----------------
 
     def _build_toolbar(self):
+        # Reference .search-row: just the search bar + sort select.
         bar = QWidget()
         bar.setFixedHeight(TOOLBAR_H)
         lay = QHBoxLayout(bar)
@@ -293,34 +329,51 @@ class TweaksPage(QWidget):
         self.sort_combo.currentIndexChanged.connect(lambda _: self._on_filters())
         lay.addWidget(self.sort_combo)
 
-        lay.addStretch()
-
-        self.counter_lbl = QLabel()
-        self.counter_lbl.setObjectName("StatChip")
-        lay.addWidget(self.counter_lbl)
-
-        self.btn_apply_all = QPushButton("Apply All")
-        self.btn_apply_all.setObjectName("Primary")
-        self.btn_apply_all.setMinimumHeight(34)
-        self.btn_apply_all.clicked.connect(self._apply_all)
-        lay.addWidget(self.btn_apply_all)
-
-        self.btn_revert_all = QPushButton("Revert All")
-        self.btn_revert_all.setObjectName("Secondary")
-        self.btn_revert_all.setMinimumHeight(34)
-        self.btn_revert_all.clicked.connect(self._revert_all)
-        lay.addWidget(self.btn_revert_all)
-
         return bar
 
-    # ---------------- Category optimizer bar ----------------
+    # ---------------- Category optimizer bar (action row) ----------------
 
     def _build_optimizer_bar(self):
+        # Reference .action-row: left = Scan/Optimize (per category, hideable),
+        # right = plain "N / M applied" text + glass Apply all / Revert all.
         host = QWidget()
         host.setObjectName("optimizer-bar")
-        self.opt_lay = QHBoxLayout(host)
+        host.setFixedHeight(TOOLBAR_H)
+        self._right_cluster = QHBoxLayout()
+        self._right_cluster.setSpacing(10)
+        row = QHBoxLayout(host)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+
+        self.opt_left = QWidget()
+        self.opt_left.setStyleSheet("background:transparent;")
+        self.opt_lay = QHBoxLayout(self.opt_left)
         self.opt_lay.setContentsMargins(0, 0, 0, 0)
         self.opt_lay.setSpacing(8)
+        row.addWidget(self.opt_left)
+        row.addStretch(1)
+
+        self.counter_lbl = QLabel()
+        self.counter_lbl.setObjectName("AppliedText")
+        self._right_cluster.addWidget(self.counter_lbl)
+
+        self.btn_apply_all = QPushButton("Apply all")
+        self.btn_apply_all.setObjectName("Secondary")
+        self.btn_apply_all.setMinimumHeight(32)
+        self.btn_apply_all.clicked.connect(self._apply_all)
+        self._right_cluster.addWidget(self.btn_apply_all)
+
+        self.btn_revert_all = QPushButton("Revert all")
+        self.btn_revert_all.setObjectName("Ghost")
+        self.btn_revert_all.setMinimumHeight(32)
+        self.btn_revert_all.clicked.connect(self._revert_all)
+        self._right_cluster.addWidget(self.btn_revert_all)
+
+        cluster_wrap = QWidget()
+        cluster_wrap.setLayout(self._right_cluster)
+        cluster_wrap.setStyleSheet("background:transparent;")
+        row.addWidget(cluster_wrap)
+
         self.opt_facts = QLabel()
         self.opt_facts.setObjectName("PageSub")
         self.opt_facts.setWordWrap(True)
@@ -330,52 +383,147 @@ class TweaksPage(QWidget):
         return host
 
     def _build_ram_selector(self):
+        import ui.pages.ram_selector as ram_mod
         from ui.pages.ram_selector import RAM_TIERS, RamTierCard
         host = QWidget()
         host.setObjectName("ram-selector-bar")
         lay = QVBoxLayout(host)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
-        title = QLabel("RAM Optimizer \u2014 Select your installed RAM size")
-        title.setStyleSheet("font-size: 15px; font-weight: 800;")
-        lay.addWidget(title)
+
+        # ---- module strip: Scan / Optimize RAM + live specs ----
+        strip = QWidget()
+        striple = QHBoxLayout(strip)
+        striple.setContentsMargins(0, 0, 0, 0)
+        striple.setSpacing(12)
+
+        self.ram_scan_btn = QPushButton("Scan")
+        self.ram_scan_btn.setObjectName("Secondary")
+        self.ram_scan_btn.setMinimumHeight(30)
+        self.ram_scan_btn.setCursor(Qt.PointingHandCursor)
+        self.ram_scan_btn.setToolTip("Re-detect this system's installed memory.")
+        self.ram_scan_btn.clicked.connect(lambda: self._scan_group(self.key))
+        striple.addWidget(self.ram_scan_btn)
+
+        self.ram_opt_btn = QPushButton("Optimize RAM")
+        self.ram_opt_btn.setObjectName("Primary")
+        self.ram_opt_btn.setMinimumHeight(30)
+        self.ram_opt_btn.setCursor(Qt.PointingHandCursor)
+        self.ram_opt_btn.setToolTip(
+            "Scan, validate and apply the recommended RAM tweaks for this "
+            "category \u2014 every change is verified against the live system.")
+        self.ram_opt_btn.clicked.connect(
+            lambda _=False: self._open_optimizer_group(self.key))
+        striple.addWidget(self.ram_opt_btn)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setStyleSheet("color: #262B38;")
+        striple.addWidget(sep)
+
+        self._ram_specs = {}
+        for label in ("Total", "Modules", "Speed", "Configured"):
+            box = QWidget()
+            bl = QVBoxLayout(box)
+            bl.setContentsMargins(0, 0, 0, 0)
+            bl.setSpacing(1)
+            cap = QLabel(label)
+            cap.setStyleSheet(
+                "font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px; "
+                "color: #575C6B;")
+            bl.addWidget(cap)
+            val = QLabel("\u2014")
+            val.setStyleSheet(
+                "font-family: 'JetBrains Mono', monospace; "
+                "font-size: 15px; font-weight: 700; color: #EFF0F4;")
+            bl.addWidget(val)
+            self._ram_specs[label] = val
+            striple.addWidget(box)
+        striple.addStretch()
+        lay.addWidget(strip)
+
+        # ---- section label ----
+        section = QLabel("Select your installed RAM size")
+        section.setStyleSheet("font-size: 16px; font-weight: 700; color: #EDEEF2;")
+        lay.addWidget(section)
+
+        # ---- tier grid ----
+        self._ram_rec_key = ram_mod.recommended_ram_key(self.ctx.profile)
+        profile = self.ctx.profile or {}
+        gb = profile.get("ram_gb") or 0
+        channels = max(1, profile.get("ram_channels") or 1)
+        per_module = gb / channels if gb else 0
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(10)
         self._ram_cards = {}
         for i, (key, tier) in enumerate(RAM_TIERS.items()):
-            card = RamTierCard(key, tier, self.ctx)
-            card._on_click = self._on_ram_tier_clicked
+            sub = ram_mod.TIER_SUB.get(key)
+            if key == self._ram_rec_key and gb:
+                sub = f"Matches your installed {gb:g} GB pair"
+            card = RamTierCard(
+                key, tier, self.ctx,
+                recommended=(key == self._ram_rec_key),
+                sub=sub,
+                bar_pct=ram_mod.TIER_BAR_PCT.get(key))
+            card._on_click = lambda k, c=card: self._on_ram_tier_clicked(k, manual=True)
             grid.addWidget(card, i // 3, i % 3)
             self._ram_cards[key] = card
         lay.addLayout(grid)
-        self._ram_status = QLabel("Select your RAM size above, then the recommended "
-                                  "memory tweaks will be pre-checked automatically.")
+
+        # ---- foot note ----
+        self._ram_status = QLabel()
         self._ram_status.setObjectName("PageSub")
         self._ram_status.setWordWrap(True)
+        self._ram_status.setStyleSheet("font-size: 12px; color: #9399A9;")
         lay.addWidget(self._ram_status)
+
         self._ram_selected_tier = None
+        self._ram_auto_selected = False
+        self._ram_user_picked = False
+        self._update_ram_specs()
+        self.ctx.profile_changed.connect(self._update_ram_specs)
         host.setVisible(False)
         return host
 
-    def _on_ram_tier_clicked(self, key):
+    def _update_ram_specs(self):
+        import ui.pages.ram_selector as ram_mod
+        profile = self.ctx.profile or {}
+        gb = profile.get("ram_gb") or 0
+        channels = max(1, profile.get("ram_channels") or 1)
+        mtps = profile.get("ram_mtps") or 0
+        per_module = gb / channels if gb else 0
+        module_gb = round(per_module) if per_module else 0
+        self._ram_specs["Total"].setText(f"{gb:g} GB")
+        self._ram_specs["Modules"].setText(f"{channels} \u00d7 {module_gb}.0 GB")
+        self._ram_specs["Speed"].setText(f"{mtps:g} MT/s")
+        self._ram_specs["Configured"].setText(f"{mtps:g} MT/s")
+        self._ram_rec_key = ram_mod.recommended_ram_key(profile)
+        for key, card in self._ram_cards.items():
+            if gb and key == self._ram_rec_key:
+                card.set_recommended(True, f"Matches your installed {gb:g} GB pair")
+            else:
+                card.set_recommended(False, ram_mod.TIER_SUB.get(key, ""))
+        if gb and not self._ram_user_picked and not self._ram_auto_selected:
+            self._ram_auto_select()
+
+    def _ram_auto_select(self):
+        if self._ram_auto_selected or not self._ram_cards:
+            return
+        self._ram_auto_selected = True
+        self._on_ram_tier_clicked(self._ram_rec_key, manual=False)
+
+    def _on_ram_tier_clicked(self, key, manual=False):
         from ui.pages.ram_selector import RAM_TIERS
-        from config.app_config import THEME as T
+        if manual:
+            self._ram_user_picked = True
         self._ram_selected_tier = key
         for k, card in self._ram_cards.items():
-            card.setStyleSheet(
-                card.styleSheet().replace(f"border: 2px solid {T['accent']}", "")
-                if k != key else card.styleSheet()
-            )
-        card = self._ram_cards[key]
-        card.setStyleSheet(
-            f"QFrame#Card {{ border: 2px solid {T['accent']}; border-radius: 12px; "
-            f"background: {T['card']}; }}"
-        )
+            card.set_selected(k == key)
         tier = RAM_TIERS[key]
         self._ram_status.setText(
-            f"<b>{tier['label']} ({tier['desc']})</b> \u2014 "
-            f"Pre-checking {len(tier['tweaks'])} memory optimizations. "
-            f"Click Apply All below to apply them.")
+            f"<b>{tier['label']} ({tier['desc']})</b> selected \u2014 "
+            f"{len(tier['tweaks'])} recommended tweaks are checked below; "
+            f"adjust any of them, then click Apply All.")
         for tid in tier["tweaks"]:
             if tid in self._cards:
                 self._cards[tid].toggle.setChecked(True)
@@ -388,8 +536,10 @@ class TweaksPage(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
 
-        prompt = QLabel("\u25c6  Select Your GPU  \u25c6")
-        prompt.setStyleSheet("font-size: 18px; font-weight: 900;")
+        prompt = QLabel("Select Your GPU")
+        prompt.setStyleSheet(
+            "font-size: 18px; font-weight: 700; color: #F6F4FC;"
+            " background: transparent;")
         prompt.setAlignment(Qt.AlignCenter)
         lay.addWidget(prompt)
 
@@ -423,7 +573,7 @@ class TweaksPage(QWidget):
             card_lay.setSpacing(4)
             top = QHBoxLayout()
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {color};")
+            lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {color};")
             top.addWidget(lbl)
             top.addStretch()
             card_lay.addLayout(top)
@@ -443,7 +593,7 @@ class TweaksPage(QWidget):
         self._gpu_status.setAlignment(Qt.AlignCenter)
         self._gpu_status.setWordWrap(True)
         self._gpu_status.setText(
-            "\u2191 Click a GPU vendor above to filter optimizations \u2191")
+            "Click a GPU vendor above to filter optimizations")
         self._gpu_status.setStyleSheet(
             f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
         lay.addWidget(self._gpu_status)
@@ -479,16 +629,21 @@ class TweaksPage(QWidget):
         from engine.optimizer import BUTTON_LABELS, GROUP_OPTIMIZERS
         clear_layout(self.opt_lay)
         if not self.key or self.key == ALL_KEY:
-            self.opt_host.setVisible(False)
+            self.opt_left.setVisible(False)
+            return
+        if self.key == "ram":
+            # The RAM selector strip has its own Scan / Optimize RAM buttons
+            # and live specs, so the generic optimizer bar is hidden here.
+            self.opt_left.setVisible(False)
             return
         if self.key == "gpu" and not self._gpu_selected_vendor:
-            self.opt_host.setVisible(False)
+            self.opt_left.setVisible(False)
             return
         keys = GROUP_OPTIMIZERS.get(self.key)
         if not keys:
-            self.opt_host.setVisible(False)
+            self.opt_left.setVisible(False)
             return
-        self.opt_host.setVisible(True)
+        self.opt_left.setVisible(True)
 
         scan = QPushButton("Scan")
         scan.setObjectName("Secondary")
@@ -575,6 +730,8 @@ class TweaksPage(QWidget):
             self.search.clear()
         if hasattr(self, "ram_selector"):
             self.ram_selector.setVisible(key == "ram")
+            if key == "ram":
+                self._ram_auto_select()
         if hasattr(self, "gpu_selector"):
             is_gpu = key == "gpu"
             self.gpu_selector.setVisible(is_gpu)
@@ -855,7 +1012,7 @@ class TweaksPage(QWidget):
         rec = recommended_count(all_tweaks)
         color = T["accent"] if applied else T["text_dim"]
         self.counter_lbl.setText(
-            f"<span style='color:{color}; font-size:13px; font-weight:800;'>"
+            f"<span style='color:{color}; font-size:13px; font-weight:700;'>"
             f"{applied} / {len(all_tweaks)}</span>"
             f"<span style='color:{T['text_dim']}; font-size:10px; font-weight:700;'>"
             f"&nbsp;&nbsp;APPLIED</span>"
@@ -937,17 +1094,21 @@ class TweaksPage(QWidget):
             card.revert_requested.connect(self._revert)
             card.guide_requested.connect(self._show_guide)
             card.setMinimumSize(card_w, card_h)
-            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
             r, c = divmod(idx, cols)
             self.grid.addWidget(card, r, c)
-        # Equal column stretch makes the cards grow to fill the grid width
-        # uniformly; every row stretches equally so all cards share the same
-        # height and the grid always fills the viewport (no dark band below
-        # the cards on short pages).
+        # Equal column stretch makes the cards fill the grid width uniformly.
+        # Rows are NOT stretched (a trailing spacer row absorbs leftover
+        # vertical space) so a short last page never turns its cards into
+        # giant boxes — extra space pools below the grid instead.
         for c in range(cols):
             self.grid.setColumnStretch(c, 1)
         for r in range(n_rows):
-            self.grid.setRowStretch(r, 1)
+            self.grid.setRowStretch(r, 0)
+        self.grid.setRowStretch(n_rows, 1)
+        self.grid.addItem(QSpacerItem(1, 1, QSizePolicy.Minimum,
+                                      QSizePolicy.Expanding),
+                          n_rows, 0, 1, cols)
 
     def _rebuild_pager(self):
         clear_layout(self.pager_lay)
@@ -993,6 +1154,9 @@ class TweaksPage(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if hasattr(self, "_atmo"):
+            self._atmo.setGeometry(self.rect())
+            self._atmo.lower()
         if self.key:
             self._schedule_relayout()
 
@@ -1000,6 +1164,54 @@ class TweaksPage(QWidget):
         if obj is self.grid_host and event.type() == QEvent.Type.Resize and self.key:
             self._schedule_relayout()
         return super().eventFilter(obj, event)
+
+
+class _TweakAtmosphere(QWidget):
+    """Background for the tweaks content, matching the reference .main layers:
+    #08060F base + violet .blob.a (left:100 top:-220, 520px, rgba(139,107,255,
+    0.16)) + cyan .blob.b (bottom-right, 480px, rgba(75,232,216,0.07)) + the
+    .dots 34px grid (rgba(200,190,240,0.35), 0.5 opacity) masked around 60% 20%.
+    Fixed to the viewport, so it does not scroll with the cards (position:fixed).
+    """
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), QColor("#08060F"))
+
+        # .blob.a — violet, center (~360, ~40), ~380px effective radius.
+        ga = QRadialGradient(QPointF(360, 40), 380)
+        ga.setColorAt(0.0, QColor(139, 107, 255, 41))
+        ga.setColorAt(0.55, QColor(139, 107, 255, 12))
+        ga.setColorAt(1.0, QColor(139, 107, 255, 0))
+        p.fillRect(self.rect(), ga)
+
+        # .blob.b — cyan, center (w-140, h), ~340px radius.
+        gb = QRadialGradient(QPointF(w - 140, h), 340)
+        gb.setColorAt(0.0, QColor(75, 232, 216, 18))
+        gb.setColorAt(0.6, QColor(75, 232, 216, 6))
+        gb.setColorAt(1.0, QColor(75, 232, 216, 0))
+        p.fillRect(self.rect(), gb)
+
+        # .dots — 34px grid, masked radial fading out past 85%.
+        p.setPen(QColor(200, 190, 240, 45))  # 0.35 * 0.5 opacity
+        cx, cy = 0.60 * w, 0.20 * h
+        rx, ry = 0.70 * w, 0.60 * h
+        if rx > 0 and ry > 0:
+            y = 17.0
+            while y < h:
+                x = 17.0
+                while x < w:
+                    t = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+                    t **= 0.5
+                    if t < 0.85:
+                        alpha = int(45 * (1.0 - t / 0.85))
+                        if alpha > 3:
+                            p.setPen(QColor(200, 190, 240, alpha))
+                            p.drawPoint(QPointF(x, y))
+                    x += 34.0
+                y += 34.0
+        p.end()
 
 
 class _GroupScanWorker(QThread):

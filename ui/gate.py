@@ -53,7 +53,7 @@ class GateWindow(QWidget):
         top = QHBoxLayout()
         wm = QLabel("MAXIMUM TWEAKS")
         wm.setStyleSheet(
-            "color: #EEF4F8; font-size: 14px; font-weight: 900;"
+            "color: #EEF4F8; font-size: 14px; font-weight: 700;"
             " letter-spacing: 4px;")
         top.addWidget(wm)
         top.addStretch()
@@ -61,7 +61,7 @@ class GateWindow(QWidget):
         locked.setStyleSheet(
             f"color: {T['warning']}; background: {qss_rgba(T['warning'], 0x1F)};"
             f" border: 1px solid {qss_rgba(T['warning'], 0x77)}; border-radius: 9px;"
-            " padding: 4px 11px; font-size: 10px; font-weight: 800;"
+            " padding: 4px 11px; font-size: 10px; font-weight: 700;"
             " letter-spacing: 0.8px;")
         top.addWidget(locked)
         root.addLayout(top)
@@ -82,7 +82,7 @@ class GateWindow(QWidget):
         badge.setAlignment(Qt.AlignCenter)
         badge.setFixedSize(72, 72)
         badge.setStyleSheet(
-            f"color: {ACCENT}; font-size: 34px; font-weight: 900;"
+            f"color: {ACCENT}; font-size: 34px; font-weight: 700;"
             f" background: {qss_rgba(ACCENT, 0x14)}; border: 1px solid {qss_rgba(ACCENT, 0x44)};"
             " border-radius: 36px;")
         pl.addWidget(badge, 0, Qt.AlignHCenter)
@@ -90,7 +90,7 @@ class GateWindow(QWidget):
         title = QLabel("Activate Maximum Tweaks")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            "color: #F2F5F9; font-size: 26px; font-weight: 900;"
+            "color: #F6F4FC; font-size: 26px; font-weight: 700;"
             " letter-spacing: 0.4px;")
         pl.addWidget(title)
 
@@ -113,8 +113,8 @@ class GateWindow(QWidget):
         self.key_input.setStyleSheet(
             "QLineEdit { background-color: #0D1219; border: 1px solid #26313E;"
             " border-radius: 12px; padding: 0 16px; font-size: 15px;"
-            " font-weight: 800; letter-spacing: 2px; color: #F2F5F9; }"
-            "QLineEdit:focus { border: 1px solid #8B5CF6; }")
+            " font-weight: 700; letter-spacing: 2px; color: #F6F4FC; }"
+            "QLineEdit:focus { border: 1px solid #8B6BFF; }")
         self.key_input.returnPressed.connect(self._on_activate)
         pl.addWidget(self.key_input)
 
@@ -122,7 +122,7 @@ class GateWindow(QWidget):
         self.activate_btn.setObjectName("Primary")
         self.activate_btn.setMinimumHeight(52)
         self.activate_btn.setStyleSheet(
-            "QPushButton { font-size: 15px; font-weight: 900;"
+            "QPushButton { font-size: 15px; font-weight: 700;"
             " letter-spacing: 0.4px; border-radius: 12px;"
             " padding: 0 22px; qproperty-cursor: pointinghand; }"
             "QPushButton:disabled { color: #6E8295; }")

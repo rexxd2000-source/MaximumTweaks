@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
 
 from config.app_config import DISCORD_INVITE_URL, DIRS, THEME as T
 
-from ui.widgets import qss_rgba
+from ui.widgets import qss_rgba, tint_pixmap
 
 ACCENT = T["accent"]
 DANGER = T["danger"]
@@ -72,6 +72,160 @@ class GlassCard(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("GlassCard")
+
+
+class GlassPanel(QFrame):
+    """Dashboard glass panel with decorative bracket corners.
+
+    Matches the reference dashboard: translucent gradient surface, 1px glass
+    border and two L-shaped corner brackets (top-left + bottom-right). The
+    corner color is passed in (violet / cyan per the reference layout).
+    """
+
+    def __init__(self, corner="#9C80FF", parent=None):
+        super().__init__(parent)
+        self.setObjectName("DashPanel")
+        self._corner = QColor(corner)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        pen = QPen(self._corner, 1.4)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        w, h = self.width(), self.height()
+        s = 14
+        off = 1.5
+        # top-left bracket
+        tl = QPainterPath()
+        tl.moveTo(off, h - off - s)
+        tl.lineTo(off, off + 3)
+        tl.quadTo(off, off, off + 3, off)
+        tl.lineTo(off + s, off)
+        p.drawPath(tl)
+        # bottom-right bracket (mirror)
+        br = QPainterPath()
+        br.moveTo(w - off, off + s)
+        br.lineTo(w - off, h - off - 3)
+        br.quadTo(w - off, h - off, w - off - 3, h - off)
+        br.lineTo(w - off - s, h - off)
+        p.setPen(QPen(QColor(self._corner.red(), self._corner.green(),
+                             self._corner.blue(), 140), 1.2))
+        p.drawPath(br)
+
+
+class RingGauge(QWidget):
+    """96px circular utilization gauge with a glowing colored arc.
+
+    The track is a thin full ring; the value is an animated stroke-dashoffset
+    style arc (1/4 turn advance toward the target), matching the reference
+    dashboard. The center shows the percentage in a mono face.
+    """
+
+    def __init__(self, color="#9C80FF", parent=None):
+        super().__init__(parent)
+        self.setFixedSize(96, 96)
+        self._color = QColor(color)
+        self._target = 0.0
+        self._display = 0.0
+        self._anim: QVariantAnimation | None = None
+
+    def set_value(self, pct: float, color: str | None = None):
+        if color:
+            self._color = QColor(color)
+        target = max(0.0, min(100.0, float(pct)))
+        self._target = target
+        if self._anim is not None:
+            self._anim.stop()
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(900)
+        self._anim.setStartValue(self._display)
+        self._anim.setEndValue(target)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.valueChanged.connect(self._on_anim)
+        self._anim.start()
+
+    def _on_anim(self, value):
+        self._display = float(value)
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        side = self.width()
+        pen_w = 8
+        rect = QRectF(pen_w / 2, pen_w / 2,
+                      side - pen_w, side - pen_w)
+
+        # track ring
+        track = QPen(QColor(255, 255, 255, 18), pen_w)
+        p.setPen(track)
+        p.drawArc(rect, 0, 360 * 16)
+
+        span = -int(round(self._display / 100.0 * 360.0)) * 16
+        if abs(span) >= 16:
+            # soft glow pass
+            glow = QPen(QColor(self._color.red(), self._color.green(),
+                               self._color.blue(), 46), pen_w + 6)
+            p.setPen(glow)
+            p.drawArc(rect, 90 * 16, span)
+            # value arc
+            value = QPen(self._color, pen_w)
+            value.setCapStyle(Qt.RoundCap)
+            p.setPen(value)
+            p.drawArc(rect, 90 * 16, span)
+
+        # center %
+        mono = QFont("JetBrains Mono", 11)
+        mono.setPixelSize(18)
+        mono.setWeight(QFont.Weight.DemiBold)
+        p.setFont(mono)
+        fm = p.fontMetrics()
+        text = f"{round(self._display)}"
+        tw = fm.horizontalAdvance(text)
+        base = fm.ascent()
+        x = (side - tw) / 2.0
+        y = side / 2.0 - base / 2.0
+        p.setPen(QColor(242, 243, 248))
+        p.drawText(QPointF(x, y + base), text)
+
+        small = QFont("JetBrains Mono", 7)
+        small.setPixelSize(11)
+        p.setFont(small)
+        sfm = p.fontMetrics()
+        x2 = x + tw + 2
+        p.setPen(QColor(91, 97, 120))
+        p.drawText(QPointF(x2, y + base - 4), "%")
+
+
+class PulseDot(QWidget):
+    """Small glowing dot with an infinite pulsing opacity loop."""
+
+    def __init__(self, color="#9C80FF", size=6, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self.setStyleSheet(
+            f"background-color: {color}; border-radius: {size // 2}px;"
+            f" border: 1px solid {color};")
+        self._anim = None
+        self._start_pulse()
+
+    def _start_pulse(self):
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        eff = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(eff)
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(1300)
+        self._anim.setLoopCount(-1)
+        self._anim.setStartValue(1.0)
+        self._anim.setEndValue(0.35)
+        self._anim.setEasingCurve(QEasingCurve.InOutSine)
+        self._anim.valueChanged.connect(eff.setOpacity)
+        self._anim.start()
 
 
 class LinkLabel(QLabel):
@@ -114,6 +268,7 @@ class RexLogo(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         r = QRectF(2, 2, self.width() - 4, self.height() - 4)
         radius = 15.0
         tile = QPainterPath()
@@ -158,7 +313,7 @@ class RexLogo(QWidget):
                        QPointF(r.left() + 17, r.bottom() - 9))
 
             # glowing 'R'
-            font = QFont("Segoe UI Variable Display")
+            font = QFont("Segoe UI")
             font.setPixelSize(27)
             font.setBold(True)
             p.setFont(font)
@@ -178,7 +333,7 @@ def _measure_text(text: str, px: int, spacing: float) -> int:
     """Measure text with the exact font paintEvent draws (bold + letter
     spacing), so sizeHint never under-sizes and clips the last character."""
     from PySide6.QtGui import QFontMetrics
-    f = QFont("Segoe UI Variable Display")
+    f = QFont("Segoe UI")
     f.setPixelSize(px)
     f.setBold(True)
     f.setLetterSpacing(QFont.AbsoluteSpacing, spacing)
@@ -216,6 +371,7 @@ class LiveBadge(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         h = self.height()
         r = QRectF(0, 0, self.width() - 1, h - 1)
         radius = h / 2.0
@@ -238,7 +394,7 @@ class LiveBadge(QWidget):
         p.setBrush(core)
         p.drawEllipse(QPointF(cx, cy), 3.6, 3.6)
 
-        font = QFont("Segoe UI Variable Display")
+        font = QFont("Segoe UI")
         font.setPixelSize(11)
         font.setBold(True)
         font.setLetterSpacing(QFont.AbsoluteSpacing, 0.6)
@@ -283,6 +439,7 @@ class BackendStatusBlock(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         r = QRectF(0, 0, w - 1, h - 1)
         radius = 14.0
@@ -305,7 +462,7 @@ class BackendStatusBlock(QWidget):
         p.setBrush(core)
         p.drawEllipse(QPointF(cx, cy), 3.8, 3.8)
 
-        f = QFont("Segoe UI Variable Display")
+        f = QFont("Segoe UI")
         f.setPixelSize(12)
         f.setBold(True)
         f.setLetterSpacing(QFont.AbsoluteSpacing, 0.8)
@@ -353,6 +510,7 @@ class NeonBar(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         radius = h / 2.0
 
@@ -437,11 +595,13 @@ class LatencyChart(QWidget):
         return self._thermal_cpu if self.mode == "cpu" else self._thermal_gpu
 
     def _thermal_color(self) -> QColor:
-        s = self._thermal()
-        hot = s and s[-1] is not None and s[-1] >= 80
-        if hot:
-            return QColor(DANGER)
-        return QColor(ACCENT if self.mode == "cpu" else WARNING)
+        # Reference dashboard: temperature line is always the gold series.
+        return QColor("#FFB454")
+
+    @property
+    def _clock_color(self):
+        # Reference dashboard: clock line is always the cyan series.
+        return QColor("#4BE8D8")
 
     # ---- hover ----
 
@@ -469,13 +629,14 @@ class LatencyChart(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         ml, mt, mr, mb = 40, 12, 52, 24
         plot = QRectF(ml, mt, w - ml - mr, h - mt - mb)
         if plot.width() <= 0 or plot.height() <= 0:
             return
 
-        small = QFont("Segoe UI Variable Text")
+        small = QFont("Segoe UI")
         small.setPixelSize(9)
         p.setFont(small)
 
@@ -518,7 +679,7 @@ class LatencyChart(QWidget):
                        Qt.AlignLeft | Qt.AlignVCenter, label)
 
         # ---- timeline (bottom) ----
-        marks = [("now", 0), ("15", 15), ("30", 30), ("45", 45), ("60", 60)]
+        marks = [("60m", 60), ("30m", 30), ("now", 0)]
         for text, sec in marks:
             x = plot.right() - (sec / self.WINDOW) * plot.width()
             p.setPen(QColor(FAINT))
@@ -527,11 +688,6 @@ class LatencyChart(QWidget):
             tick = QPen(QColor(255, 255, 255, 14))
             p.setPen(tick)
             p.drawLine(QPointF(x, plot.bottom()), QPointF(x, plot.bottom() + 3))
-
-        # ---- legend chips ----
-        mode_lbl = self.mode.upper()
-        self._chip(p, 4, 2, f"\u25cf THERMAL ({mode_lbl})", self._thermal_color())
-        self._chip(p, 4 + 126, 2, "\u25cf CLOCK", QColor(WARNING))
 
         thermal = self._thermal()
         n = len(thermal)
@@ -600,7 +756,7 @@ class LatencyChart(QWidget):
             p.drawPolygon(poly)
 
         # ---- clock line ----
-        clock_color = QColor(WARNING)
+        clock_color = self._clock_color
         c_run = [(i, c_pts[i]) for i in range(n) if c_pts[i]]
         if len(c_run) >= 2:
             path = QPainterPath()
@@ -647,8 +803,9 @@ class LatencyChart(QWidget):
             ago = (self.WINDOW - 1) - xi
             ago_txt = "now" if ago <= 0 else f"{ago}s ago"
             lines = [ago_txt]
-            lines.append(f"{mode_lbl}  {temp:.0f}\u00b0C" if temp is not None
-                         else f"{mode_lbl}  \u2014")
+            therm_lbl = "CPU" if self.mode == "cpu" else "GPU"
+            lines.append(f"{therm_lbl}  {temp:.0f}\u00b0C" if temp is not None
+                         else f"{therm_lbl}  \u2014")
             lines.append(f"CLOCK  {mhz:.0f} MHz" if mhz else "CLOCK  \u2014")
             tw, th = 170, 50
             tx = x + 12 if t_pts[xi] else c_pts[xi][0] + 12
@@ -660,7 +817,7 @@ class LatencyChart(QWidget):
             p.setPen(QPen(QColor(60, 66, 79), 1))
             p.setBrush(QColor(21, 27, 36))
             p.drawRoundedRect(QRectF(tx, ty, tw, th), 7, 7)
-            tip = QFont("Segoe UI Variable Text")
+            tip = QFont("Segoe UI")
             tip.setPixelSize(9.5)
             tip.setBold(True)
             p.setFont(tip)
@@ -673,22 +830,6 @@ class LatencyChart(QWidget):
             p.setPen(QColor(clock_color))
             p.drawText(QRectF(tx + 10, ty + 32, tw - 16, 13),
                        Qt.AlignLeft | Qt.AlignVCenter, lines[2])
-
-    def _chip(self, p: QPainter, x: float, y: float, text: str,
-              color: QColor):
-        fm = p.fontMetrics()
-        tw = fm.horizontalAdvance(text)
-        rect = QRectF(x, y, tw + 18, 16)
-        p.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 60), 1))
-        p.setBrush(QColor(14, 18, 25))
-        p.drawRoundedRect(rect, 8, 8)
-        p.setFont(self.font())
-        small = QFont("Segoe UI Variable Text")
-        small.setPixelSize(8.5)
-        small.setBold(True)
-        p.setFont(small)
-        p.setPen(QColor(color))
-        p.drawText(rect, Qt.AlignCenter, text)
 
 
 # --------------------------------------------------------------------------
@@ -706,6 +847,7 @@ class _CommunityArt(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
         w, h = self.width(), self.height()
         r = QRectF(0, 0, w - 1, h - 1)
@@ -797,7 +939,7 @@ class DiscordCommunityCard(GlassCard):
             f" color: {badge_color};"
             f" border: 1px solid {qss_rgba(badge_color, 0x88)};"
             " border-radius: 9px; padding: 3px 10px; font-size: 10px;"
-            " font-weight: 800; letter-spacing: 0.7px;")
+            " font-weight: 700; letter-spacing: 0.7px;")
         badge_row.addWidget(coming)
         badge_row.addStretch()
         lay.addLayout(badge_row)
@@ -886,7 +1028,7 @@ class DiskBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(14)
+        self.setFixedHeight(7)
         self.setMinimumWidth(220)
         self._segments: list = []
         self._total = 1
@@ -899,12 +1041,18 @@ class DiskBar(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         r = QRectF(0, 0, self.width(), self.height())
         radius = self.height() / 2.0
 
         path = QPainterPath()
         path.addRoundedRect(r, radius, radius)
         p.setClipPath(path)
+
+        # hairline track
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 18))
+        p.fillPath(path, QColor(255, 255, 255, 18))
 
         x = 0.0
         n = len(self._segments)
@@ -919,11 +1067,6 @@ class DiskBar(QWidget):
             p.fillRect(QRectF(x, 0, seg_w, self.height()), col)
             x += seg_w
         p.setClipping(False)
-
-        outline = QPen(QColor(29, 34, 42), 1)
-        p.setPen(outline)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
 
 
 # --------------------------------------------------------------------------
@@ -954,7 +1097,7 @@ class InfoDialog(QDialog):
         lay.setSpacing(12)
 
         title = QLabel("System Info")
-        title.setStyleSheet(f"font-size: 22px; font-weight: 900; color: {TEXT};")
+        title.setStyleSheet(f"font-size: 22px; font-weight: 700; color: {TEXT};")
         lay.addWidget(title)
         sub = QLabel("Your system at a glance.")
         sub.setObjectName("PageSub")
@@ -970,7 +1113,7 @@ class InfoDialog(QDialog):
         grid.setVerticalSpacing(10)
         for row, (label, value) in enumerate(rows):
             l = QLabel(label.upper())
-            l.setStyleSheet(f"color: {FAINT}; font-size: 10px; font-weight: 800;"
+            l.setStyleSheet(f"color: {FAINT}; font-size: 10px; font-weight: 700;"
                             "letter-spacing: 1.2px;")
             v = QLabel(value)
             v.setStyleSheet(f"color: {TEXT}; font-size: 13px; font-weight: 600;")
@@ -1000,7 +1143,7 @@ class ChangelogDialog(QDialog):
         lay.setSpacing(12)
 
         title = QLabel("What's New")
-        title.setStyleSheet(f"font-size: 22px; font-weight: 900; color: {TEXT};")
+        title.setStyleSheet(f"font-size: 22px; font-weight: 700; color: {TEXT};")
         lay.addWidget(title)
         sub = QLabel("The latest changes and improvements.")
         sub.setObjectName("PageSub")
@@ -1017,7 +1160,7 @@ class ChangelogDialog(QDialog):
             head = QHBoxLayout()
             v_lbl = QLabel(version)
             v_lbl.setStyleSheet(
-                f"color: {ACCENT}; font-size: 14px; font-weight: 900;")
+                f"color: {ACCENT}; font-size: 14px; font-weight: 700;")
             d_lbl = QLabel(date)
             d_lbl.setStyleSheet(f"color: {FAINT}; font-size: 11px;")
             head.addWidget(v_lbl)

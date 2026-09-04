@@ -57,6 +57,7 @@ class SpaceBackground(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         if w < 2 or h < 2:
             p.end()

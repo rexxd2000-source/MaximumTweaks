@@ -1,0 +1,20 @@
+Sidebar icons in this folder are colorful glossy icons, each tinted to its
+category color (FPS green, System blue, Input red, Tools orange, Profiles
+pink, Meta gray). Bundled as PNG assets so the shipped app needs no network
+or SVG rendering plugin at runtime; the app draws them as-is (white only on
+the active row, matching the reference design).
+
+- 16 icons (Dashboard, CPU, GPU, RAM, Games, FPS boost, Windows/system,
+  Storage, Audio, Network, Keyboard, Mouse, Input, Tools, Game profiles,
+  Fortnite settings) are the colorful glossy art from the previous sidebar
+  design (maximum-tweaks-sidebar-v4.html), recolored to the category hue
+  while preserving their gloss/shine.
+- 5 icons (Delay destroyer, Smart debloater, Route analyzer, AI assistant,
+  Settings) are generated in the same glossy style from the lucide glyphs in
+  maximum-tweaks-sidebar-colorcoded.html (ISC, https://lucide.dev/license).
+- Smart debloater uses the lucide "broom-sparkles" glyph and Controller
+  overclock uses the lucide "gamepad-2" glyph (both fetched from the official
+  lucide-static package, https://unpkg.com/lucide-static), rendered in the same
+  glossy Tools-amber style (ISC, https://lucide.dev/license).
+
+Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03).

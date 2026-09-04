@@ -91,6 +91,7 @@ def run_cmd_elevated(cmd: str) -> bool:
             ["powershell", "-NoProfile", "-Command", script],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            creationflags=0x08000000,
         )
         try:
             rc = proc.wait(timeout=120)

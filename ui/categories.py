@@ -133,7 +133,7 @@ CATEGORY_GROUPS = {
         "title": "CPU Tweaks",
         "icon": "\u2b22",
         "logo": "cpu",
-        "color": "#8B5CF6",
+        "color": "#3FDC98",
         "blurb": "Processor scheduling, power management and Windows CPU optimizations.",
         "db": ["CPU", "Scheduling"],
     },
@@ -142,7 +142,7 @@ CATEGORY_GROUPS = {
         "title": "GPU Tweaks",
         "icon": "\u25c6",
         "logo": "gpu",
-        "color": "#C084FC",
+        "color": "#3FDC98",
         "blurb": "NVIDIA/AMD/Intel GPU optimizations, scheduling, and vendor-specific driver settings.",
         "db": ["GPU", "NVIDIA", "AMD", "Intel"],
     },
@@ -151,7 +151,7 @@ CATEGORY_GROUPS = {
         "title": "RAM Tweaks",
         "icon": "\u2588",
         "logo": "ram",
-        "color": "#F472B6",
+        "color": "#3FDC98",
         "blurb": "Memory management, virtual memory and background memory behavior.",
         "db": ["RAM"],
     },
@@ -160,7 +160,7 @@ CATEGORY_GROUPS = {
         "title": "Mouse Tweaks",
         "icon": "\u21a8",
         "logo": "mouse",
-        "color": "#A78BFA",
+        "color": "#FF6F6F",
         "blurb": "Pointer precision, acceleration and polling for sharper response.",
         "db": ["Mouse"],
     },
@@ -169,7 +169,7 @@ CATEGORY_GROUPS = {
         "title": "Keyboard Tweaks",
         "icon": "\u2328",
         "logo": "keyboard",
-        "color": "#D946EF",
+        "color": "#FF6F6F",
         "blurb": "Repeat delay, filter keys and keyboard input responsiveness.",
         "db": ["Keyboard"],
     },
@@ -178,7 +178,7 @@ CATEGORY_GROUPS = {
         "title": "Pointer & Input",
         "icon": "\u2694",
         "logo": "input",
-        "color": "#E879F9",
+        "color": "#FF6F6F",
         "blurb": "Input-latency reductions so your clicks, keystrokes and pointer inputs register faster.",
         "db": ["Input Latency", "Aim", "Precision Tweaks"],
     },
@@ -187,7 +187,7 @@ CATEGORY_GROUPS = {
         "title": "Network Tweaks",
         "icon": "\u2637",
         "logo": "network",
-        "color": "#6366F1",
+        "color": "#6C93FF",
         "blurb": "TCP/IP stack, Ethernet and Wi-Fi tuning for lower ping and stable connections.",
         "db": ["Network", "Ethernet", "Wi-Fi"],
     },
@@ -196,7 +196,7 @@ CATEGORY_GROUPS = {
         "title": "Storage / SSD",
         "icon": "\u25b6",
         "logo": "storage",
-        "color": "#818CF8",
+        "color": "#6C93FF",
         "blurb": "NTFS, SSD trimming, filesystem and disk behavior optimizations.",
         "db": ["Storage"],
     },
@@ -205,7 +205,7 @@ CATEGORY_GROUPS = {
         "title": "Audio Tweaks",
         "icon": "\U0001f50a",
         "logo": "audio",
-        "color": "#06B6D4",
+        "color": "#6C93FF",
         "blurb": "Deep Windows audio engine, WASAPI, MMCSS scheduling, USB/Bluetooth audio, microphones, and gaming audio optimizations.",
         "db": ["Audio"],
     },
@@ -214,7 +214,7 @@ CATEGORY_GROUPS = {
         "title": "Windows / System",
         "icon": "\u2699",
         "logo": "system",
-        "color": "#C484FF",
+        "color": "#6C93FF",
         "blurb": "Windows shell, services, privacy, telemetry, DirectX, graphics stack and more.",
         "db": [
             "Windows", "System", "Registry", "Services",
@@ -229,8 +229,8 @@ CATEGORY_GROUPS = {
         "title": "Power Tweaks",
         "icon": "\u26a1",
         "logo": "power",
-        "color": "#F59E0B",
-        "blurb": "Power plans, CPU power states, sleep/hibernate and energy settings. Includes the MAXimum Premium Power Plan.",
+        "color": "#3FDC98",
+        "blurb": "Power plans, CPU power states, sleep/hibernate and energy settings. Includes the Maximum Power Plan.",
         "db": ["Power Plans", "Power"],
     },
     "performance": {
@@ -238,7 +238,7 @@ CATEGORY_GROUPS = {
         "title": "Performance Tweaks",
         "icon": "\u26a1",
         "logo": "performance",
-        "color": "#A855F7",
+        "color": "#3FDC98",
         "blurb": "FPS boosting and frame-pacing optimizations for smoother, more consistent gameplay.",
         "db": ["Performance", "FPS", "Frame Time"],
     },
@@ -247,7 +247,7 @@ CATEGORY_GROUPS = {
         "title": "Fortnite",
         "icon": "\u25c9",
         "logo": "fortnite",
-        "color": "#9333EA",
+        "color": "#E879C9",
         "blurb": "Fortnite-only optimizations for FPS, input latency, graphics and network.",
         "db": ["Fortnite"],
     },
@@ -256,7 +256,7 @@ CATEGORY_GROUPS = {
         "title": "Game Tweaks",
         "icon": "\u2605",
         "logo": "games",
-        "color": "#EC4899",
+        "color": "#3FDC98",
         "blurb": "Game Mode, DVR, Game Bar and general gaming performance settings.",
         "db": ["Gaming"],
     },
@@ -265,7 +265,7 @@ CATEGORY_GROUPS = {
         "title": "Game Profiles",
         "icon": "\u2654",
         "logo": "profiles",
-        "color": "#B16CEA",
+        "color": "#E879C9",
         "blurb": "One-click per-game performance profiles for popular esports titles.",
         "db": ["Game Profiles"],
     },
@@ -274,7 +274,7 @@ CATEGORY_GROUPS = {
         "title": "System Tools",
         "icon": "\u26cf",
         "logo": "tools",
-        "color": "#9D7BFF",
+        "color": "#FFB454",
         "blurb": "Diagnostics, repair and quick-access tools for your system.",
         "db": ["System Tools", "Diagnostics", "Repair"],
     },
@@ -283,7 +283,7 @@ CATEGORY_GROUPS = {
         "title": "Laptop Tweaks",
         "icon": "\u25c8",
         "logo": "laptop",
-        "color": "#34D399",
+        "color": "#6C93FF",
         "blurb": "Battery, lid, hybrid-graphics and dedicated-GPU settings "
                 "specific to laptops.",
         "db": ["Laptop"],
@@ -293,7 +293,7 @@ CATEGORY_GROUPS = {
         "title": "FPS Boost",
         "icon": "\u26a1",
         "logo": "fpsboost",
-        "color": "#EF4444",
+        "color": "#3FDC98",
         "blurb": "Proven system-level tweaks to maximize FPS — VBS, ReBAR, "
                 "core parking, GPU power management and more.",
         "db": ["FPS Boost"],
@@ -303,7 +303,7 @@ CATEGORY_GROUPS = {
         "title": "Delay Destroyer",
         "icon": "\u26a1",
         "logo": "performance",
-        "color": "#FF6B35",
+        "color": "#FFB454",
         "blurb": "Input latency, system responsiveness, frame pacing, network and USB tweaks — one card per optimization.",
         "db": ["Delay Destroyer"],
     },
@@ -315,7 +315,7 @@ GROUP_ORDER = [
     "games", "profiles", "tools", "laptop", "fpsboost", "delay_destroyer",
 ]
 
-# Sidebar "Tweaks" sub-categories (no profiles/tools â€” those are top-level nav).
+# Sidebar "Tweaks" sub-categories (profiles/tools are top-level nav).
 TWEAK_ORDER = [
     "cpu", "gpu", "ram", "power", "mouse", "keyboard", "input",
     "network", "storage", "audio", "system", "performance", "fortnite",
@@ -349,6 +349,24 @@ TOOLS_IDS = {
     "audio-012",
     # Debloat cleanup
     "db-014",
+}
+
+# Diagnostic scans/tests that used to sit inside tweak categories (they were
+# wrongly filed as System/Tools "tweaks" — they don't change anything, they
+# measure). Hidden from every tweak group; re-homed as real tests on the
+# Diagnostics page (ui/pages/diagnostics.py + engine/diagnostics.py).
+DIAG_IDS = {
+    "diag-new-002",   # GPU Throttling Reason Scanner
+    "diag-new-005",   # Background Game Recording Process Scanner
+    "diag-new-001",   # GPU PCIe Link Width / Speed Diagnostic
+    "diag-new-003",   # Hard Fault / Memory Pressure Detector
+    "diag-new-004",   # Refresh Rate / Display Mode Verification
+    "net-new-001",    # Network Jitter + Packet Loss Test
+    "net-new-002",    # Bufferbloat Test
+    "diag-009",       # Network Latency Test
+    "ram-012",        # Memory Stability Test (Windows Memory Diagnostic)
+    "stor-011",       # NTFS Scan (Read-Only)
+    "rep-003",        # Scan Disk for Errors
 }
 
 # Short pill / chip labels for the 12 browsable tweak groups.
@@ -421,16 +439,18 @@ FORTNITE_ORDER = list(FORTNITE_SECTIONS)
 
 # Game profile tweak ids, kept in a stable display order.
 GAME_PROFILE_IDS = [
-    "gp-001", "gp-002", "gp-003", "gp-004", "gp-005", "gp-006",
-    "gp-007", "gp-008", "gp-009", "gp-010", "gp-011", "gp-012",
+    "gp-001", "gp-002", "gp-003",
 ]
 
 
 def group_tweaks(key: str) -> list[dict]:
     db_cats = set(CATEGORY_GROUPS[key]["db"])
     if key == "tools":
-        return [t for t in TWEAKS if t["category"] in db_cats or t["id"] in TOOLS_IDS]
-    return [t for t in TWEAKS if t["category"] in db_cats and t["id"] not in TOOLS_IDS]
+        return [t for t in TWEAKS
+                if (t["category"] in db_cats or t["id"] in TOOLS_IDS)
+                and t["id"] not in DIAG_IDS]
+    return [t for t in TWEAKS if t["category"] in db_cats
+            and t["id"] not in TOOLS_IDS and t["id"] not in DIAG_IDS]
 
 
 # --- GPU vendor filter -------------------------------------------------------
@@ -492,7 +512,7 @@ def gpu_filter_tweaks(key: str, gpu_vendor: str) -> list[dict]:
     return out
 
 
-# ── CPU vendor/form-factor filtering ──────────────────────────────────
+# == CPU vendor/form-factor filtering ==================================
 # Works like GPU filtering: universal tweaks (no when.cpu_vendor / when.laptop)
 # are ALWAYS shown; vendor/form-factor tagged tweaks are only shown when
 # they match the detected hardware.

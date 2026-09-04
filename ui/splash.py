@@ -35,10 +35,13 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QBrush,
     QFont,
     QLinearGradient,
     QPainter,
+    QPainterPath,
     QPen,
+    QPixmap,
     QPolygonF,
     QRadialGradient,
 )
@@ -51,9 +54,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import APP_VERSION
+from config.app_config import APP_VERSION, DIRS
 
-ACCENT = QColor("#8B5CF6")
+ACCENT = QColor("#8B6BFF")
 TEXT = QColor(238, 244, 248)
 DIM = QColor(124, 147, 166)
 FAINT = QColor(64, 80, 96)
@@ -108,9 +111,9 @@ _UPDATE_QSS = """
     border-radius: 14px;
 }
 #UpdTitle {
-    color: #8B5CF6;
+    color: #8B6BFF;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 700;
     letter-spacing: 2px;
     background: transparent;
     border: none;
@@ -130,20 +133,20 @@ _UPDATE_QSS = """
 }
 #UpdBar::chunk {
     background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
-                                      stop: 0 #7C3AED, stop: 1 #8B5CF6);
+                                      stop: 0 #7C3AED, stop: 1 #8B6BFF);
     border-radius: 3px;
 }
 #UpdPrimary {
-    background-color: #8B5CF6;
-    color: #F2F5F9;
+    background-color: #8B6BFF;
+    color: #F6F4FC;
     border: none;
     border-radius: 8px;
     padding: 8px 20px;
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 700;
 }
 #UpdPrimary:hover {
-    background-color: #A78BFA;
+    background-color: #9C80FF;
 }
 #UpdPrimary:disabled {
     background-color: #1E1B2E;
@@ -338,14 +341,20 @@ class _ProbeThread(QThread):
 
 
 class CinematicSplash(QWidget):
-    """Frameless boot screen. Emits build_now ~80% in, finished at 100%.
+    """Boot screen — port of loading-screen-fullscreen.html.
 
-    The update check runs as an inline loading step: progress holds at
-    HOLD_PCT until the check resolves. If a newer build exists the splash
-    shows the ``_UpdatePanel`` (install / skip) and ``finished`` is held until
-    the user decides. drive via update_checking() / update_ok() /
-    update_available() / update_progress() / set_installing() /
-    update_error().
+    Fullscreen + always-on-top (locked above everything, but still Alt+Tab-
+    able). Renders the reference: brand topbar with live clock, tracking
+    stage label, a giant % number in a white->violet-soft->cyan gradient,
+    MAXIMUM TWEAKS mono wordmark, violet->cyan bar with the real current
+    step line, and a bottom bar with three status chips (hardware / tweak
+    database / license) that light green as each real check lands. Core +
+    corner glow blobs, 38px dot grid and rising particles fill the screen.
+
+    API: signals build_now, finished, install_clicked, skip_clicked,
+    retry_clicked; methods start(), update_checking(), update_ok(),
+    update_available(cur,new,notes), update_progress(frac), set_installing(),
+    update_error(msg), fade_out(ms, on_done).
     """
 
     build_now = Signal()
@@ -354,30 +363,43 @@ class CinematicSplash(QWidget):
     skip_clicked = Signal()
     retry_clicked = Signal()
 
+    STAGES = ((0, "INITIALIZING ENGINE"), (24, "DETECTING HARDWARE"),
+              (40, "LOADING TWEAK DATABASE"), (58, "VERIFYING LICENSE"),
+              (88, "STARTING ENGINE"), (98, "READY"))
+    STEPS = (
+        (0, "Detecting GPU — {gpu}"),
+        (12, "Detecting CPU — {cpu}"),
+        (24, "Reading system memory — {ram}"),
+        (40, "Loading tweak database — {db} entries"),
+        (58, "Verifying license — {license}"),
+        (72, "Restoring last session state"),
+        (88, "Starting Maximum Engine"),
+        (98, "Ready"),
+    )
+    HOLD_PCT = 58
+
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.FramelessWindowHint)
-        self.setStyleSheet("background-color: #05070A;")
+        super().__init__(parent, Qt.FramelessWindowHint
+                         | Qt.WindowStaysOnTopHint)
         self._t0: float | None = None
         self._dur_ms = _dur
         self._done_emitted = False
         self._build_emitted = False
         self._started = False
-
         self._timer = QTimer(self)
         self._timer.setInterval(16)
         self._timer.timeout.connect(self._tick)
-        self._toast_values: dict = {}
-        self._probe: "_ProbeThread" | None = None
-
-        # Boot phase (spec-detection toasts + boot bar) finishes first, then —
-        # only if the update check is still unresolved — the splash switches to
-        # a dedicated update loading screen so the two never overlap.
+        self._toast_values: dict = {"gpu": "...", "cpu": "...",
+                                    "ram": "...", "db": "...",
+                                    "license": "..."}
+        self._probe: _ProbeThread | None = None
+        import random as _r
+        self._particles = [(_r.random(), _r.uniform(8.0, 18.0),
+                            _r.uniform(0.0, 10.0), _r.uniform(0.20, 0.70))
+                           for _ in range(40)]
         self._update_phase = False
         self._entered_phase = False
-        self._pending_panel = None  # callable shown once the update phase starts
-
-        # Update flow state. "held" parks the progress bar and blocks
-        # `finished` while a network decision is pending on the splash.
+        self._pending_panel = None
         self._update_state = "idle"
         self._held = False
         self._ok_hold_until: float | None = None
@@ -387,6 +409,15 @@ class CinematicSplash(QWidget):
         self._panel.install.connect(self.install_clicked)
         self._panel.skip.connect(self.skip_clicked)
         self._panel.retry.connect(self.retry_clicked)
+        self._bg: QPixmap | None = None
+        self._load_db()
+
+    def _load_db(self):
+        try:
+            from database import TWEAKS
+            self._toast_values["db"] = str(len(TWEAKS))
+        except Exception:  # noqa: BLE001
+            self._toast_values["db"] = "..."
 
     # ---------------- lifecycle ----------------
 
@@ -405,7 +436,6 @@ class CinematicSplash(QWidget):
         self.update()
 
     def _start_probe(self):
-        """Kick off a fast background probe so toasts can show real hardware."""
         if self._probe is not None and self._probe.isRunning():
             return
         self._probe = _ProbeThread(self)
@@ -413,13 +443,14 @@ class CinematicSplash(QWidget):
         self._probe.start()
 
     def _on_probe_result(self, values: dict):
-        self._toast_values.update(values)
+        v = dict(values or {})
+        v.setdefault("license", v.get("license", "..."))
+        self._toast_values.update(v)
         self.update()
 
     # ---------------- inline update flow ----------------
 
     def update_checking(self):
-        """Announce the update check loading step and park the bar."""
         self._update_state = "checking"
         self._held = True
         self._ok_hold_until = None
@@ -427,13 +458,6 @@ class CinematicSplash(QWidget):
         self.update()
 
     def _enter_update_phase(self):
-        """Boot/detection is done — switch to the dedicated update screen.
-
-        Only entered when the update check is still unresolved (its result was
-        deferred) or needs a decision. If the check already finished as "ok"
-        during the boot phase there is nothing left to show and the app simply
-        proceeds.
-        """
         fn = self._pending_panel
         self._pending_panel = None
         if fn is not None:
@@ -443,31 +467,26 @@ class CinematicSplash(QWidget):
             self._update_phase = True
             self._held = True
             self.update()
-        # else: "ok" — no separate screen needed
 
     def update_ok(self):
-        """No update (or user skipped): mark done and continue into the app."""
         self._update_state = "ok"
         self._held = False
+        self._update_phase = False
         self._ok_hold_until = _monotonic_ms() + 650.0
         self._panel.hide()
         self.update()
 
     def update_available(self, current: str, new: str, notes: str = ""):
-        """A newer build exists — show the inline install card and wait."""
         self._update_state = "available"
         if self._update_phase:
             self._panel.show_info(current, new, notes)
             self._show_panel()
         else:
-            # Still in the boot phase: hold and reveal the card on its own
-            # screen once the spec detection finishes.
             self._held = True
             self._pending_panel = lambda: (
                 self._panel.show_info(current, new, notes), self._show_panel())
 
     def update_progress(self, frac: float):
-        """Download progress, 0..1."""
         self._update_state = "downloading"
         self._download_frac = _clamp01(frac)
         self._panel.show_download(self._download_frac)
@@ -475,7 +494,6 @@ class CinematicSplash(QWidget):
         self.update()
 
     def set_installing(self):
-        """The staged exe is being swapped in; hold until relaunch."""
         self._update_state = "installing"
         self._download_frac = 1.0
         self._panel.show_installing()
@@ -483,7 +501,6 @@ class CinematicSplash(QWidget):
         self.update()
 
     def update_error(self, message: str):
-        """Update check/download failed — show retry on the splash."""
         self._update_state = "error"
         if self._update_phase:
             self._panel.show_error(message)
@@ -505,16 +522,16 @@ class CinematicSplash(QWidget):
         self._panel.adjustSize()
         ph = max(self._panel.sizeHint().height(), 128)
         x = (self.width() - pw) // 2
-        y = max(24, int(self.height() * 0.58) - ph // 2)
+        y = int(self.height() * 0.72) - ph // 2
         self._panel.setGeometry(x, y, pw, ph)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._bg = None
         if self._panel is not None and self._panel.isVisible():
             self._position_panel()
 
     def fade_out(self, duration_ms: int = 700, on_done=None):
-        """Cross-fade the splash away; the window below shows through."""
         anim = QPropertyAnimation(self, b"windowOpacity", self)
         anim.setDuration(duration_ms)
         anim.setStartValue(self.windowOpacity())
@@ -532,421 +549,329 @@ class CinematicSplash(QWidget):
     # ---------------- animation driver ----------------
 
     def _tick(self):
-        import time as _time
-        now = _time.monotonic() * 1000.0
-        if self._t0 is None or now - self._t0 > self._dur_ms * 2:
-            start_offset = 0.0 if self._t0 is None else self._dur_ms
-            self._t0 = now - start_offset
+        now = _monotonic_ms()
+        if self._t0 is None:
+            self._t0 = now
         t = now - self._t0
         if self._ok_hold_until is not None and now >= self._ok_hold_until:
             self._ok_hold_until = None
         if t >= self._dur_ms and not self._entered_phase:
             self._entered_phase = True
             self._enter_update_phase()
-        if t >= self._dur_ms and not self._done_emitted \
-                and not self._held and self._ok_hold_until is None:
+        if (t >= self._dur_ms and not self._done_emitted
+                and not self._held and self._ok_hold_until is None):
             self._done_emitted = True
             self.finished.emit()
-        if t >= self._dur_ms * 0.80 and not self._build_emitted:
+        pct = self._current_pct(t)
+        if pct >= 88 and not self._build_emitted:
             self._build_emitted = True
             self.build_now.emit()
         self.update()
 
+    def _current_pct(self, t: float | None = None) -> float:
+        if t is None:
+            t = 0.0 if self._t0 is None else _monotonic_ms() - self._t0
+        u = _clamp01(t / self._dur_ms)
+        pct = _ease_out_cubic(u) * 100.0
+        if self._update_state == "downloading":
+            pct = max(pct, 58.0 + self._download_frac * 32.0)
+        elif self._update_state == "installing":
+            pct = 96.0
+        elif self._held:
+            pct = min(pct, float(self.HOLD_PCT))
+        return min(pct, 100.0)
+
     # ---------------- painting ----------------
 
     def paintEvent(self, _event):
-        import time as _time
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return
+        now = _monotonic_ms()
+        t = 0.0 if self._t0 is None else now - self._t0
+        pct = self._current_pct(t)
+
+        if (self._bg is None or self._bg.width() != w
+                or self._bg.height() != h):
+            self._bg = self._render_bg(w, h)
         p = QPainter(self)
+        p.drawPixmap(0, 0, self._bg)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.TextAntialiasing)
 
-        w, h = self.width(), self.height()
-        now = _time.monotonic() * 1000.0
-        t0 = self._t0 if self._t0 is not None else now
-        t = 0.0 if not self._started else now - t0
-        t = min(t, self._dur_ms)
-        u = _clamp01(t / self._dur_ms)
-        pct = int(round(_ease_out_cubic(u) * 100))
-
-        # Update flow overrides the natural progress, but only on the dedicated
-        # update screen; the boot bar runs its own 0-100% cycle.
-        if self._update_phase:
-            if self._update_state == "downloading":
-                pct = int(round(self._download_frac * 100))
-            elif self._update_state == "installing":
-                pct = 100
-            elif self._held:
-                pct = max(pct, HOLD_PCT)
-
-        self._draw_stage(p, w, h, t)
-        self._draw_aurora(p, w, h, t)
-        self._draw_scanline(p, w, h, t)
-        self._draw_corners(p, w, h, t)
-        if self._update_phase:
-            self._draw_update_screen(p, w, h, t)
-        else:
-            self._draw_symbol(p, w, h, t)
-            self._draw_wordmark(p, w, h, t)
-            self._draw_toasts(p, w, h, t)
-        self._draw_progress(p, w, h, t, pct)
-        self._draw_footer(p, w, h)
+        self._draw_particles(p, w, h, t)
+        self._draw_topbar(p, w, t)
+        self._draw_hero(p, w, h, pct, t)
+        self._draw_bottombar(p, w, h, pct)
         p.end()
 
-    # ---- background ----
+    def _render_bg(self, w: int, h: int) -> QPixmap:
+        """#050309 void + three huge soft blobs (violet TL, cyan BR, violet
+        core) + 38px dot grid masked to the centre (CSS .blob/.dots)."""
+        pm = QPixmap(w, h)
+        pm.fill(QColor("#050309"))
+        p = QPainter(pm)
+        core = QRadialGradient(QPointF(w / 2, h * 0.48), max(w, h) * 0.55)
+        core.setColorAt(0.0, QColor(139, 107, 255, 36))
+        core.setColorAt(0.6, QColor(139, 107, 255, 0))
+        p.fillRect(pm.rect(), core)
+        ga = QRadialGradient(QPointF(190, 70), 420)
+        ga.setColorAt(0.0, QColor(139, 107, 255, 56))
+        ga.setColorAt(0.7, QColor(139, 107, 255, 0))
+        p.fillRect(pm.rect(), ga)
+        gb = QRadialGradient(QPointF(w - 180, h - 40), 400)
+        gb.setColorAt(0.0, QColor(75, 232, 216, 33))
+        gb.setColorAt(0.7, QColor(75, 232, 216, 0))
+        p.fillRect(pm.rect(), gb)
+        cx, cy = 0.50 * w, 0.45 * h
+        rx, ry = 0.75 * w, 0.70 * h
+        y = 19.0
+        while y < h:
+            x = 19.0
+            while x < w:
+                d = (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2) ** 0.5
+                if d < 0.92:
+                    a = int(43 * (1.0 - d / 0.92))
+                    if a > 3:
+                        p.setPen(QColor(200, 190, 240, a))
+                        p.drawPoint(QPointF(x, y))
+                x += 38.0
+            y += 38.0
+        p.end()
+        return pm
 
-    def _draw_stage(self, p: QPainter, w: int, h: int, t: float):
-        grad = QLinearGradient(0, 0, 0, h)
-        grad.setColorAt(0.0, BG_TOP)
-        grad.setColorAt(1.0, BG_BOTTOM)
-        p.fillRect(0, 0, w, h, grad)
-
-    def _draw_aurora(self, p: QPainter, w: int, h: int, t: float):
-        cx, cy = w / 2, h * 0.42
-        # two soft drifting glows, very low alpha
-        for i, (dx, dy, hue, r, sp) in enumerate((
-                (-0.28, -0.12, (0, 90, 120), 0.50, 0.00011),
-                (0.30, 0.10, (10, 60, 90), 0.42, -0.00007))):
-            ox = dx + 0.05 * math.sin(t * sp + i * 2.1)
-            oy = dy + 0.05 * math.cos(t * sp * 1.3)
-            x = cx + ox * w
-            y = cy + oy * h
-            radius = max(w, h) * r
-            glow = QRadialGradient(x, y, radius)
-            glow.setColorAt(0.0, QColor(*hue, 26))
-            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.fillRect(0, 0, w, h, glow)
-
-    def _draw_scanline(self, p: QPainter, w: int, h: int, t: float):
-        # one very faint horizontal band drifting down — texture, not drama
-        sy = ((t * 0.05) % (h + 140)) - 70
-        line = QLinearGradient(0, sy - 26, 0, sy + 26)
-        line.setColorAt(0.0, QColor(139, 92, 246, 0))
-        line.setColorAt(0.5, QColor(139, 92, 246, 14))
-        line.setColorAt(1.0, QColor(139, 92, 246, 0))
-        p.setBrush(line)
-        p.setPen(Qt.NoPen)
-        p.drawRect(0, sy - 26, w, 52)
-
-    def _draw_corners(self, p: QPainter, w: int, h: int, t: float):
-        a = _clamp01((t - 250) / 900.0)
-        if a <= 0:
-            return
-        inset = 26
-        length = 30
-        pen = QPen(QColor(139, 92, 246, int(70 * a)), 1)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        for x, y, sx, syx in ((inset, inset, 1, 1), (w - inset, inset, -1, 1),
-                              (inset, h - inset, 1, -1), (w - inset, h - inset, -1, -1)):
-            p.drawLine(QPointF(x, y + syx * length), QPointF(x, y))
-            p.drawLine(QPointF(x, y), QPointF(x + sx * length, y))
-
-    # ---- center composition ----
-
-    def _draw_symbol(self, p: QPainter, w: int, h: int, t: float):
-        cx, cy = w / 2, h * 0.42
-        a = _clamp01((t - 150) / 450.0)
-        if a <= 0:
-            return
-
-        # soft halo behind the mark
-        halo = QRadialGradient(cx, cy, 96)
-        halo.setColorAt(0.0, QColor(139, 92, 246, int(46 * a)))
-        halo.setColorAt(1.0, QColor(0, 0, 0, 0))
-        p.setPen(Qt.NoPen)
-        p.setBrush(halo)
-        p.drawEllipse(QPointF(cx, cy), 96, 96)
-
-        # compact bolt tile that scales in (replaces the old self-drawing ring)
-        scale = 0.72 + 0.28 * _ease_out_cubic(a)
-        size = 52 * scale
-        rect = QRectF(cx - size / 2, cy - size / 2, size, size)
-        p.setBrush(QColor(9, 18, 26, int(232 * a)))
-        p.setPen(QPen(QColor(139, 92, 246, int(150 * a)), 1))
-        p.drawRoundedRect(rect, size * 0.26, size * 0.26)
-
-        s = size * 0.34
-        bolt = QColor(139, 92, 246, int(255 * a))
-        p.setBrush(bolt)
-        p.setPen(Qt.NoPen)
-        p.drawPolygon(QPolygonF([
-            QPointF(cx + s * 0.25, cy - s * 0.95),
-            QPointF(cx - s * 0.45, cy + s * 0.05),
-            QPointF(cx - s * 0.05, cy + s * 0.05),
-            QPointF(cx - s * 0.25, cy + s * 0.95),
-            QPointF(cx + s * 0.45, cy - s * 0.05),
-            QPointF(cx + s * 0.05, cy - s * 0.05),
-        ]))
-
-    def _draw_wordmark(self, p: QPainter, w: int, h: int, t: float):
-        cx = w / 2
-        cy = h * 0.42 + 108
-        k = _clamp01((t - 650) / 750.0)
-        if k <= 0:
-            return
-        ease = _ease_out_cubic(k)
-        alpha = int(255 * ease)
-        spread = int(8 * ease)
-
-        f1 = QFont(self.font())
-        f1.setPixelSize(40)
-        f1.setBold(True)
-        f1.setLetterSpacing(QFont.AbsoluteSpacing, spread)
-        p.setFont(f1)
-        m1 = p.fontMetrics()
-        w1 = m1.horizontalAdvance("MAXIMUM")
-
-        f2 = QFont(self.font())
-        f2.setPixelSize(40)
-        f2.setBold(True)
-        f2.setLetterSpacing(QFont.AbsoluteSpacing, spread)
-        p.setFont(f2)
-        m2 = p.fontMetrics()
-        w2 = m2.horizontalAdvance("TWEAKS")
-
-        gap = 34
-        total = w1 + gap + w2
-        x1 = cx - total / 2
-
-        c1 = QColor(TEXT)
-        c1.setAlpha(alpha)
-        p.setPen(c1)
-        p.setFont(f1)
-        p.drawText(QRectF(x1, cy - 24, w1, 40), Qt.AlignCenter, "MAXIMUM")
-
-        c2 = QColor(ACCENT)
-        c2.setAlpha(alpha)
-        p.setPen(c2)
-        p.setFont(f2)
-        p.drawText(QRectF(x1 + w1 + gap, cy - 24, w2, 40), Qt.AlignCenter, "TWEAKS")
-
-        # hairline draws from the centre outwards
-        hk = _clamp01((t - 1250) / 650.0)
-        if hk > 0:
-            he = _ease_in_out(hk)
-            half = 110 * he
-            grad = QLinearGradient(x1 - half, 0, x1 + half, 0)
-            grad.setColorAt(0.0, QColor(139, 92, 246, 0))
-            grad.setColorAt(0.5, QColor(139, 92, 246, int(120 * hk)))
-            grad.setColorAt(1.0, QColor(139, 92, 246, 0))
-            p.setBrush(grad)
+    def _draw_particles(self, p: QPainter, w: int, h: int, t: float):
+        for fx, dur, delay, op in self._particles:
+            lt = (t / 1000.0 - delay) % dur
+            if t / 1000.0 < delay:
+                continue
+            prog = lt / dur
+            y = h + 10 - prog * (h + 20)
+            a = op * 255
+            if prog < 0.1:
+                a *= prog / 0.1
+            elif prog > 0.9:
+                a *= (1.0 - prog) / 0.1
             p.setPen(Qt.NoPen)
-            p.drawRect(x1 - half, cy + 34, half * 2, 1)
+            c = QColor(201, 192, 255, int(max(0.0, min(1.0, a / 255)) * 160))
+            p.setBrush(c)
+            p.drawEllipse(QPointF(fx * w, y), 1.2, 1.2)
 
-    def _draw_toasts(self, p: QPainter, w: int, h: int, t: float):
-        """Rapid sequential hardware/system toasts, near-center, fade out fast."""
-        if self._update_phase:
-            return
-        if self._panel is not None and self._panel.isVisible():
-            return
-        if t < 2200:
-            return
-        cx = w / 2
-        base_y = h * 0.42 + 170
-        slot_h = 34
-        show = []
-        # stagger the four toasts quickly; each pops in and fades out fast
-        for i, (prefix, text, kind) in enumerate(TOAST_DEFS):
-            start = 2200 + i * 780
-            fade_in = 220
-            fade_out = 320
-            hold = 1250
-            end = start + fade_in + hold + fade_out
-            if t < start or t > end:
-                continue
-            a_in = _clamp01((t - start) / fade_in)
-            a_out = _clamp01((end - t) / fade_out)
-            a = min(a_in, a_out)
-            if a <= 0:
-                continue
-            value = self._toast_values.get(kind, "...")
-            label = f"{text}: {value}" if value and value != "..." else f"{text}..."
-            show.append((start, a, f"{prefix} {label}"))
-        if not show:
-            return
+    def _load_pfp(self):
+        if getattr(self, "_pfp", None) is not None:
+            return self._pfp
+        pm = QPixmap()
+        # 1) the user's own profile picture if one has been set...
+        try:
+            from engine.state import pfp_path
+            path = pfp_path()
+            if path:
+                pm = QPixmap(path)
+        except Exception:  # noqa: BLE001
+            pm = QPixmap()
+        # 2) otherwise the official Maximum logo so we never show the bare "M".
+        if pm is None or pm.isNull():
+            try:
+                logo = DIRS["assets"] / "rex_logo.png"
+                if logo.is_file():
+                    pm = QPixmap(str(logo))
+            except Exception:  # noqa: BLE001
+                pm = QPixmap()
+        self._pfp = pm
+        return pm
 
-        font = QFont(self.font())
-        font.setPixelSize(11)
-        font.setBold(True)
-        font.setLetterSpacing(QFont.AbsoluteSpacing, 0.4)
-        p.setFont(font)
-        fm = p.fontMetrics()
-
-        for start, a, text in show:
-            tw = fm.horizontalAdvance(text)
-            pad = 14
-            bw = tw + pad * 2
-            by = base_y + (start - 2200) // 780 * slot_h
-            rect = QRectF(cx - bw / 2, by - 14, bw, 28)
-
-            if a < 1:
-                slide = (1.0 - a) * 7
-                rect = QRectF(rect.x(), rect.y() + slide, rect.width(),
-                              rect.height())
-
-            pop = QColor(10, 15, 21, int(225 * a))
-            p.setPen(QPen(QColor(139, 92, 246, int(90 * a)), 1))
-            p.setBrush(pop)
-            p.drawRoundedRect(rect, 14, 14)
-
-            glyph = QColor(139, 92, 246, int(255 * a))
-            p.setPen(glyph)
-            p.drawText(rect.adjusted(pad, 0, 0, 0),
-                       Qt.AlignLeft | Qt.AlignVCenter, text)
-
-    def _draw_update_screen(self, p: QPainter, w: int, h: int, t: float):
-        """Dedicated update loading screen (post-boot).
-
-        Shown only when the update check is still pending after the boot /
-        spec-detection phase finishes, so update status never overlaps the
-        hardware toasts. A spinner ring while checking, a check mark once the
-        check reports "ok"; an available / error outcome shows the panel.
-        """
-        cx = w / 2
-        cy = h * 0.44
-        r = 30
-        # available / downloading / installing / error all use the panel card;
-        # only checking (spinner) and ok (check) are drawn here.
-        if self._panel.isVisible():
-            return
-        if self._update_state == "checking":
-            p.setPen(QPen(QColor(139, 92, 246, 36), 2))
+    def _draw_topbar(self, p: QPainter, w: int, t: float):
+        # brand mark — the user's profile picture, or the official Maximum
+        # logo if no PFP has been set (falling back to the "M" monogram only
+        # if even the logo is unavailable).
+        rect = QRectF(40, 28, 30, 30)
+        pfp = self._load_pfp()
+        if pfp is not None and not pfp.isNull():
+            pm = pfp.scaled(int(rect.width()), int(rect.height()),
+                            Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            path = QPainterPath()
+            path.addRoundedRect(rect, 9, 9)
+            p.save()
+            p.setClipPath(path)
+            p.drawPixmap(rect, pm, QRectF(pm.rect()))
+            p.setClipping(False)
+            p.setPen(QPen(QColor(150, 130, 235, 120), 1))
             p.setBrush(Qt.NoBrush)
-            p.drawEllipse(QPointF(cx, cy), r, r)
-            pen = QPen(QColor(139, 92, 246, 220), 4)
-            pen.setCapStyle(Qt.RoundCap)
-            p.setPen(pen)
-            start_angle = int((-t / 700.0) * 360 * 16)
-            p.drawArc(QRectF(cx - r, cy - r, r * 2, r * 2), start_angle, 100 * 16)
-            heading = "CHECKING FOR UPDATES"
-            sub = "Verifying the latest build\u2026"
-        else:  # "ok"
-            pen = QPen(QColor(139, 92, 246, 230), 4)
-            pen.setCapStyle(Qt.RoundCap)
-            p.setPen(pen)
-            p.setBrush(Qt.NoBrush)
-            p.drawLine(QPointF(cx - 14, cy + 2), QPointF(cx - 3, cy + 13))
-            p.drawLine(QPointF(cx - 3, cy + 13), QPointF(cx + 15, cy - 11))
-            heading = "UPDATES OK"
-            sub = "You are running the latest build"
-
-        f = QFont(self.font())
-        f.setPixelSize(13)
-        f.setBold(True)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 2.5)
-        p.setFont(f)
-        fm = p.fontMetrics()
-        tw = fm.horizontalAdvance(heading)
-        col = QColor(139, 92, 246) if self._update_state == "ok" \
-            else QColor(230, 238, 244)
-        col.setAlpha(235)
-        p.setPen(col)
-        p.drawText(QRectF(cx - tw / 2, cy + r + 46, tw, 18), Qt.AlignCenter,
-                   heading)
-
-        f2 = QFont(self.font())
-        f2.setPixelSize(11)
-        f2.setLetterSpacing(QFont.AbsoluteSpacing, 1)
-        p.setFont(f2)
-        fm2 = p.fontMetrics()
-        sw = fm2.horizontalAdvance(sub)
-        p.setPen(QColor(124, 147, 166))
-        p.drawText(QRectF(cx - sw / 2, cy + r + 70, sw, 16), Qt.AlignCenter,
-                   sub)
-
-    def _draw_progress(self, p: QPainter, w: int, h: int, t: float, pct: int):
-        if t < 900:
-            return
-        # The update screen and the inline update panel each own their progress
-        # display; the bottom boot bar only belongs to the boot phase.
-        if self._update_phase or self._panel.isVisible():
-            return
-        cx = w / 2
-        y = h - 74
-        bar_w = 340
-        x0 = cx - bar_w / 2
-
-        p.setBrush(QColor(22, 30, 38))
-        p.setPen(Qt.NoPen)
-        p.drawRoundedRect(QRectF(x0, y, bar_w, 2), 1, 1)
-
-        fill_w = bar_w * pct / 100.0
-        gr = QLinearGradient(x0, 0, x0 + bar_w, 0)
-        gr.setColorAt(0.0, QColor(124, 58, 237))
-        gr.setColorAt(1.0, ACCENT)
-        p.setBrush(gr)
-        if fill_w > 2:
-            p.drawRoundedRect(QRectF(x0, y, fill_w, 2), 1, 1)
-            glow = QRadialGradient(x0 + fill_w, y + 1, 9)
-            glow.setColorAt(0.0, QColor(139, 92, 246, 150))
-            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.setBrush(glow)
-            p.drawEllipse(QPointF(x0 + fill_w, y + 1), 9, 9)
-
-        # percent
-        f = QFont(self.font())
-        f.setPixelSize(11)
-        p.setFont(f)
-        p.setPen(QColor(139, 92, 246, 200))
-        p.drawText(QRectF(cx + bar_w / 2 + 14, y - 10, 42, 20),
-                   Qt.AlignLeft | Qt.AlignVCenter, f"{pct}%")
-
-        # status line above the bar: fixed while the update flow drives it,
-        # otherwise cycling through the boot sequence
-        cy = y - 26
-        fa = QFont(self.font())
-        fa.setPixelSize(11)
-        fa.setBold(True)
-        fa.setLetterSpacing(QFont.AbsoluteSpacing, 2)
-        p.setFont(fa)
-        fm = p.fontMetrics()
-
-        st = self._update_state
-        if self._update_phase and st in ("checking", "ok", "downloading",
-                                         "installing", "error"):
-            shown = {
-                "checking": "CHECKING FOR UPDATES",
-                "ok": "UPDATES OK",
-                "downloading": "DOWNLOADING UPDATE",
-                "installing": "INSTALLING UPDATE",
-                "error": "UPDATE ERROR",
-            }[st]
-            if st == "error":
-                col = QColor(255, 118, 118)
-            elif st == "checking":
-                col = QColor(130, 155, 172)
-            else:
-                col = QColor(139, 92, 246)
-            col.setAlpha(235)
-            tw = fm.horizontalAdvance(shown)
-            p.setPen(col)
-            p.drawText(QRectF(cx - tw / 2, cy - 8, tw, 16), Qt.AlignCenter,
-                       shown)
-            return
-
-        hold = (self._dur_ms - 1450) / len(STATUS_SEQ)
-        idx = int((t - 1450) / hold)
-        idx = max(0, min(len(STATUS_SEQ) - 1, idx))
-        shown = STATUS_SEQ[idx]
-        tw = fm.horizontalAdvance(shown)
-        stage = ((t - 1450) / hold) % 1.0
-        fad = 0.35 + 0.65 * _clamp01(stage)
-        if idx == len(STATUS_SEQ) - 1:
-            col = QColor(139, 92, 246)
+            p.drawRoundedRect(rect, 9, 9)
+            p.restore()
         else:
-            col = QColor(130, 155, 172)
-        col.setAlpha(int(235 * fad))
-        p.setPen(col)
-        p.drawText(QRectF(cx - tw / 2, cy - 8, tw, 16), Qt.AlignCenter, shown)
+            grad = QRadialGradient(QPointF(rect.left() + 0.35 * 30,
+                                           rect.top() + 0.30 * 30), 36)
+            grad.setColorAt(0.0, QColor(139, 107, 255, 128))
+            grad.setColorAt(1.0, QColor(11, 8, 20, 230))
+            p.setBrush(grad)
+            p.setPen(QPen(QColor(150, 130, 235, 102), 1))
+            p.drawRoundedRect(rect, 9, 9)
+            f = QFont("Segoe UI", 10)
+            f.setWeight(QFont.Weight.Bold)
+            p.setFont(f)
+            p.setPen(QColor("#C9C0FF"))
+            p.drawText(rect, Qt.AlignCenter, "M")
+        fb = QFont("Segoe UI", 13)
+        fb.setWeight(QFont.Weight.DemiBold)
+        p.setFont(fb)
+        p.setPen(QColor("#F6F4FC"))
+        p.drawText(QRectF(81, 28, 320, 30),
+                   Qt.AlignVCenter | Qt.AlignLeft, "Maximum Tweaks")
+        # elapsed clock
+        secs = int(t / 1000)
+        fc = QFont("JetBrains Mono", 11)
+        fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+        p.setFont(fc)
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(w - 240, 28, 200, 30),
+                   Qt.AlignVCenter | Qt.AlignRight,
+                   "%02d:%02d:%02d" % (secs // 3600, (secs // 60) % 60,
+                                        secs % 60))
 
-    def _draw_footer(self, p: QPainter, w: int, h: int):
-        f = QFont(self.font())
-        f.setPixelSize(10)
-        f.setBold(True)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 2)
-        p.setFont(f)
-        p.setPen(FAINT)
-        p.drawText(QRectF(40, h - 36, 300, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                   f"MAXIMUM ENGINE \u00b7 v{APP_VERSION}")
-        p.drawText(QRectF(w - 340, h - 36, 300, 16),
-                   Qt.AlignRight | Qt.AlignVCenter, "SECURE BOOT \u00b7 LOW LATENCY")
+    def _hero_font(self, px, weight):
+        f = QFont("Segoe UI", 1)
+        f.setPixelSize(px)
+        f.setWeight(weight)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, -0.02 * px)
+        return f
+
+    def _draw_hero(self, p: QPainter, w: int, h: int, pct: float,
+                   t: float):
+        # stage label
+        stage = self.STAGES[0][1]
+        for thr, txt in self.STAGES:
+            if pct >= thr:
+                stage = txt
+        if self._update_state in ("checking",):
+            stage = "CHECKING FOR UPDATES"
+        elif self._update_state == "downloading":
+            stage = "DOWNLOADING UPDATE"
+        elif self._update_state == "installing":
+            stage = "INSTALLING UPDATE"
+        elif self._update_state == "error":
+            stage = "UPDATE CHECK FAILED"
+        fs = QFont("JetBrains Mono", 12)
+        fs.setLetterSpacing(QFont.AbsoluteSpacing, 2.6)
+        p.setFont(fs)
+        p.setPen(QColor("#C9C0FF"))
+        p.drawText(QRectF(0, h * 0.20, w, 20), Qt.AlignCenter, stage)
+
+        # giant percentage with gradient fill
+        size = int(max(72, min(128, w * 0.062)))
+        label = "%d" % int(round(pct)) + "%"
+        pf = self._hero_font(size, QFont.Weight.Bold)
+        p.setFont(pf)
+        fm = p.fontMetrics()
+        tw = fm.horizontalAdvance(label)
+        rect = QRectF((w - tw) / 2.0, h * 0.5 - fm.height() * 0.62,
+                      tw, fm.height() * 1.25)
+        grad = QLinearGradient(rect.topLeft(),
+                               rect.bottomRight() * 1.0)
+        g2 = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        g2.setColorAt(0.0, QColor("#FFFFFF"))
+        g2.setColorAt(0.55, QColor("#C9C0FF"))
+        g2.setColorAt(1.0, QColor("#4BE8D8"))
+        glow = QRadialGradient(rect.center(), rect.width() * 0.75)
+        glow.setColorAt(0.0, QColor(139, 107, 255, 40))
+        glow.setColorAt(1.0, QColor(139, 107, 255, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(rect.center(), rect.width() * 0.62,
+                      rect.width() * 0.62)
+        p.setFont(pf)
+        tpen = QPen()
+        tpen.setBrush(QBrush(g2))
+        p.setPen(tpen)
+        p.drawText(rect, Qt.AlignCenter, label)
+
+        # wordmark
+        fw = QFont("JetBrains Mono", 12)
+        fw.setLetterSpacing(QFont.AbsoluteSpacing, 5.0)
+        p.setFont(fw)
+        p.setPen(QColor("#514A70"))
+        wr = QRectF(0, rect.bottom() + 10, w, 18)
+        p.drawText(wr, Qt.AlignCenter, "MAXIMUM TWEAKS")
+
+        # progress bar + step line
+        bw = min(640.0, w * 0.60)
+        bx = (w - bw) / 2.0
+        by = wr.bottom() + 26
+        track = QRectF(bx, by, bw, 6)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 15))
+        p.drawRoundedRect(track, 3, 3)
+        fw2 = bw * pct / 100.0
+        if fw2 > 1:
+            bg = QLinearGradient(track.topLeft(), track.topRight())
+            bg.setColorAt(0.0, QColor("#8B6BFF"))
+            bg.setColorAt(1.0, QColor("#4BE8D8"))
+            p.setBrush(bg)
+            p.drawRoundedRect(QRectF(bx, by, fw2, 6), 3, 3)
+        step = self.STEPS[0][1]
+        for thr, txt in self.STEPS:
+            if pct >= thr:
+                step = txt
+        for k in ("gpu", "cpu", "ram", "db", "license"):
+            token = "{" + k + "}"
+            if token in step:
+                val = self._toast_values.get(k) or "..."
+                step = step.replace(token, str(val))
+        fst = QFont("JetBrains Mono", 11)
+        p.setFont(fst)
+        fm2 = p.fontMetrics()
+        line = "[+]  " + step
+        lw = fm2.horizontalAdvance(line)
+        sr = QRectF((w - lw) / 2.0, by + 16, lw, 18)
+        p.setPen(QColor("#C9C0FF"))
+        p.drawText(QRectF(sr.left(), sr.top(),
+                         fm2.horizontalAdvance("[+]  "), 18),
+                   Qt.AlignLeft | Qt.AlignVCenter, "[+]")
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(sr.left() + fm2.horizontalAdvance("[+]  "),
+                         sr.top(), lw, 18),
+                   Qt.AlignLeft | Qt.AlignVCenter, step)
+
+    def _draw_bottombar(self, p: QPainter, w: int, h: int, pct: float):
+        top = h - 66
+        p.setPen(QPen(QColor(255, 255, 255, 15), 1))
+        p.drawLine(QPointF(40, top), QPointF(w - 40, top))
+        fv = QFont("JetBrains Mono", 10)
+        fv.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+        p.setFont(fv)
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(40, top + 10, 480, 20),
+                   Qt.AlignVCenter | Qt.AlignLeft,
+                   "MAXIMUM ENGINE \u00b7 v" + APP_VERSION)
+        vals = self._toast_values
+        chips = (
+            ("Hardware detected", bool(vals.get("gpu")) and vals.get("gpu") not in ("...", "GPU")),
+            ("Tweak database loaded", vals.get("db") not in ("...", None) and str(vals.get("db", "")).isdigit()),
+            ("License verified", str(vals.get("license", "")).startswith("OK")),
+        )
+        x = float(w - 40)
+        for label, on in reversed(chips):
+            f2 = QFont("JetBrains Mono", 9)
+            f2.setLetterSpacing(QFont.AbsoluteSpacing, 0.55)
+            p.setFont(f2)
+            fm2 = p.fontMetrics()
+            up = label.upper()
+            cw = fm2.horizontalAdvance(up) + 30
+            crect = QRectF(x - cw, top + 7, cw, 24)
+            x -= cw + 9
+            if on:
+                p.setPen(QPen(QColor(61, 220, 151, 90), 1))
+                p.setBrush(QColor(61, 220, 151, 20))
+                p.drawRoundedRect(crect, 7, 7)
+                p.setPen(QColor("#3DDC97"))
+                p.setBrush(QColor("#3DDC97"))
+            else:
+                p.setPen(QPen(QColor(255, 255, 255, 23), 1))
+                p.setBrush(Qt.NoBrush)
+                p.drawRoundedRect(crect, 7, 7)
+                p.setPen(QColor("#514A70"))
+                p.setBrush(QColor("#514A70"))
+            p.drawEllipse(QPointF(crect.left() + 12, crect.center().y()),
+                          2.5, 2.5)
+            p.drawText(crect.adjusted(18, 0, -6, 0),
+                       Qt.AlignVCenter | Qt.AlignLeft, up)

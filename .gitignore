@@ -37,3 +37,17 @@ auth_backend/server.out.log
 auth_backend/server.err.log
 auth_backend/server.out.log
 auth_backend/server.err.log
+
+# Scratch / debug / local runtime artifacts (never release)
+$null
+boot2.txt
+boot3.txt
+boot*.err.txt
+boot*err.txt
+boot*.txt
+qos_state.json
+globe_*.png
+_gen_*.py
+_glyph.py
+# Fonts live in assets/fonts/ - ignore stray root duplicates
+/*.ttf

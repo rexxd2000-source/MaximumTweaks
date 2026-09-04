@@ -8,12 +8,19 @@ from config.app_config import APP_NAME, APP_VERSION, ROOT
 
 block_cipher = None
 
-# Runtime data: the tweak database + config live next to main.py; artwork
-# (rex_logo.png, discord_logo.png) is bundled so frozen builds keep their logos.
+# Runtime data: the tweak database + assets are bundled so frozen builds keep
+# their database and logos. SECURITY: `config/` is deliberately NOT bundled,
+# and there is no config/_secrets.py at all — no API key, token, or credential
+# is ever compiled into the EXE. config.app_config is frozen as a hidden import
+# below, but it reads secrets only from the process environment or a runtime
+# sidecar .txt the operator places after install (neither is shipped).
 datas = []
-for rel in ("config", "database", "assets"):
+for rel in ("database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
+# Provider-published IP range snapshot (GCP gstatic + AWS ip-ranges) used by
+# engine/netmonitor/cloudmap.py for authoritative geo overrides.
+datas.append((str(ROOT / "engine/netmonitor/cloud_regions.json"), "engine/netmonitor"))
 
 # SECURITY: nothing from auth_backend/ is bundled. The desktop app talks to the
 # hosted license backend over HTTPS and holds no secrets — LICENSE_SECRET,
@@ -36,6 +43,7 @@ a = Analysis(
         "engine.state_checker",
         "engine.nvprofile",
         "engine.nvprofiles",
+        "engine.nip_parser",
         "engine.game_detector",
         "engine.game_config",
         "engine.tools_runner",
