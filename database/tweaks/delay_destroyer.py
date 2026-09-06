@@ -96,25 +96,6 @@ TWEAKS = validate_module("delay_destroyer", [
       tags=["usb", "hub", "power", "latency"],
       sub_category="Input Latency"),
 
-    # ── SYSTEM RESPONSIVENESS ─────────────────────────────────────
-
-    T("dd-009", "Optimize MMCSS Gaming Affinity",
-      "Sets the CPU affinity for gaming tasks to all cores.",
-      actions=[
-          ("reg", "HKLM", r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-           "Affinity", 0, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKLM", r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
-           "Affinity", 15, "DWORD"),
-      ],
-      why="Setting Affinity to 0 lets MMCSS use any available CPU core for game threads, "
-          "preventing unnecessary core restrictions. Default of 15 restricts to first 4 cores.",
-      changes="Sets gaming Affinity to 0 (all cores) instead of default 15 (first 4 cores).",
-      risk="safe", impact="low", recommended="recommended", admin=True,
-      tags=["mmcss", "affinity", "cpu", "gaming"],
-      sub_category="System Responsiveness"),
-
     # ── GAMING & FRAME TIME ──────────────────────────────────────
 
     T("dd-010", "Disable Game Bar Tips",

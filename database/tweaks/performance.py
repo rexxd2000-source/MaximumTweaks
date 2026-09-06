@@ -414,7 +414,7 @@ TWEAKS = validate_module("performance", [
       actions=[
           ("reg", "HKLM",
            r"SYSTEM\CurrentControlSet\Control\PriorityControl",
-           "Win32PrioritySeparation", 38, "DWORD"),
+           "Win32PrioritySeparation", 26, "DWORD"),
       ],
       revert=[
           ("regdel", "HKLM",
@@ -422,8 +422,8 @@ TWEAKS = validate_module("performance", [
            "Win32PrioritySeparation"),
       ],
       why="Win32PrioritySeparation controls how the scheduler divides CPU time. "
-          "Value 38 provides short fixed quanta with foreground boost for gaming.",
-      changes="Sets Win32PrioritySeparation to 38 for foreground-optimized scheduling.",
+          "Value 26 provides short quanta with a foreground boost for gaming.",
+      changes="Sets Win32PrioritySeparation to 26 for foreground-optimized scheduling.",
       risk="low", impact="moderate", recommended="recommended",
       admin=True,
       tags=["priority", "scheduler", "foreground"]),

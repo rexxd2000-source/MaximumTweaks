@@ -29,11 +29,6 @@ def RT(key: str, value: str):
     return ("ini", INI_PATH, "RayTracing", key, value)
 
 
-def PM(key: str, value: str):
-    """Build an ``ini`` action for the [PerformanceMode] section."""
-    return ("ini", INI_PATH, "PerformanceMode", key, value)
-
-
 def INIDEL(key: str):
     """Build an ``inidel`` action deleting a key from the main settings section."""
     return ("inidel", INI_PATH, INI_SEC, key)
@@ -354,12 +349,4 @@ TWEAKS = validate_module("fortnite", [
       changes="Sets sg.ViewDistanceQuality=2 under [ScalabilityGroups].",
       risk="safe", impact="moderate", recommended="recommended",
       tags=["fortnite", "viewdistance", "competitive"]),
-    T("fn-039", "Performance Mesh Quality",
-      "Lowers Fortnite mesh quality in Performance Mode.",
-      actions=[PM("MeshQuality", "0")],
-      revert=[INIDEL_SEC("PerformanceMode", "MeshQuality")],
-      why="Lowest mesh quality cuts vertex work in dense POIs.",
-      changes="Sets MeshQuality=0 under [PerformanceMode].",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["fortnite", "mesh", "performance"]),
 ])

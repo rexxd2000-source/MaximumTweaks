@@ -13,8 +13,8 @@ MAX_PLAN_GUID = plan_guid(MAX_PLAN_NAME)
 TWEAKS = validate_module("power_plans", [
     T("pp-013", "Maximum Power Plan",
       "Create and activate the Maximum Power Plan — a maximum-performance "
-      "gaming power plan that locks the processor to 100% and minimizes "
-      "throttling for consistent frame times.",
+      "gaming power plan that lets the CPU boost to 100% under load while "
+      "idling down at rest, minimizing throttling for consistent frame times.",
       actions=[
           # 1. Create the plan from High Performance base.
           ("powerscheme", "create",
@@ -22,9 +22,10 @@ TWEAKS = validate_module("power_plans", [
            MAX_PLAN_NAME),
 
           # ── Processor (AC / DC) ──────────────────────────────────
-          # Lock min & max processor state to 100% for maximum sustained clocks.
-          ("power", "processor_min", 100, "AC"),
-          ("power", "processor_min", 100, "DC"),
+          # Let the CPU idle down to 5% state, but never cap the ceiling —
+          # it can still boost to 100% instantly under load.
+          ("power", "processor_min", 5, "AC"),
+          ("power", "processor_min", 5, "DC"),
           ("power", "processor_max", 100, "AC"),
           ("power", "processor_max", 100, "DC"),
 
@@ -73,13 +74,14 @@ TWEAKS = validate_module("power_plans", [
            "381b4222-f694-41f0-9685-ff5bb260df2e"),  # Balanced
           ("powerscheme", "delete", MAX_PLAN_GUID),
       ],
-      why="A maximum-performance gaming power plan that locks the processor to "
-          "100% min/max state, ramps performance up aggressively (10% increase "
-          "threshold) and scales down slowly (10% decrease threshold), disables "
-          "PCIe link-state power management, sets adaptive brightness off, and "
-          "keeps the display, storage, and system from idling to sleep on AC. "
-          "Based on the Reaper Power Plan spec, which is installed under the "
-          "name 'Maximum Power Plan'.",
+      why="A maximum-performance gaming power plan that lets the CPU boost to "
+          "100% under load while idling down to low clock states at rest, ramps "
+          "performance up aggressively (10% increase threshold) and scales down "
+          "slowly (10% decrease threshold), disables PCIe link-state power "
+          "management, sets adaptive brightness off, and keeps the display, "
+          "storage, and system from idling to sleep on AC. Based on the Reaper "
+          "Power Plan spec, which is installed under the name 'Maximum Power "
+          "Plan'.",
       changes="Installs and activates the Maximum Power Plan.",
       risk="safe", impact="high", recommended="recommended",
       admin=True,
