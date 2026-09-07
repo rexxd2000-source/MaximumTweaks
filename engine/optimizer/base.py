@@ -110,7 +110,11 @@ class Rec:
 
     @property
     def default_checked(self) -> bool:
-        return self.state in ("compatible", "optional")
+        # Only auto-select tweaks explicitly marked RECOMMENDED. Optional,
+        # advanced, experimental and guide tweaks stay manual-only so an
+        # automatic optimizer can never silently enable them.
+        return (self.state in ("compatible", "optional")
+                and self.tweak.get("recommended") == "recommended")
 
 
 @dataclass

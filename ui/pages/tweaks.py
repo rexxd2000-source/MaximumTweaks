@@ -803,6 +803,8 @@ class TweaksPage(QWidget):
         for t in self._visible_tweaks():
             if t.get("guidance"):
                 continue
+            if t.get("recommended") != "recommended":
+                continue
             if self.ctx.live_active(t["id"]):
                 continue
             pf = _preflight(t, profile=profile)

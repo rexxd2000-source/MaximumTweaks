@@ -107,11 +107,11 @@ def _monotonic_ms() -> float:
 
 _FLOW_QSS = """
 #FlowGhost {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.03);
     color: #F6F4FC;
-    border: 1px solid #2B2838;
+    border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 11px;
-    padding: 11px 24px;
+    padding: 12px 26px;
     font-family: "Inter";
     font-size: 13.5px;
     font-weight: 600;
@@ -126,7 +126,7 @@ _FLOW_QSS = """
     color: #FFFFFF;
     border: none;
     border-radius: 11px;
-    padding: 11px 28px;
+    padding: 12px 26px;
     font-family: "Inter";
     font-size: 13.5px;
     font-weight: 600;
@@ -142,7 +142,7 @@ _FLOW_QSS = """
     color: #07140F;
     border: none;
     border-radius: 11px;
-    padding: 11px 28px;
+    padding: 12px 26px;
     font-family: "Inter";
     font-size: 13.5px;
     font-weight: 600;
@@ -731,13 +731,11 @@ class CinematicSplash(QWidget):
             p.setBrush(grad)
             p.setPen(QPen(QColor(150, 130, 235, 102), 1))
             p.drawRoundedRect(rect, 9, 9)
-            f = QFont("Segoe UI", 10)
-            f.setWeight(QFont.Weight.Bold)
+            f = _flow_font("Space Grotesk", 13, QFont.Weight.Bold)
             p.setFont(f)
             p.setPen(QColor("#C9C0FF"))
             p.drawText(rect, Qt.AlignCenter, "M")
-        fb = QFont("Segoe UI", 13)
-        fb.setWeight(QFont.Weight.DemiBold)
+        fb = _flow_font("Space Grotesk", 14, QFont.Weight.DemiBold)
         p.setFont(fb)
         p.setPen(QColor("#F6F4FC"))
         p.drawText(QRectF(81, 28, 320, 30),
@@ -889,7 +887,7 @@ class CinematicSplash(QWidget):
                  "downloading": "Downloading update",
                  "installing": "Installing"}.get(st)
         if stage:
-            self._draw_stage(p, w, h, stage)
+            self._draw_stage(p, w, h, stage.upper())
         if st == "checking":
             self._spinner.move(w // 2 - 32, int(h * 0.32))
             self._spinner.start()
@@ -953,7 +951,7 @@ class CinematicSplash(QWidget):
         p.setPen(QColor("#C9C0FF"))
         p.drawText(QRectF(x + wcur + arrow_w, cy, wnew, 38),
                    Qt.AlignCenter, new)
-        lab = _flow_font("JetBrains Mono", 10, QFont.Weight.Medium, 0.8)
+        lab = _flow_font("Inter", 10, QFont.Weight.Normal, 0.6)
         p.setFont(lab)
         p.setPen(QColor("#514A70"))
         ly = cy + 44
@@ -986,7 +984,8 @@ class CinematicSplash(QWidget):
         frac = _clamp01(self._download_frac)
         label = f"{int(round(frac * 100))}%"
         size = int(round(max(90, min(190, w * 0.13))))
-        f = self._hero_font(size, QFont.Weight.Bold)
+        f = _flow_font("Space Grotesk", size, QFont.Weight.Bold,
+                       -0.02 * size)
         p.setFont(f)
         fm = p.fontMetrics()
         tw = fm.horizontalAdvance(label)
@@ -1070,6 +1069,9 @@ class CinematicSplash(QWidget):
             foot = "MAXIMUM ENGINE \u00b7 v" + APP_VERSION
         p.drawText(QRectF(40, top + 10, 480, 20),
                    Qt.AlignVCenter | Qt.AlignLeft, foot)
+        if self._update_state in ("checking", "available", "downloading",
+                                  "installing", "ready", "error"):
+            return
         vals = self._toast_values
         chips = (
             ("Hardware detected", bool(vals.get("gpu")) and vals.get("gpu") not in ("...", "GPU")),
