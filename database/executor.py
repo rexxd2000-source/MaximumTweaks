@@ -18,6 +18,8 @@ Implements every action kind used by the tweak definitions:
   appx (remove/register)     -> PowerShell
   restart (explorer)         -> restart explorer.exe
   mkdir                      -> os.makedirs
+  process                    -> engine.game_process_manager (running games)
+  netadp                     -> engine.net_latency (NIC properties / RSS)
   guidance                   -> informational no-op
 
 Run with ``dry_run=True`` to preview actions without touching the system.
@@ -29,10 +31,16 @@ import os
 import re
 import subprocess
 import sys
+import threading
 
 from .tweaks import BY_ID
 from .tweaks._base import plan_guid
+from engine import reg_util
 from engine.state_checker import CHANGE_SETTINGS
+
+# Thread-local context so process-level actions ("process") know which tweak
+# they belong to (used to key the per-exe original-state snapshots).
+_tweak_ctx = threading.local()
 
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
@@ -197,14 +205,12 @@ def _reg_write(hive, path, name, value, vtype):
         vtype = "QWORD"
     if isinstance(value, bool):
         value = int(value)
-    token = REG_TYPE.get(vtype.upper()) or vtype.upper()
     if vtype.upper() == "BINARY":
         if isinstance(value, str):
             value = value.replace(" ", "")
         elif isinstance(value, int):
             value = hex(value)[2:].zfill(2)
-    vflag = "/ve" if _is_default_name(name) else f'/v "{name}"'
-    return _run(f'reg add "{hive}\\{path}" {vflag} /t {token} /d "{value}" /f')
+    return reg_util.write_value(hive, path, name, value, vtype)
 
 
 def _is_default_name(name) -> bool:
@@ -221,17 +227,16 @@ def _missing(detail: str) -> bool:
 
 
 def _reg_delete(hive, path, name):
-    vflag = "/ve" if _is_default_name(name) else f'/v "{name}"'
-    ok, detail = _run(f'reg delete "{hive}\\{path}" {vflag} /f')
+    ok, detail = reg_util.delete_value(hive, path, name)
     if not ok and _missing(detail):
         # Deleting an already-absent value is a success (idempotent revert):
-        # the desired end state is achieved even though reg.exe errored.
+        # the desired end state is achieved even though the delete errored.
         return True, f"already absent: {hive}\\{path} [{name}]"
     return ok, detail
 
 
 def _reg_key_delete(hive, path):
-    ok, detail = _run(f'reg delete "{hive}\\{path}" /f')
+    ok, detail = reg_util.delete_key(hive, path)
     if not ok and _missing(detail):
         return True, f"already absent: {hive}\\{path}"
     return ok, detail
@@ -447,8 +452,6 @@ def _snapshot_cmd_targets(tweak_id: str, actions: list) -> None:
         # powercfg /h on|off
         m = re.match(r"^powercfg\s+/h\s+(on|off)$", low)
         if m:
-            ok3, _ = _run(
-                'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power" /v HibernateEnabled')
             # Read current HibernateEnabled
             from engine import state_checker
             entry = state_checker._reg_data(
@@ -584,9 +587,9 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
         if prev is None:
             return True, "original hibernate state unknown, skip"
         target_val = 1 if str(prev).strip() == "1" else 0
-        ok, detail = _run(
-            f'reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power" '
-            f'/v HibernateEnabled /t REG_DWORD /d {target_val} /f')
+        ok, detail = reg_util.write_value(
+            "HKLM", r"SYSTEM\CurrentControlSet\Control\Power",
+            "HibernateEnabled", target_val, "DWORD")
         return ok, detail or f"restored HibernateEnabled={target_val}"
 
     if kind == "bcdedit":
@@ -789,19 +792,7 @@ def _reg_read_value(hive, path, name):
     vtype/data are the raw REG_* token and data string printed by reg.exe.
     ``existed`` is False when the value (or its key) is absent.
     """
-    ok, out = _run(f'reg query "{hive}\\{path}" {"/ve" if _is_default_name(name) else f"/v {chr(34)}{name}{chr(34)}"}')
-    if not ok:
-        return False, None, None
-    for line in (out or "").splitlines():
-        m = _VALUE_RE.match(line)
-        if m:
-            mname = m.group("name").strip('"')
-            if mname.lower() == str(name).lower() or (_is_default_name(name) and mname.lower() == "(default)"):
-                data = m.group("data")
-                if data.strip().lower() == "(value not set)":
-                    return False, None, None
-                return True, m.group("type"), data
-    return False, None, None
+    return reg_util.read_value(hive, path, name)
 
 
 def _target_key(hive, path, name):
@@ -915,18 +906,8 @@ def _normalize_hive(full):
 
 
 def _reg_subkeys(hive, base):
-    """Return fully-qualified names of base's immediate subkeys."""
-    full = f"{hive}\\{base}" if not base.startswith(hive) else base
-    ok, out = _run(f'reg query "{full}"')
-    if not ok:
-        return []
-    prefix = _normalize_hive(full).upper()
-    keys = []
-    for line in (out or "").splitlines():
-        s = line.strip().upper()
-        if s.startswith(prefix + "\\") and not s.startswith(prefix + "\\\\"):
-            keys.append(line.strip())
-    return keys
+    """Return relative sub-paths (``base\\child``) of base's immediate subkeys."""
+    return reg_util.subkeys(hive, base)
 
 
 def _reg_write_all(hive, base, name, value, vtype):
@@ -934,10 +915,9 @@ def _reg_write_all(hive, base, name, value, vtype):
     keys = _reg_subkeys(hive, base)
     if not keys:
         return False, f"no subkeys found under {hive}\\{base}"
-    token = REG_TYPE.get(vtype.upper()) or vtype.upper()
     ok_all, details = True, []
     for key in keys:
-        ok, detail = _run(f'reg add "{key}" /v "{name}" /t {token} /d {value} /f')
+        ok, detail = reg_util.write_value(hive, key, name, value, vtype)
         ok_all = ok_all and ok
         details.append(detail)
     return ok_all, "; ".join(details)
@@ -950,7 +930,7 @@ def _reg_delete_all(hive, base, name):
         return True, f"no subkeys under {hive}\\{base} (nothing to remove)"
     ok_all, details = True, []
     for key in keys:
-        ok, detail = _run(f'reg delete "{key}" /v "{name}" /f')
+        ok, detail = reg_util.delete_value(hive, key, name)
         if not ok and _missing(detail):
             ok, detail = True, "already absent"
         ok_all = ok_all and ok
@@ -1213,6 +1193,23 @@ def _execute_action(action, dry_run=False):
         if kind == "mkdir":
             os.makedirs(action[1], exist_ok=True)
             return True, f"created {action[1]}"
+        if kind == "process":
+            from engine import game_process_manager as gpm
+            try:
+                tid = getattr(_tweak_ctx, "id", None)
+                ok, summary, results = gpm.run_op(action[1], tid)
+            except Exception as exc:  # noqa: BLE001
+                return False, f"{type(exc).__name__}: {exc}"
+            lines = "; ".join(f"{r['exe']}: {r['detail']}" for r in results)
+            return ok, summary if not results else f"{summary} — {lines}"
+        if kind == "netadp":
+            from engine import net_latency
+            try:
+                tid = getattr(_tweak_ctx, "id", None)
+                ok, summary, results = net_latency.run_op(action[1], tid)
+            except Exception as exc:  # noqa: BLE001
+                return False, f"{type(exc).__name__}: {exc}"
+            return ok, summary if not results else f"{summary} — {'; '.join(results)}"
         if kind == "guidance":
             return _guidance(action[1])
         return False, f"unknown action kind {kind!r}"
@@ -1245,8 +1242,20 @@ def apply_tweak(tweak_id, mode="apply", dry_run=False):
     tweak = BY_ID.get(tweak_id)
     if tweak is None:
         return False, [(tweak_id, False, "unknown tweak id")]
-    if mode == "revert":
-        return _revert_tweak(tweak, dry_run=dry_run)
+    _tweak_ctx.id = tweak_id
+    try:
+        if mode == "revert":
+            return _revert_tweak(tweak, dry_run=dry_run)
+        return _apply_tweak(tweak, tweak_id, dry_run=dry_run)
+    finally:
+        try:
+            del _tweak_ctx.id
+        except AttributeError:
+            pass
+
+
+def _apply_tweak(tweak, tweak_id, dry_run=False):
+    """Execute a tweak's apply actions (after snapshot/context setup)."""
     # Fail fast on missing elevation BEFORE any snapshot is taken: a failed
     # apply must never leave behind backups for a change that never happened.
     if tweak["admin"] and not dry_run and not _is_admin():

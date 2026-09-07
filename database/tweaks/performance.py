@@ -25,8 +25,9 @@ TWEAKS = validate_module("performance", [
       why="A higher timer resolution allows the system to poll input devices "
           "more frequently, reducing input latency in games.",
       changes="Enables global timer resolution requests for lower latency.",
-      risk="safe", impact="moderate", recommended="recommended",
+      risk="advanced", impact="moderate", recommended="advanced",
       admin=True,
+      warn="Behavior varies by CPU and Windows build — benchmark before/after.",
       tags=["timer", "latency", "input"]),
 
     # ── Game Mode ──────────────────────────────────────────────────
@@ -221,51 +222,7 @@ TWEAKS = validate_module("performance", [
           "but adds latency. Disabling it improves network responsiveness.",
       changes="Disables network interrupt moderation.",
       risk="safe", impact="moderate", recommended="recommended",
-      tags=["network", "interrupt", "latency"]),
-
-    # ── GPU Scheduling ─────────────────────────────────────────────
-    T("perf-015", "Enable Hardware-Accelerated GPU Scheduling",
-      "Enable HAGS for better GPU performance in supported games.",
-      actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-           "HwSchMode", 2, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-           "HwSchMode", 1, "DWORD"),
-      ],
-      why="Hardware-Accelerated GPU Scheduling allows the GPU to manage its "
-          "own memory, reducing CPU overhead and improving frame rates.",
-      changes="Enables Hardware-Accelerated GPU Scheduling.",
-      risk="safe", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["gpu", "scheduling", "hags"]),
-
-    # ── Game DVR ───────────────────────────────────────────────────
-    T("perf-016", "Disable Game DVR",
-      "Disable Windows Game DVR to reduce performance overhead.",
-      actions=[
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_Enabled", 0, "DWORD"),
-          ("reg", "HKLM", r"SOFTWARE\Policies\Microsoft\Windows\GameDVR",
-           "AllowGameDVR", 0, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_Enabled", 1, "DWORD"),
-          ("regdel", "HKLM", r"SOFTWARE\Policies\Microsoft\Windows\GameDVR",
-           "AllowGameDVR"),
-      ],
-      why="Game DVR continuously records gameplay in the background, consuming "
-          "CPU, GPU, and disk resources. Disabling it improves performance.",
-      changes="Disables Windows Game DVR.",
-      risk="safe", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["game", "dvr", "recording"]),
-
-
-
-
+tags=["network", "interrupt", "latency"]),
 
     # ── Interrupt Affinity ─────────────────────────────────────────
     T("perf-019", "Optimize Interrupt Affinity",
@@ -304,39 +261,6 @@ TWEAKS = validate_module("performance", [
       tags=["msi", "gpu", "interrupts"]),
 
     # ── Turbo Boost ────────────────────────────────────────────────
-
-    # ── FSO (Fullscreen Optimizations) ─────────────────────────────
-    T("perf-023", "Disable Fullscreen Optimizations",
-      "Disable Windows fullscreen optimizations for exclusive fullscreen.",
-      actions=[
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_FSEBehaviorMode", 2, "DWORD"),
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_HonorUserFSEBehaviorMode", 1, "DWORD"),
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_FSEBehavior", 2, "DWORD"),
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_DXGIHonorFSEWindowsCompatible", 1, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_FSEBehaviorMode", 0, "DWORD"),
-          ("regdel", "HKCU", r"System\GameConfigStore",
-           "GameDVR_HonorUserFSEBehaviorMode"),
-          ("reg", "HKCU", r"System\GameConfigStore",
-           "GameDVR_FSEBehavior", 0, "DWORD"),
-          ("regdel", "HKCU", r"System\GameConfigStore",
-           "GameDVR_DXGIHonorFSEWindowsCompatible"),
-      ],
-      why="Fullscreen optimizations can add input latency and reduce performance "
-          "in some games. Disabling them forces exclusive fullscreen mode.",
-      changes="Disables Windows fullscreen optimizations.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["fso", "fullscreen", "display"]),
-
-
-
-    # ═══════════════════════════════════════════════════════════════
     #  NEW TWEAKS — perf-026 through perf-055
     # ═══════════════════════════════════════════════════════════════
 

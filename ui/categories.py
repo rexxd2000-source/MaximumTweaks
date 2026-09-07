@@ -56,6 +56,7 @@ DB_AFFECTS = {
     "Storage": "Storage",
     "Fortnite": "Fortnite",
     "Gaming": "Gaming",
+    "Game Process": "CPU",
     "FPS": "FPS",
     "Frame Time": "Frame Time",
     "Game Profiles": "Game Profile",
@@ -257,8 +258,9 @@ CATEGORY_GROUPS = {
         "icon": "\u2605",
         "logo": "games",
         "color": "#3FDC98",
-        "blurb": "Game Mode, DVR, Game Bar and general gaming performance settings.",
-        "db": ["Gaming"],
+        "blurb": "Game Mode, DVR, Game Bar, per-process CPU tuning and general "
+                "gaming performance settings.",
+        "db": ["Gaming", "Game Process"],
     },
     "profiles": {
         "key": "profiles",

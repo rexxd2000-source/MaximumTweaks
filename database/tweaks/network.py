@@ -149,4 +149,53 @@ TWEAKS = validate_module("network", [
       when={"ram_gb": {"<": 8}},
       tags=["rss", "network", "lowram"]),
 
+    T("net-020", "Disable NIC Interrupt Moderation",
+      "Turns off the active adapter's Interrupt Moderation so every packet is "
+      "raised to the CPU immediately instead of being batched.",
+      actions=[("netadp", "interrupt_moderation")],
+      revert=[("netadp", "interrupt_moderation_revert")],
+      why="Interrupt Moderation batches packets into groups before interrupting "
+          "the CPU, which lowers CPU load but adds per-burst latency. For game "
+          "traffic that latency shows up as added ping and jitter.",
+      changes="Sets the driver's Interrupt Moderation property to Disabled on "
+              "the active adapter when exposed.",
+      risk="safe", impact="moderate", recommended="optional", admin=True,
+      warn="Applies only if the active adapter exposes Interrupt Moderation "
+           "with a Disabled-compatible value; otherwise it is skipped with a reason.",
+      added="2026-09-07",
+      tags=["nic", "interrupt", "moderation", "latency", "adapter"]),
+
+    T("net-021", "Restore Receive-Side Scaling (Adapter)",
+      "Re-enables RSS on the TCP stack and on the adapter when it is supported "
+      "but was switched off.",
+      actions=[("netadp", "rss")],
+      revert=[("netadp", "rss_revert")],
+      why="Some optimizers disable RSS, pushing all network processing onto a "
+          "single core and spiking latency under load. This restores RSS "
+          "(global and adapter-level) when it is supported but disabled and "
+          "never forces it onto adapters that lack RSS.",
+      changes="Re-enables global RSS and adapter-level RSS where supported.",
+      risk="safe", impact="moderate", recommended="recommended", admin=True,
+      when={"ram_gb": {">=": 8}},
+      warn="Only re-enables RSS where it is supported and currently disabled — "
+           "adapters without RSS support are skipped.",
+      added="2026-09-07",
+      tags=["rss", "scaling", "cpu", "adapter"]),
+
+    T("net-022", "Network Adapter Performance Mode",
+      "Disables the NIC's low-power link features (EEE, Green Ethernet, "
+      "Power Saving Mode, Gigabit Lite, Ultra Low Power Mode) for lower jitter.",
+      actions=[("netadp", "nicpower")],
+      revert=[("netadp", "nicpower_revert")],
+      why="Low-power NIC modes drop the link or drop into lower-power states "
+          "between packets, which recovers slow on latency-sensitive traffic "
+          "and can cause lag spikes mid-game.",
+      changes="Disables NIC power-saving advanced properties when the active "
+              "adapter exposes them.",
+      risk="low", impact="high", recommended="optional", admin=True,
+      warn="Only touches properties the active adapter actually exposes, and "
+           "always uses an exact Disabled value; unsupported adapters are skipped.",
+      added="2026-09-07",
+      tags=["nic", "eee", "power", "saving", "latency"]),
+
 ])

@@ -23,8 +23,7 @@ BALANCED = {
         "power-004",   # Sleep never
         "power-005",   # Display 15 min
         "game-001",    # Game Mode
-        "game-002",    # Game Bar off
-        "game-003",    # Background recording off
+        "game-003",    # Game DVR / Game Bar / capture off
         "win-006",     # Visual effects: best performance
         "reg-001",     # Foreground lock timeout
         "mouse-001",   # Mouse acceleration off
@@ -43,22 +42,19 @@ COMPETITIVE = {
     "tagline": "Minimum input latency",
     "description": (
         "Everything Balanced does plus latency-first tuning: USB & PCIe power "
-        "savings off, core parking disabled, aggressive CPU boost, input "
-        "responsiveness and DVR fully off. For esports titles."
+        "savings off, aggressive CPU boost, input responsiveness and the "
+        "Game DVR/Game Bar stack off. For esports titles."
     ),
     "risk": "low",
     "tweaks": BALANCED["tweaks"] + [
         "power-002",   # USB selective suspend off
         "power-003",   # PCIe ASPM off
         "power-009",   # Min processor state 20%
-        "core_parking_disable",  # Core parking off
         "perf-034",    # Processor performance decrease policy
         "perf-032",    # Win32 priority separation
         "reg-002",     # Active window tracking timeout 0
         "reg-003",     # Menu show delay 0
-        "win-001",     # Game DVR off
         "kbd-001",     # Key repeat delay zero
-        "game-004",    # Fullscreen optimizations off
         "net-010",     # TCP window scaling
         "net-004",     # TCP ECN
     ],

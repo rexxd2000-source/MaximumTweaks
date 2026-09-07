@@ -35,8 +35,7 @@ TWEAKS = validate_module("cpu", [
              "Win32PrioritySeparation", 26, "DWORD"),
         ],
         revert=[
-            ("reg", "HKLM", _PRIORITY_CONTROL,
-             "Win32PrioritySeparation", 26, "DWORD"),
+            ("regdel", "HKLM", _PRIORITY_CONTROL, "Win32PrioritySeparation"),
         ],
         why="Raises the foreground boost so the active game gets more CPU "
             "time relative to background processes.",
@@ -89,11 +88,14 @@ TWEAKS = validate_module("cpu", [
             ("cmd", "powercfg /setactive scheme_current"),
         ],
         why="Prevents Windows from parking cores under light load so all "
-            "logical processors stay ready to take threads.",
+            "logical processors stay ready to take threads. Does not modify "
+            "the core-parking maximum cap.",
         changes="Sets the core-parking min cores value to 100 on AC.",
-        risk="low", impact="moderate", recommended="recommended",
+        risk="advanced", impact="moderate", recommended="advanced",
         admin=True, confirm=True,
-        sub_category="gaming",
+        warn="Aggressive — can raise idle power draw and temperatures. "
+             "Lets Windows/firmware manage topology by default instead.",
+        sub_category="advanced",
         tags=["core", "parking", "power", "powercfg"],
     ),
 
