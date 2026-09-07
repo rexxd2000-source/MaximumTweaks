@@ -170,4 +170,51 @@ TWEAKS = validate_module("cpu", [
         sub_category="advanced",
         tags=["idle", "cstate", "power", "powercfg", "experimental"],
     ),
+
+    # ── 7) Foreground CPU Scheduling Profile ────────────────────────
+
+    T(
+        "foreground_priority", "Foreground CPU Scheduling Profile",
+        "Tunes Win32 foreground scheduling toward games/interactive "
+        "workloads.",
+        actions=[
+            ("reg", "HKLM", _PRIORITY_CONTROL,
+             "Win32PrioritySeparation", 26, "DWORD"),
+        ],
+        revert=[
+            ("regdel", "HKLM", _PRIORITY_CONTROL, "Win32PrioritySeparation"),
+        ],
+        why="Biases the Windows scheduler's foreground boost toward "
+            "interactive workloads.",
+        changes="Sets Win32PrioritySeparation to 26.",
+        risk="advanced", impact="high", recommended="advanced",
+        admin=True, confirm=True,
+        sub_category="advanced",
+        tags=["priority", "foreground", "scheduler", "restart"],
+    ),
+
+    # ── 8) Game Process Priority Policy ────────────────────────────
+
+    T(
+        "game_process_priority", "Game Process Priority Policy",
+        "Enables the Windows multimedia \"Games\" task profile for "
+        "foreground-oriented scheduling.",
+        actions=[
+            ("reg", "HKLM", _GAMES_TASKS, "GPU Priority", 8, "DWORD"),
+            ("reg", "HKLM", _GAMES_TASKS, "Priority", 6, "DWORD"),
+            ("reg", "HKLM", _GAMES_TASKS, "Scheduling Category", "High", "STRING"),
+        ],
+        revert=[
+            ("regdel", "HKLM", _GAMES_TASKS, "GPU Priority"),
+            ("reg", "HKLM", _GAMES_TASKS, "Priority", 2, "DWORD"),
+            ("reg", "HKLM", _GAMES_TASKS, "Scheduling Category", "Medium", "STRING"),
+        ],
+        why="Activates the multimedia scheduler's Games task profile so "
+            "game threads are scheduled with foreground preference.",
+        changes="Sets the Games task to GPU Priority 8, Priority 6, High.",
+        risk="advanced", impact="high", recommended="advanced",
+        admin=True, confirm=True,
+        sub_category="advanced",
+        tags=["mmcss", "games", "priority", "scheduler", "restart"],
+    ),
 ])
