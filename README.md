@@ -10,7 +10,7 @@ only **compatible** tweaks as ready, and applies/reverts them with one click.
 ## Features
 
 - **Expandable sidebar navigation** — "Tweaks" expands in the sidebar into
-  CPU, GPU, RAM, Mouse, Keyboard, Aim/Input, Network, Storage, Windows,
+  CPU, GPU, RAM, Mouse, Keyboard, Pointer & Input, Network, Storage, Windows,
   Performance, Fortnite and Games. Click any one and its tweak cards appear
   in the main panel instantly. Plus Game Profiles, Tools and Settings.
 - **Modern tweak cards** — every tweak is a proper card with an icon, name,

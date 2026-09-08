@@ -61,8 +61,16 @@ def _load_backend_env() -> None:
     except Exception:  # noqa: BLE001
         return
     candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
     if not getattr(sys, "frozen", False):
         candidates.append(Path(__file__).resolve().parent.parent / "auth_backend" / ".env")
+    if meipass:
+        # Frozen builds: the .env is bundled inside the exe so the backend
+        # works regardless of where the user places the file.
+        candidates.append(Path(meipass) / "auth_backend" / ".env")
+    # A .env placed next to the exe wins over the bundled copy (lets the owner
+    # override credentials without rebuilding). load_dotenv never overrides
+    # real env vars either way.
     candidates.append(Path(ROOT) / ".env")
     for env_file in candidates:
         if env_file.is_file():

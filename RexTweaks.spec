@@ -15,6 +15,14 @@ for rel in ("config", "database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
 
+# The Discord credentials (.env) must ship INSIDE the exe so the bundled auth
+# backend works no matter where the user drops the file. Without it every copy
+# reports "Auth backend is not configured." (engine/auth_server.py reads the
+# bundled copy from sys._MEIPASS on startup.)
+_env_file = ROOT / "auth_backend" / ".env"
+if _env_file.is_file():
+    datas.append((str(_env_file), "auth_backend"))
+
 a = Analysis(
     ["main.py"],
     pathex=[str(ROOT)],
