@@ -6,15 +6,17 @@ speaks directly to the DB, so it needs no network or admin token.
 
 Usage
 -----
-    python -m auth_backend.admin generate [--count N] [--plan lifetime|monthly|yearly|custom]
-                                         [--customer "Name"] [--note "..."]
-                                         [--expires "YYYY-MM-DD HH:MM:SS"]
-    python -m auth_backend.admin list [--status unused|active|revoked|expired]
-    python -m auth_backend.admin show <KEY>
-    python -m auth_backend.admin revoke <KEY> [--reason "..."]
-    python -m auth_backend.admin unrevoke <KEY>
-    python -m auth_backend.admin unbind <KEY>     # support: PC change
-    python -m auth_backend.admin stats
+Run from the ``auth_backend/`` directory::
+
+    python -m admin generate [--count N] [--plan lifetime|monthly|yearly|custom]
+                             [--customer "Name"] [--note "..."]
+                             [--expires "YYYY-MM-DD HH:MM:SS"]
+    python -m admin list [--status unused|active|revoked|expired]
+    python -m admin show <KEY>
+    python -m admin revoke <KEY> [--reason "..."]
+    python -m admin unrevoke <KEY>
+    python -m admin unbind <KEY>     # support: PC change
+    python -m admin stats
 """
 from __future__ import annotations
 
