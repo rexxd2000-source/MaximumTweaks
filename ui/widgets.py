@@ -13,13 +13,14 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QRect,
+    QRectF,
     QSize,
     QThread,
     Qt,
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
     QDialog,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -818,14 +820,15 @@ class FlowLayout(QLayout):
 
 
 class TweakCard(QFrame):
-    """Clean toggle-based tweak card.
+    """Clean click-to-toggle tweak card.
 
-    Layout:  40px glassmorphic icon box | title + id | iOS-style toggle.
+    Layout:  40px glassmorphic icon box | title + id.
              Below: concise slate description, then a row of muted chips.
-    States:  default    -> muted border, toggle off
-             applied    -> cyan border + soft glow, cyan toggle on, APPLIED badge
-             reverted   -> soft red border, toggle off, DISABLED badge
-             incompatible -> soft red border, toggle disabled, INCOMPATIBLE badge
+    Interaction: clicking the card turns it ON (stays green); clicking again
+             turns it OFF (neutral). No toggle switch.
+    States:  applied      -> green glow + icon + ON badge (persistent)
+             default      -> neutral card + OFF badge
+             incompatible -> soft red border, INCOMPATIBLE badge, not clickable
     """
 
     GRID_HEIGHT = 180
@@ -872,19 +875,14 @@ class TweakCard(QFrame):
         title_box.addWidget(name_lbl)
         title_box.addWidget(id_lbl)
         head.addLayout(title_box, 1)
+        self.toggle = None
         if tweak.get("guidance"):
-            self.toggle = None
             self.btn_guide = QPushButton("\u2139  Guide")
             self.btn_guide.setObjectName("Ghost")
             self.btn_guide.setCursor(Qt.PointingHandCursor)
             self.btn_guide.setToolTip("Open the step-by-step guide")
             self.btn_guide.clicked.connect(lambda: self.guide_requested.emit(self.tid))
             head.addWidget(self.btn_guide, alignment=Qt.AlignVCenter)
-        else:
-            self.toggle = ToggleSwitch()
-            self.toggle.setToolTip("Toggle this tweak on / off")
-            self.toggle.toggled.connect(self._on_toggle_clicked)
-            head.addWidget(self.toggle, alignment=Qt.AlignVCenter)
         outer.addLayout(head)
 
         # ---- Description
@@ -913,14 +911,21 @@ class TweakCard(QFrame):
         if not compact:
             outer.addStretch(1)
 
-        # ---- Soft glow overlay for smooth applied/disabled transitions
-        self._glow = QFrame(self)
-        self._glow.setObjectName("TintOverlay")
-        self._glow.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self._glow_effect = QGraphicsOpacityEffect(self._glow)
-        self._glow.setGraphicsEffect(self._glow_effect)
-        self._glow_effect.setOpacity(0.0)
-        self._glow.hide()
+        # ---- Soft glow painted natively in paintEvent (animated alpha).
+        #
+        # NOT an overlay QFrame: QGraphicsOpacityEffect composites into a
+        # cached texture that lags behind the widget inside a QScrollArea,
+        # leaving the border visibly "floating" at the old position while the
+        # card scrolls. Painting in the card's own coordinates keeps the glow
+        # glued to the card at every scroll position.
+        self._glow_color = QColor("#4ADE80")
+        self._glow_tint = QColor("#4ADE80")
+        self._glow_tint.setAlphaF(0.12)
+        self._glow_alpha = 0.0
+
+        # Logical on/off so the first click does the right action; the card
+        # shows its persistent state (green = ON, neutral = OFF).
+        self.setCursor(Qt.PointingHandCursor)
 
         compat = ctx.state_of(self.tid)
         if compat in ("incompatible", "not_for_you"):
@@ -928,46 +933,96 @@ class TweakCard(QFrame):
                 ctx.eval.get(self.tid, {}).get("reasons", [])))
         else:
             self._apply_state(self._initial_state())
+        self._make_children_click_through()
 
     # ---------------- State ----------------
 
     def _initial_state(self) -> str:
-        """First paint: use known live state, else the app's own record,
-        else show a neutral 'detecting' skeleton while the audit runs."""
-        live = self.ctx.live_state(self.tid)
-        if live is not None:
-            return "applied" if live else "default"
-        if self.tid in state_mgr.applied_ids():
-            return "applied"
-        return "detecting"
+        """First paint: only the user's recorded decision paints the card.
 
-    def _current_state(self) -> str:
-        live = self.ctx.live_state(self.tid)
-        if live is not None:
-            return "applied" if live else "default"
+        Live detection is deliberately not consulted (here or in
+        ``set_detected``): several tweaks write the *same* Windows setting
+        (e.g. network QoS keys), so detection would light a whole chain of
+        related cards together. A card turns ON only when the user turns that
+        card on.
+        """
         if self.tid in state_mgr.applied_ids():
             return "applied"
+        if self.tid in state_mgr.disabled_ids():
+            return "default"
         return "default"
 
     def set_detected(self, value):
-        """Apply a live system-state result from the background audit."""
-        if self._state in ("incompatible", "not_for_you"):
-            return
-        if value is None:
-            self._apply_state(
-                "applied" if self.tid in state_mgr.applied_ids() else "default")
-        else:
-            self._apply_state("applied" if value else "default")
+        """Live audit results never flip a card.
 
-    def _on_toggle_clicked(self, checked: bool):
-        if self._syncing:
+        Detection is still useful for the toolbar counter and Apply/Revert All,
+        but showing a card as ON based on shared registry state is exactly what
+        made related tweaks appear to turn on together.
+        """
+        return
+
+    def _on_card_clicked(self):
+        if self._state == "incompatible":
             return
-        # Optimistic visual flip; the page's worker reconciles on completion.
-        self._apply_state("applied" if checked else "reverted")
-        if checked:
-            self.apply_requested.emit(self.tid)
-        else:
+        if self.tweak.get("guidance"):
+            self.guide_requested.emit(self.tid)
+            return
+        if self._wanted_on:
+            self._wanted_on = False
             self.revert_requested.emit(self.tid)
+        else:
+            if self.tweak.get("confirm") and not self._confirm_risky_apply():
+                return  # user declined the warning; leave the card OFF
+            self._wanted_on = True
+            self.apply_requested.emit(self.tid)
+        self._apply_state("applied" if self._wanted_on else "default")
+
+    def _confirm_risky_apply(self) -> bool:
+        """Warning gate for risky CPU/boost/hardware tweaks.
+
+        The tweak's ``warn`` text (or a generic message) is shown before the
+        tweak can be turned on, with a clear disclaimer that Maximum Tweaks
+        is not responsible for any damage caused by applying the setting.
+        """
+        warn = (self.tweak.get("warn") or "").strip() or (
+            "This tweak adjusts a low-level CPU, power-management, or hardware "
+            "setting. These are ordinary Windows settings; if anything ever "
+            "seems off, you can turn the tweak back off in the app at any time."
+        )
+        box = QMessageBox(self.window() or self)
+        box.setWindowTitle("Quick check before applying")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(
+            f"{warn}\n\n"
+            "This tweak won't be applied until you confirm below. Nothing is "
+            "permanent, and every tweak can be reverted from the app at any "
+            "time.")
+        yes = box.addButton("Yes, apply it",
+                            QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is yes
+
+    def _make_children_click_through(self):
+        for child in self.findChildren(QWidget):
+            if isinstance(child, QAbstractButton):
+                continue  # keep the Guide button interactive
+            child.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._press_pos = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if (event.button() == Qt.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            press = getattr(self, "_press_pos", None)
+            if press is not None:
+                delta = (event.position().toPoint() - press).manhattanLength()
+                if delta <= 8:
+                    self._on_card_clicked()
+        super().mouseReleaseEvent(event)
 
     def _set_badge(self, text, color, filled=False):
         if filled:
@@ -996,83 +1051,93 @@ class TweakCard(QFrame):
     def _apply_state(self, state, reasons=None):
         self.setProperty("state", state)
         self._state = state
-        if self.toggle is None:
-            # Guidance-only cards have no toggle; just style the frame.
-            self._syncing = True
-            self._hide_glow()
-            self._syncing = False
-            repolish(self)
-            return
-
-        self._syncing = True
-        if state == "applied":
-            self.toggle.setEnabled(True)
-            self.toggle.setChecked(True)
-            self._set_badge("ACTIVE", T["accent"], filled=True)
-            self._style_icon(True)
-            self._fade_glow(T["accent"], T["glow_green"])
-        elif state == "detecting":
-            self.toggle.setEnabled(False)
-            self.toggle.setChecked(False)
-            self.toggle.setToolTip("Checking system state\u2026")
-            self._set_badge("SYNCING\u2026", T["text_faint"])
-            self._style_icon(False, dim=True)
-            self._hide_glow()
-        elif state == "reverted":
-            self.toggle.setEnabled(True)
-            self.toggle.setChecked(False)
-            self._set_badge("DISABLED", T["danger"])
-            self._style_icon(False)
-            self._fade_glow(T["danger"], T["glow_red"])
-        elif state == "incompatible":
-            self.toggle.setEnabled(False)
-            self.toggle.setChecked(False)
+        if state == "incompatible":
             self._set_badge("INCOMPATIBLE", T["danger"], filled=True)
             self._style_icon(False, dim=True)
-            self.toggle.setToolTip(
-                "\n".join(reasons) if reasons else "Not compatible with this PC")
             self._hide_glow()
+            self.setToolTip(
+                "\n".join(reasons) if reasons else "Not compatible with this PC")
+        elif state == "applied":
+            self._wanted_on = True
+            self.setToolTip("ON \u2014 click to turn off")
+            self._set_badge("ON", "#4ADE80", filled=True)
+            self.icon_tile.setStyleSheet(
+                "background-color: rgba(74, 222, 128, 0.12); color: #4ADE80;"
+                " border-radius: 10px; font-size: 20px; font-weight: 900;"
+                " border: 1px solid rgba(74, 222, 128, 0.45);")
+            self._fade_glow("#4ADE80", "rgba(74, 222, 128, 0.12)")
         else:
-            self.toggle.setEnabled(True)
-            self.toggle.setChecked(False)
-            self.state_badge.hide()
+            self._wanted_on = False
+            self.setToolTip("OFF \u2014 click to turn on")
+            self.state_badge.setText("OFF")
+            self.state_badge.setStyleSheet(
+                f"color: {T['text_faint']}; border: 1px solid {T['border']};"
+                " border-radius: 8px; padding: 2px 8px; font-size: 10px;"
+                " font-weight: 800; letter-spacing: 0.5px;")
+            self.state_badge.show()
             self._style_icon(False)
             self._hide_glow()
-        self._syncing = False
-
         repolish(self)
 
     def _fade_glow(self, color, tint):
-        self._glow.setStyleSheet(
-            f"#TintOverlay {{ background-color: {tint};"
-            f" border: 2px solid {color}; border-radius: 11px; }}")
-        self._glow.show()
-        self._glow.raise_()
-        anim = QPropertyAnimation(self._glow_effect, b"opacity", self)
+        self._glow_color = QColor(color)
+        c = QColor(color)
+        c.setAlphaF(0.12)
+        self._glow_tint = c
+        anim = QPropertyAnimation(self, b"glowAlpha", self)
         anim.setDuration(220)
-        anim.setStartValue(self._glow_effect.opacity())
+        anim.setStartValue(self._glow_alpha)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.OutCubic)
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
         self._glow_anim = anim
 
     def _hide_glow(self):
-        anim = QPropertyAnimation(self._glow_effect, b"opacity", self)
+        anim = QPropertyAnimation(self, b"glowAlpha", self)
         anim.setDuration(180)
-        anim.setStartValue(self._glow_effect.opacity())
+        anim.setStartValue(self._glow_alpha)
         anim.setEndValue(0.0)
         anim.setEasingCurve(QEasingCurve.OutCubic)
-        anim.finished.connect(self._glow.hide)
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        self._glow_anim = anim
+
+    def _glow_alpha_value(self):
+        return self._glow_alpha
+
+    def _set_glow_alpha(self, value):
+        self._glow_alpha = value
+        self.update()
+
+    glowAlpha = Property(
+        float, _glow_alpha_value, _set_glow_alpha)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._glow_alpha <= 0.01:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(1, 1, self.width() - 2, self.height() - 2)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 11, 11)
+        tint = QColor(self._glow_tint)
+        tint.setAlphaF(tint.alphaF() * self._glow_alpha)
+        p.fillPath(path, tint)
+        pen = QPen(QColor(self._glow_color))
+        pen.setWidthF(2.0)
+        border = QColor(self._glow_color)
+        border.setAlphaF(self._glow_alpha)
+        pen.setColor(border)
+        p.setPen(pen)
+        p.drawPath(path)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._glow.setGeometry(1, 1, max(0, self.width() - 2), max(0, self.height() - 2))
 
     def refresh(self):
         if self._state == "incompatible":
             return
-        self._apply_state(self._current_state())
+        self._apply_state(self._initial_state())
 
 
 class ProfileCard(QFrame):
@@ -1175,14 +1240,19 @@ class BatchWorker(QThread):
     batch_done = Signal(dict)
     batch_error = Signal(str)
 
-    def __init__(self, ids, mode="apply", parent=None):
+    def __init__(self, ids, mode="apply", parent=None,
+                 profile=None, force=False):
         super().__init__(parent)
         self.ids = ids
         self.mode = mode
+        self.profile = profile
+        self.force = force
 
     def run(self):
         try:
-            result = applier.run(self.ids, self.mode, progress=self._on_progress)
+            result = applier.run(
+                self.ids, self.mode, progress=self._on_progress,
+                profile=self.profile, force=self.force)
             self.batch_done.emit(result)
         except Exception as exc:  # noqa: BLE001
             self.batch_error.emit(str(exc))
@@ -1194,7 +1264,7 @@ class BatchWorker(QThread):
 class ProgressDialog(QDialog):
     """Modal dialog that runs a batch apply/revert and reports results."""
 
-    def __init__(self, parent, ids, mode="apply", title=None):
+    def __init__(self, parent, ids, mode="apply", title=None, profile=None):
         super().__init__(parent)
         verb = "Applying" if mode == "apply" else "Reverting"
         self.setWindowTitle(title or f"{verb} tweaks\u2026")
@@ -1222,7 +1292,7 @@ class ProgressDialog(QDialog):
         self.close_btn.clicked.connect(self._close_result)
         lay.addWidget(self.close_btn, alignment=Qt.AlignHCenter)
 
-        self.worker = BatchWorker(ids, mode, self)
+        self.worker = BatchWorker(ids, mode, self, profile=profile)
         self.worker.progress.connect(self._on_progress)
         self.worker.batch_done.connect(self._on_done)
         self.worker.batch_error.connect(self._on_error)
@@ -1241,11 +1311,15 @@ class ProgressDialog(QDialog):
 
     def _on_done(self, result):
         self.result = result
+        results = result.get("results", {})
         applied = result.get("applied", [])
-        failed = [tid for tid, (ok, _d) in result["results"].items() if not ok]
+        ok_ids = [tid for tid, r in results.items()
+                  if r.get("ok") and r.get("status") != "dry_run"]
+        failed = len(results) - len(ok_ids)
         self.current.setText(
-            f"Done \u2014 {len(applied)} succeeded, {len(failed)} failed/blocked.")
-        self.log.appendHtml(f"<br/><b>{len(applied)} succeeded, {len(failed)} failed.</b>")
+            f"Done \u2014 {len(applied)} succeeded, {failed} failed/blocked.")
+        self.log.appendHtml(
+            f"<br/><b>{len(applied)} succeeded, {failed} failed.</b>")
         self.close_btn.setEnabled(True)
         self.close_btn.setText("Close")
 
@@ -1396,7 +1470,8 @@ class ProfileLaunchDialog(QDialog):
             self._finish()
 
     def _finish(self):
-        self.worker = BatchWorker([self.tweak["id"]], "apply", self)
+        self.worker = BatchWorker([self.tweak["id"]], "apply", self,
+                                  profile=self.ctx.profile)
         self.worker.batch_done.connect(self._done)
         self.worker.batch_error.connect(self._error)
         self.worker.start()

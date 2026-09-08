@@ -16,7 +16,6 @@ import os
 import sys
 
 from database import BY_ID, CATEGORIES, TWEAKS
-from database.executor import apply_tweak
 
 RISK_ORDER = {"safe": 0, "low": 1, "moderate": 2, "advanced": 3}
 IMPACT_ORDER = {"very low": 0, "low": 1, "moderate": 2, "high": 3, "extreme": 4}
@@ -222,22 +221,49 @@ def cmd_search(query):
 
 
 def cmd_apply(tweak_id, mode, dry_run):
+    from engine import applier
     t = BY_ID.get(tweak_id)
     if not t:
         print(f"Unknown tweak id: {tweak_id}")
         sys.exit(1)
     label = "dry-run apply" if (dry_run and mode == "apply") else "dry-run revert" if dry_run else mode
     print(f"{label.title()} -> [{t['id']}] {t['name']}")
-    if t["admin"] and mode == "apply" and not dry_run:
-        print("  note: this tweak requires administrator privileges")
-    ok, results = apply_tweak(tweak_id, mode=mode, dry_run=dry_run)
-    for action, aok, detail in results:
-        status = "ok  " if aok else "FAIL"
-        print(f"  [{status}] {action[0]:<11} {detail}")
-    if ok:
-        print(f"Done: {len(results)} action(s).")
+
+    # The engine refuses to run hardware-gated tweaks without a detected
+    # profile, so detect the system for a real apply. Failures degrade to a
+    # minimal Windows-version-only profile (still safe: vendor-gated tweaks
+    # are then refused rather than blindly applied).
+    profile = None
+    if mode == "apply" and not dry_run:
+        try:
+            from hardware import detect
+            profile = detect()
+        except Exception as exc:  # noqa: BLE001
+            print(f"  note: hardware detection unavailable ({exc}) — "
+                  "hardware-gated tweaks will be blocked")
+            profile = None
+
+    result = applier.run([tweak_id], mode, profile=profile, dry_run=dry_run)
+    r = result["results"][tweak_id]
+    status = r.get("status")
+    for action, aok, detail in r.get("actions") or []:
+        print(f"  [{'ok  ' if aok else 'FAIL'}] {action[0]:<11} {detail}")
+    if status == "blocked":
+        print(f"Blocked: {r.get('detail')}")
+        sys.exit(3)
+    if not r.get("ok"):
+        print(f"Failed: {r.get('detail')}")
+        sys.exit(2)
+    if status == "dry_run":
+        print(f"Dry-run: {len(r.get('actions') or [])} action(s) would run.")
+        return
+    verified = r.get("verified")
+    if verified is None:
+        print(f"Applied \u2014 could not be verified against the live system.")
+    elif verified is True:
+        print("Applied and verified against the live system.")
     else:
-        print("Some actions failed — see above.")
+        print("Executed but the live system does not match — NOT recorded as applied.")
         sys.exit(2)
 
 

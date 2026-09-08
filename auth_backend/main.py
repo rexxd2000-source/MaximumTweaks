@@ -64,7 +64,7 @@ from keys import generate_key, normalize_key, sign_token, verify_token, RateLimi
 
 LICENSE_SECRET = os.environ.get("LICENSE_SECRET", "").strip()
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
-SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "72"))
+SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "720"))
 OFFLINE_GRACE_HOURS = int(os.environ.get("OFFLINE_GRACE_HOURS", "24"))
 
 ACTIVATE_PER_KEY = int(os.environ.get("ACTIVATE_PER_KEY", "10"))

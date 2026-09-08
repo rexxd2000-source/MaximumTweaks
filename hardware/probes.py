@@ -128,28 +128,87 @@ def _probe_cpu():
 # GPU
 # --------------------------------------------------------------------------
 
+# Display-adapter device class GUID; each adapter is a numbered subkey.
+_GPU_CLASS_GUID = r"{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+
+def _gpu_vram_registry() -> list[dict]:
+    """[{desc, vram_bytes, match_id}] read from the display class registry.
+
+    Win32_VideoController.AdapterRAM is a 32-bit field, so drivers clamp it to
+    0xFFFFFFFF (~4.0 GB) on GPUs with more VRAM. ``HardwareInformation
+    .qwMemorySize`` under each adapter subkey is the accurate 64-bit value.
+    """
+    out: list[dict] = []
+    base = (r"SYSTEM\CurrentControlSet\Control\Class"
+            + "\\" + _GPU_CLASS_GUID)
+    try:
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
+    except OSError:
+        return out
+    try:
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            sub = winreg.EnumKey(root, i)
+            if not re.fullmatch(r"\d+", sub):
+                continue
+            try:
+                with winreg.OpenKey(root, sub) as k:
+
+                    def _qv(name):
+                        try:
+                            v, _t = winreg.QueryValueEx(k, name)
+                            return v
+                        except OSError:
+                            return None
+
+                    vram = _qv("HardwareInformation.qwMemorySize")
+                    out.append({
+                        "desc": str(_qv("DriverDesc") or "").strip(),
+                        "vram_bytes": int(vram) if vram else 0,
+                        "match": str(_qv("MatchingDeviceId") or "").strip().upper(),
+                    })
+            except OSError:
+                continue
+    finally:
+        winreg.CloseKey(root)
+    return out
+
+
 @probe("gpu")
 def _probe_gpu():
     rows = _csv_rows(
         "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM,PNPDeviceID,VideoModeDescription")
     gpus, vendors = [], []
+    reg_gpus = _gpu_vram_registry()
     for row in rows:
         name = (row.get("Name") or "Unknown Video Controller").strip()
         vendor = _gpu_vendor(name)
         if vendor not in vendors:
             vendors.append(vendor)
         vram = 0
-        try:
-            vram = round(int(float(row.get("AdapterRAM") or 0)) / (1024 ** 3), 1)
-        except (TypeError, ValueError):
-            pass
+        # Prefer the accurate 64-bit registry size; fall back to AdapterRAM
+        # (which clamps to ~4 GB) only when the registry has no match.
+        pnp = (row.get("PNPDeviceID") or "").strip().upper()
+        vram_bytes = 0
+        for rg in reg_gpus:
+            if rg["match"] and pnp.startswith(rg["match"]):
+                vram_bytes = max(vram_bytes, rg["vram_bytes"])
+        if vram_bytes <= 0 and len(reg_gpus) == 1:
+            vram_bytes = reg_gpus[0]["vram_bytes"]
+        if vram_bytes > 0:
+            vram = round(vram_bytes / (1024 ** 3), 1)
+        else:
+            try:
+                vram = round(int(float(row.get("AdapterRAM") or 0)) / (1024 ** 3), 1)
+            except (TypeError, ValueError):
+                pass
         gpus.append({
             "name": name,
             "driver": (row.get("DriverVersion") or "Unknown").strip(),
             "vram_gb": vram,
             "vendor": vendor,
             "mode": (row.get("VideoModeDescription") or "").strip(),
-            "pnp": (row.get("PNPDeviceID") or "").strip(),
+            "pnp": pnp,
         })
     if not gpus:
         gpus = [{"name": "Unknown GPU", "driver": "Unknown", "vram_gb": 0,

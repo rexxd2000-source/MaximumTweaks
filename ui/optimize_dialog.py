@@ -414,7 +414,8 @@ class OptimizeDialog(QDialog):
         self.apply_status.setText(
             f"Applying {len(ids)} tweak(s) \u2014 each change is verified "
             "against the live system after it runs.")
-        self._apply_worker = BatchWorker(ids, "apply", self)
+        self._apply_worker = BatchWorker(ids, "apply", self,
+                                         profile=self.ctx.profile)
         self._apply_worker.progress.connect(self._on_progress)
         self._apply_worker.batch_done.connect(self._on_apply_done)
         self._apply_worker.batch_error.connect(self._on_apply_error)
@@ -434,10 +435,12 @@ class OptimizeDialog(QDialog):
         self._apply_worker = None
         results = result.get("results", {})
         applied = result.get("applied", [])
-        failed = [tid for tid, (ok, _d) in results.items() if not ok]
+        ok_ids = [tid for tid, r in results.items()
+                  if r.get("ok") and r.get("status") != "dry_run"]
+        failed = [tid for tid, r in results.items() if not r.get("ok")]
         unverified = [
-            tid for tid, (ok, _d) in results.items()
-            if ok and tid not in applied]
+            tid for tid, r in results.items()
+            if tid in ok_ids and tid not in applied]
         self.ctx.invalidate_state()
         self.ctx.force_audit_ids(list(results))
         self.ctx.note_state_change()

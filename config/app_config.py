@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -229,19 +229,15 @@ ADMIN_NOTE = (
 DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
 
 
-# ---------------------------------------------------------------------------
-# License-key activation (the ONLY access-control method for Maximum Tweaks).
+# License activation (the ONLY access-control method for Maximum Tweaks).
 #
 # The desktop app sends the customer-entered key plus a hashed device
-# fingerprint to the license backend and stores the returned short-lived
-# session token locally. The backend always stays the authority.
+# fingerprint to the license backend and stores the resulting session locally.
+# Once a key is activated it is bound to that PC and stays authorized across
+# reboots and app updates — no re-entry, no token-clock logouts.
 #     production:  https://maximumtweaks.onrender.com
 # ---------------------------------------------------------------------------
 LICENSE_API_URL = "https://maximumtweaks.onrender.com"
-
-# Offline grace after the session token expires (hours): lets an activated PC
-# keep running without internet for a while before the gate reappears.
-OFFLINE_GRACE_HOURS = 24
 
 
 

@@ -7,6 +7,16 @@ T = make_T("CPU", win_default="7,8,10,11")
 
 CATEGORY = "CPU"
 
+# Shown (via the confirm gate) whenever the user turns on a boost/clock
+# control tweak: these push clocks higher or adjust power management, which
+# is a standard Windows behaviour the system is designed to handle.
+_RISKY_CPU_WARN = (
+    "This tweak adjusts how your CPU boosts clocks and manages power. These "
+    "are ordinary Windows settings, and most systems handle them fine. If you "
+    "ever notice anything off, you can simply turn the tweak back off in the "
+    "app at any time."
+)
+
 TWEAKS = validate_module("cpu", [
     T(
         "cpu-001", "High Performance Power Plan",
@@ -35,7 +45,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "boost_mode", 0)],
         why="Allows single-core boost to run higher more often — important for frame consistency in CPU-heavy shooters.",
         changes="Changes the boost mode policy on AC power.",
-        risk="low", impact="high", recommended="recommended", admin=True,
+        risk="low", impact="high", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["boost", "boostmode", "turbo"],
     ),
     T(
@@ -132,7 +142,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "perf_increase_threshold", 90)],
         why="A lower threshold makes the CPU boost sooner, reducing on-demand stall under sudden game load.",
         changes="Lowers the AC performance increase threshold to 10%.",
-        risk="safe", impact="moderate", recommended="recommended", admin=True,
+        risk="safe", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["boost", "threshold", "responsiveness"],
     ),
     T(
@@ -142,7 +152,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "perf_decrease_threshold", 10)],
         why="Keeps clocks high while frames are still being produced instead of dropping clocks early.",
         changes="Raises the AC performance decrease threshold to 100%.",
-        risk="safe", impact="low", recommended="recommended", admin=True,
+        risk="safe", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["threshold", "clockspeed", "drop"],
     ),
     T(
@@ -173,7 +183,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "processor_min", 5)],
         why="A 100% performance floor keeps all cores ready at high clock, removing the up-clock ramp delay when a burst of work arrives.",
         changes="Sets the AC processor performance floor to 100%.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
+        risk="low", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "pstate", "clockspeed", "floor"],
     ),
     T(
@@ -183,7 +193,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "processor_max", 100)],
         why="Some power plans cap the maximum state below 100%, which silently limits boost; this removes that ceiling.",
         changes="Sets the AC processor maximum performance state to 100%.",
-        risk="safe", impact="low", recommended="recommended", admin=True,
+        risk="safe", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "pstate", "clockspeed", "ceiling"],
     ),
     T(
@@ -193,7 +203,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "perf_increase_policy", 1)],
         why="Rocket policy ramps the whole core package more aggressively than the default Ideal policy, cutting response latency in games.",
         changes="Sets the AC performance increase policy to Rocket.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
+        risk="low", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "policy", "boost", "responsiveness"],
     ),
     T(
@@ -203,7 +213,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "perf_decrease_policy", 1)],
         why="Rocket decrease keeps clocks high while any core is active, avoiding premature down-clocking between frame spikes.",
         changes="Sets the AC performance decrease policy to Rocket.",
-        risk="low", impact="low", recommended="recommended", admin=True,
+        risk="low", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "policy", "clockspeed", "scheduler"],
     ),
     T(
@@ -213,7 +223,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "boost_policy", 100)],
         why="A 100% boost policy ensures the CPU can reach its full multi-core boost instead of capping below the ceiling.",
         changes="Sets the AC processor boost policy to 100%.",
-        risk="safe", impact="low", recommended="recommended", admin=True,
+        risk="safe", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "boost", "boostpolicy", "cpu"],
     ),
     T(
@@ -223,7 +233,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "epp", 50)],
         why="On newer Intel CPUs the efficiency cores use EPP to decide how aggressively to down-clock; 0 keeps them performance-oriented.",
         changes="Sets the AC energy performance preference to 0.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
+        risk="low", impact="moderate", recommended="optional", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         win="10,11", tags=["power", "epp", "efficiency", "clockspeed"],
     ),
     T(
@@ -263,7 +273,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("power", "parking_max", 0)],
         why="A 100% parking ceiling stops the OS from parking a large share of cores, keeping the full thread pool hot.",
         changes="Sets the AC core parking maximum cores to 100%.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
+        risk="low", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["power", "parking", "core", "scheduler"],
     ),
     T(
@@ -273,7 +283,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFINCTIME 3")],
         why="The default 3 ms increase time adds a small ramp delay; 1 ms makes boost feel instant in CPU-bound moments.",
         changes="Sets the AC performance increase time to 1 ms.",
-        risk="safe", impact="moderate", recommended="recommended", admin=True,
+        risk="safe", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["powercfg", "ramp", "boost", "clockspeed"],
     ),
     T(
@@ -283,7 +293,7 @@ TWEAKS = validate_module("cpu", [
         revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFDECTIME 3")],
         why="Holding high clocks a little longer avoids the clock-drop bounce between frames in uneven workloads.",
         changes="Sets the AC performance decrease time to 10 ms.",
-        risk="safe", impact="low", recommended="recommended", admin=True,
+        risk="safe", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
         tags=["powercfg", "clockspeed", "ramp", "stability"],
     ),
     T(

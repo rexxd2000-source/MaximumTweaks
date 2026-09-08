@@ -39,81 +39,117 @@ BLOCKED_STATUSES = {"INVALID", "PLACEBO", "OUTDATED", "CONFLICTING"}
 _CONFLICT_MARK = "CONFLICTING"
 
 
-def _reg_key(action) -> tuple | None:
-    """Registry target (hive, path, value) for an action, lowercased."""
+def _norm(v):
+    if isinstance(v, bool):
+        return v
+    try:
+        return int(v)
+    except Exception:  # noqa: BLE001
+        return str(v)
+
+
+def _target(action) -> tuple:
+    """Return (target_key, normalized_value) for an action, or (None, None).
+
+    Target keys cover every *mutable* destination so that two tweaks fighting
+    over the same setting are flagged regardless of how they express it:
+
+      ("reg",   hive, path, name)   registry value
+      ("svc",   service_name)       service start mode (sc / svc / start / stop)
+      ("ini",   path, section, key) ini/game-config value
+      ("power", setting, scheme)    power setting under a scheme
+    """
     if not isinstance(action, (tuple, list)) or not action:
-        return None
+        return None, None
     kind = action[0]
-    if kind in ("reg",):
-        try:
-            return (str(action[1]).lower(), str(action[2]).lower(),
-                    str(action[3]).lower())
-        except Exception:  # noqa: BLE001
-            return None
-    if kind in ("regdel",):
-        try:
-            return (str(action[1]).lower(), str(action[2]).lower(),
-                    str(action[3]).lower())
-        except Exception:  # noqa: BLE001
-            return None
-    return None
+    try:
+        if kind == "reg" and len(action) >= 5:
+            return (("reg", str(action[1]).lower(), str(action[2]).lower(),
+                     str(action[3]).lower()), _norm(action[4]))
+        if kind == "regdel" and len(action) >= 3:
+            return (("reg", str(action[1]).lower(), str(action[2]).lower(),
+                     str(action[3]).lower()), "<delete>")
+        if kind == "sc" and len(action) >= 3:
+            # ("sc", "disable"/"enable"/"start"/"stop", service)
+            return (("svc", str(action[2]).lower()), str(action[1]).lower())
+        if kind == "svc" and len(action) >= 3:
+            # ("svc", service, "disabled"/"auto"/"demand"/...)
+            return (("svc", str(action[1]).lower()), str(action[2]).lower())
+        if kind in ("svcstart", "svcstop") and len(action) >= 2:
+            return (("svc", str(action[1]).lower()), kind[3:].upper())
+        if kind == "power" and len(action) >= 3:
+            scheme = str(action[3]).lower() if len(action) > 3 else "AC"
+            return (("power", str(action[1]).lower(), scheme), _norm(action[2]))
+        if kind == "ini" and len(action) >= 5:
+            return (("ini", str(action[1]).lower(), str(action[2]).lower(),
+                     str(action[3]).lower()), _norm(action[4]))
+        if kind == "inidel" and len(action) >= 4:
+            return (("ini", str(action[1]).lower(), str(action[2]).lower(),
+                     str(action[3]).lower()), "<delete>")
+    except Exception:  # noqa: BLE001
+        return None, None
+    return None, None
 
 
 def _conflicts(tweaks) -> dict:
     """Map tweak id -> [(other_id, target, reason)].
 
-    Two tweaks conflict when they write the *same* registry value but their
-    action tuples disagree on the target value (or one writes while the other
-    deletes it).
+    Two tweaks conflict when they target the *same* mutable setting (registry
+    value, service start mode, ini/game-config value, or power setting) but
+    disagree on the target value — or when one writes it and the other deletes
+    it. Same-value writes are not a conflict (idempotent, e.g. two tweaks that
+    both disable the same service).
     """
     owner: dict = {}       # target -> (tweak_id, target_value_normalized)
     deletes: defaultdict = defaultdict(list)  # target -> [tweak_id]
     result: defaultdict = defaultdict(list)
 
-    def norm(v):
-        if isinstance(v, bool):
-            return v
-        try:
-            return int(v)
-        except Exception:  # noqa: BLE001
-            return str(v)
-
     for t in tweaks:
         tid = t["id"]
         for a in t.get("actions", []):
-            target = _reg_key(a)
-            if not target:
+            target, value = _target(a)
+            if target is None:
                 continue
-            if a[0] == "reg":
-                value = norm(a[4])
-                if target in owner:
-                    oid, ovalue = owner[target]
-                    if ovalue != value and oid != tid:
-                        reason = f"same registry value set to {value!r} by {tid} and {ovalue!r} by {oid}"
-                        result[tid].append((oid, target, reason))
-                        result[oid].append((tid, target, reason))
-                else:
-                    owner[target] = (tid, value)
-            elif a[0] == "regdel":
+            if value == "<delete>":
                 deletes[target].append(tid)
+                continue
+            if target in owner:
+                oid, ovalue = owner[target]
+                if ovalue != value and oid != tid:
+                    kind = _target_kind(target)
+                    reason = (f"same {kind} set to {value!r} by {tid} and "
+                              f"{ovalue!r} by {oid}")
+                    result[tid].append((oid, target, reason))
+                    result[oid].append((tid, target, reason))
+            else:
+                owner[target] = (tid, value)
 
-    # A delete of a value another tweak writes (or vice-versa) is a conflict.
+    # A delete of a setting another tweak writes (or vice-versa) is a conflict.
     for target, deleters in deletes.items():
         if target in owner:
             owner_id, _ = owner[target]
             for d in deleters:
                 if d != owner_id:
-                    reason = "one tweak writes this value, the other deletes it"
+                    reason = "one tweak writes this setting, the other deletes it"
                     result[d].append((owner_id, target, reason))
                     result[owner_id].append((d, target, reason))
         elif len(deletes[target]) > 1:
             for a in deletes[target]:
                 for b in deletes[target]:
                     if a < b:
-                        reason = "two tweaks delete the same registry value"
+                        reason = "two tweaks delete the same setting"
                         result[a].append((b, target, reason))
                         result[b].append((a, target, reason))
     return dict(result)
+
+
+def _target_kind(target: tuple) -> str:
+    return {
+        "reg": "registry value",
+        "svc": "service setting",
+        "ini": "game/config file value",
+        "power": "power setting",
+    }.get(target[0], "setting")
 
 
 def apply(tweaks: list[dict]) -> None:
@@ -136,9 +172,15 @@ def apply(tweaks: list[dict]) -> None:
 
 
 def _fmt_target(target: tuple) -> str:
-    if len(target) == 3:
-        hive, path, name = target
-        return f"{hive.upper()}\\{path}\\{name}"
+    kind = target[0]
+    if kind == "reg" and len(target) == 4:
+        return f"{target[1].upper()}\\{target[2]}\\{target[3]}"
+    if kind == "svc" and len(target) == 2:
+        return f"service '{target[1]}'"
+    if kind == "ini" and len(target) == 4:
+        return f"{target[1]} [{target[2]}] {target[3]}"
+    if kind == "power" and len(target) == 3:
+        return f"power '{target[1]}' ({target[2]})"
     return "\\".join(str(x) for x in target)
 
 

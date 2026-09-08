@@ -16,7 +16,7 @@ from rexlog import logger
 class AuditWorker(QThread):
     """Iterates tweaks and emits their detected live state."""
 
-    result_ready = Signal(str, object)  # tid, value (True / False / None)
+    result_ready = Signal(str, object, int)  # tid, value (True/False/None), cache gen
     finished_all = Signal()
 
     def __init__(self, tweaks: list[dict], parent=None):
@@ -33,13 +33,18 @@ class AuditWorker(QThread):
                 if self._stop:
                     break
                 try:
+                    # Snapshot the cache generation before the check: if the
+                    # state is invalidated while the query runs (an apply/revert
+                    # landed on the UI thread), the value is stale and the UI
+                    # drops it instead of flipping a just-applied toggle back.
+                    gen = state_checker.current_gen()
                     value = state_checker.check_tweak(tweak)
                 except Exception as exc:  # noqa: BLE001
                     logger.warn(f"audit: {tweak.get('id')} failed: {exc}")
                     value = None
                 if self._stop:
                     break
-                self.result_ready.emit(tweak.get("id"), value)
+                self.result_ready.emit(tweak.get("id"), value, gen)
         finally:
             self.finished_all.emit()
 
@@ -88,7 +93,18 @@ class StateAuditor(QObject):
         self._worker.finished_all.connect(self._on_finished)
         self._worker.start()
 
-    def _on_result(self, tid, value):
+    def _on_result(self, tid, value, gen):
+        # A result computed under an older cache generation is stale: an
+        # apply/revert invalidated the state while the worker was reading it,
+        # so showing it could flip a just-changed toggle back to its old value.
+        # Re-queue the tweak for a fresh check instead.
+        if gen != state_checker.current_gen():
+            self._pending.discard(tid)
+            from database import BY_ID
+            tweak = BY_ID.get(tid)
+            if tweak is not None:
+                self.request([tweak])
+            return
         self._pending.discard(tid)
         self.live_changed.emit(tid, value)
 

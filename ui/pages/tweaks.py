@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import THEME as T
+from database import BY_ID
+from engine import state as state_mgr
 from ui.categories import (
     ALL_TWEAK_KEYS,
     CATEGORY_GROUPS,
@@ -122,6 +124,8 @@ class TweaksPage(QWidget):
         self._worker = None
         self._relayout_pending = False
         self._in_flight: set[str] = set()
+        self._batch_ids: list[str] = []
+        self._batch_mode = "apply"
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -157,17 +161,16 @@ class TweaksPage(QWidget):
             self.opt_host = self._build_optimizer_bar()
             root.addWidget(self.opt_host)
 
-        # ---- Card grid (hugs its content; trailing stretch absorbs leftover
-        # viewport space so there is no dead band below the cards)
+        # ---- Card grid (expands to fill the viewport so no raw page
+        # background ever shows around the cards; the last row stretches)
         self.grid_host = QWidget()
         self.grid_host.setObjectName("tweaks-grid")
         self.grid_host.installEventFilter(self)
-        self.grid_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.grid_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(self.GAP)
         root.addWidget(self.grid_host)
-        root.addStretch(1)
 
         outer.addWidget(scroll, 1)
         scroll.setWidget(wrapper)
@@ -414,7 +417,7 @@ class TweaksPage(QWidget):
             self.search.clear()
         self.refresh()
 
-    def refresh(self):
+    def refresh(self, audit=True):
         if not self.key:
             return
         self._set_stats()
@@ -423,7 +426,8 @@ class TweaksPage(QWidget):
         self._update_header()
         self._update_optimizer_bar()
         self._schedule_relayout()
-        self._request_audit()
+        if audit:
+            self._request_audit()
 
     def _request_audit(self):
         """Background-check the live system state of the current group."""
@@ -448,44 +452,50 @@ class TweaksPage(QWidget):
         self._run_batch([tid], "revert")
 
     def _show_guide(self, tid):
-        from database import BY_ID
         tweak = BY_ID.get(tid)
         if tweak is None:
             return
         GuideDialog(tweak, self).exec()
 
     def _apply_all(self):
-        from database.validation import gate as _gate
+        from engine.safety import preflight as _preflight
+        profile = self.ctx.profile or None
         ids, skipped = [], []
         for t in self._visible_tweaks():
             if t.get("guidance"):
                 continue
-            if self.ctx.state_of(t["id"]) in ("incompatible", "not_for_you"):
-                continue
             if self.ctx.live_active(t["id"]):
                 continue
-            ok, reason = _gate(t)
-            if ok:
+            pf = _preflight(t, profile=profile)
+            if pf["allowed"]:
                 ids.append(t["id"])
             else:
-                skipped.append((t["id"], reason))
+                skipped.append((t["id"], pf["reason"]))
         if not ids:
             if skipped:
                 toast("Nothing to apply \u2014 every visible tweak is already active "
-                      "or blocked by validation status.", "info", self)
+                      "or blocked (see the first blocked reason in the log).", "info", self)
             else:
                 toast("Nothing to apply \u2014 every visible tweak is already active "
                       "on your system.", "info", self)
             return
         block_note = ""
         if skipped:
-            block_note = (f"\n\nSkipping {len(skipped)} blocked tweak(s) "
-                          "(invalid/placebo/outdated/conflicting).")
+            block_note = (f"\n\nSkipping {len(skipped)} tweak(s) that are blocked "
+                          f"(validation status, wrong Windows version, undetected "
+                          f"hardware, or conflicting with an applied tweak).")
+        risky_ids = [i for i in ids if BY_ID.get(i, {}).get("confirm")]
+        risk_note = ""
+        if risky_ids:
+            risk_note = (
+                f"\n\n\u26a0\ufe0f {len(risky_ids)} of these tweaks adjust low-level "
+                f"CPU boost or power-management settings. These are ordinary "
+                f"Windows settings, and everything can be reverted with Revert All.")
         if not self._confirm(
                 "Apply All",
                 f"Apply {len(ids)} visible compatible tweak(s) to your system?\n\n"
                 "This changes registry, services and power settings. Everything "
-                "can be reverted with Revert All." + block_note):
+                "can be reverted with Revert All." + block_note + risk_note):
             return
         toast(f"Applying {len(ids)} tweaks\u2026", "info", self)
         self._run_batch(ids, "apply")
@@ -523,38 +533,68 @@ class TweaksPage(QWidget):
             return
         self._busy = True
         self._in_flight.update(ids)
+        self._batch_ids = list(ids)
+        self._batch_mode = mode
+        self._last_results = {}
         self._set_toolbar()
         # Clean up any previous worker.
         if self._worker and self._worker.isRunning():
             self._worker.terminate()
             self._worker.wait(2000)
-        self._worker = BatchWorker(ids, mode, self)
+        self._worker = BatchWorker(ids, mode, self, profile=self.ctx.profile)
         self._worker.batch_done.connect(self._on_batch_done)
         self._worker.batch_error.connect(self._on_batch_error)
         self._worker.start()
 
     def _post_batch(self, ids):
         """Invalidate cached reads and re-check the real system state so the
-        toggles converge on what is actually applied (even if an older audit
-        is still streaming stale results)."""
+        toggles converge on what the user chose (even if an older audit is
+        still streaming stale results)."""
+        # The user's decision wins: an executed apply records the tweak as
+        # applied, an executed revert records it as disabled -- regardless of
+        # whether the live system could be verified. This keeps a toggle OFF
+        # once the user turns it off, even when the target still matches.
+        results = getattr(self, "_last_results", {})
+        for tid in self._batch_ids:
+            r = results.get(tid) or {}
+            ok = r.get("ok") and r.get("status") != "dry_run"
+            if not ok:
+                self.ctx.live.pop(tid, None)
+                continue
+            if self._batch_mode == "revert":
+                state_mgr.unmark_applied(tid)
+                state_mgr.mark_disabled(tid)
+                self.ctx.live[tid] = False
+            else:
+                state_mgr.mark_applied(tid)
+                state_mgr.unmark_disabled(tid)
+                self.ctx.live[tid] = True
         self._in_flight.clear()
         self.ctx.invalidate_state()
         self.ctx.force_audit_ids(ids)
         self.ctx.note_state_change()
-        self.refresh()
+        # Rebuild the visible cards so every toggle reflects the recorded
+        # outcome (including failures) once the batch settles. Audit=False:
+        # only the batch tweaks are re-checked (force_audit_ids above), so
+        # applying one tweak never flips a chain of shared-setting tweaks on.
+        self._built_sig = None
+        self.refresh(audit=False)
 
     def _on_batch_done(self, result):
         self._busy = False
         results = result.get("results", {})
-        ok_ids = [tid for tid, (ok, _d) in results.items() if ok]
+        self._last_results = results
+        ok_ids = [tid for tid, r in results.items()
+                  if r.get("ok") and r.get("status") != "dry_run"]
         failed = len(results) - len(ok_ids)
         total = len(results)
+        verb = ("Reverted" if self._batch_mode == "revert"
+                else "Applied" if total else "Done")
         if failed:
             msg = (f"{len(ok_ids)} of {total} tweaks "
                    f"\u2014 {failed} failed or blocked.")
             toast(msg.strip(), "warning", self)
         else:
-            verb = "Applied" if total else "Done"
             toast(f"{verb} {total} tweak{'s' if total != 1 else ''} "
                   "successfully.", "success", self)
         self._post_batch(ok_ids)
@@ -615,7 +655,10 @@ class TweaksPage(QWidget):
         if self.fixed_group or not hasattr(self, "counter_lbl"):
             return
         all_tweaks = self._source_tweaks()
-        applied = sum(1 for t in all_tweaks if self.ctx.live_active(t["id"]))
+        # Count matches the cards: what the user turned on (recorded), not what
+        # shared registry state happens to detect.
+        applied_ids = state_mgr.applied_ids()
+        applied = sum(1 for t in all_tweaks if t["id"] in applied_ids)
         rec = recommended_count(all_tweaks)
         color = T["accent"] if applied else T["text_dim"]
         self.counter_lbl.setText(
@@ -669,6 +712,7 @@ class TweaksPage(QWidget):
         start = (self.page - 1) * per_page
         cards = self._filtered[start:start + per_page]
         width = max(10, self.grid_host.width())
+        cols = max(1, min(cols, len(cards)))
         card_w = max(self.MIN_CARD_W, (width - self.GAP * (cols - 1)) // cols)
         sig = (cols, rows, self.page, self._pages, total,
                tuple(t["id"] for t in cards), card_w)
@@ -683,6 +727,10 @@ class TweaksPage(QWidget):
         self._cards.clear()
         start = (self.page - 1) * per_page
         cards = self._filtered[start:start + per_page]
+        # Shrink the column count to the actual number of cards so every page
+        # fills the full viewport width (a lone partial row no longer leaves a
+        # dead column of raw background on the right edge).
+        cols = max(1, min(cols, len(cards)))
         width = max(10, self.grid_host.width())
         card_w = max(self.MIN_CARD_W, (width - self.GAP * (cols - 1)) // cols)
         n_rows = max(1, (len(cards) + cols - 1) // cols)
@@ -693,9 +741,18 @@ class TweaksPage(QWidget):
             card.apply_requested.connect(self._apply)
             card.revert_requested.connect(self._revert)
             card.guide_requested.connect(self._show_guide)
-            card.setFixedSize(card_w, card_h)
+            card.setMinimumSize(card_w, card_h)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             r, c = divmod(idx, cols)
             self.grid.addWidget(card, r, c)
+        # Equal column stretch makes the cards grow to fill the grid width
+        # uniformly; every row stretches equally so all cards share the same
+        # height and the grid always fills the viewport (no dark band below
+        # the cards on short pages).
+        for c in range(cols):
+            self.grid.setColumnStretch(c, 1)
+        for r in range(n_rows):
+            self.grid.setRowStretch(r, 1)
 
     def _rebuild_pager(self):
         clear_layout(self.pager_lay)

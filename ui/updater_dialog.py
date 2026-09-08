@@ -47,6 +47,10 @@ class FetchWorker(QThread):
             self._err = ("Update check failed unexpectedly. "
                          "Please try again, or run the latest build manually.")
             result = None
+        if result is None and self._err:
+            self._err += ("\n\nIf a VPN, proxy or firewall is on, turn it off "
+                          "and Retry \u2014 the app needs internet access to "
+                          "see and install the latest version.")
         self.done.emit({"info": result, "error": self._err})
 
 

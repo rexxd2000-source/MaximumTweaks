@@ -8,9 +8,11 @@ customer-entered key plus a hashed device fingerprint to the license backend
   * ``validate()``        — POST /api/license/validate  (refresh token)
   * ``deactivate()``      — POST /api/license/deactivate + clear local session
 
-The token is cached with a short offline grace window only — the backend stays
-the authority. Raw hardware identifiers are never sent: only the SHA-256
-``device_id`` hash is transmitted.
+Once activated, the key is locked to the device: the persisted session keeps
+the PC authorized across reboots and app updates (revocation is re-checked
+against the server on every launch, and stale tokens self-repair silently).
+Raw hardware identifiers are never sent: only the SHA-256 ``device_id`` hash
+is transmitted.
 
 Pure-stdlib (urllib) so the CLI and GUI both work without extra dependencies.
 All network work happens on a worker QThread — never call these on the UI
@@ -26,7 +28,7 @@ import time
 import urllib.error
 import urllib.request
 
-from config.app_config import LICENSE_API_URL, OFFLINE_GRACE_HOURS
+from config.app_config import LICENSE_API_URL
 from engine import state as state_mgr
 from rexlog import logger
 
@@ -104,13 +106,6 @@ def dev_bypass_enabled() -> bool:
     return os.environ.get("REX_DEV_BYPASS", "") == "1"
 
 
-def _offline_grace_seconds() -> float:
-    try:
-        return float(OFFLINE_GRACE_HOURS) * 3600.0
-    except Exception:  # noqa: BLE001
-        return 24 * 3600.0
-
-
 def _license_expired(sess: dict) -> bool:
     exp = sess.get("expires_at")
     if not exp:
@@ -127,8 +122,12 @@ def _license_expired(sess: dict) -> bool:
 def is_authorized() -> bool:
     """Can the app run right now without re-activating?
 
-    True when a session exists, the device matches, the license has not
-    expired, and the session token is still within its offline grace window.
+    True when a persisted session exists, the device fingerprint matches this
+    PC, and the license has not expired (lifetime keys never expire). The
+    session-token clock is deliberately NOT a factor: once a key is bound to
+    this PC it stays authorized across reboots and app updates — the key is
+    locked to the machine. Revocation/expiry is still enforced whenever the
+    background validate() refresh reaches the server (see validate()).
     """
     sess = session()
     if not sess:
@@ -137,12 +136,7 @@ def is_authorized() -> bool:
         return False
     if _license_expired(sess):
         return False
-    tok_exp = sess.get("token_exp") or 0
-    try:
-        tok_exp = float(tok_exp)
-    except Exception:  # noqa: BLE001
-        tok_exp = 0.0
-    return time.time() < tok_exp + _offline_grace_seconds()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -318,11 +312,13 @@ def activate(key: str) -> dict:
 
 
 def validate() -> tuple[bool, str]:
-    """Best-effort token refresh. Returns (ok, message).
+    """Best-effort token refresh with self-repair. Returns (ok, message).
 
-    Hard failures (revoked/expired/mismatch) clear the stored session so the
-    next launch shows the gate. Network failures keep the cached session (the
-    offline grace window still applies).
+    Hard failures (revoked / expired / device mismatch) clear the stored
+    session so the next launch shows the gate. A stale session token is NOT a
+    hard failure: the key is still bound to this PC, so the client silently
+    re-activates with the stored key and the user is never asked to re-enter
+    it. Network failures keep the cached session (it stays authorized).
     """
     sess = session()
     if not sess or not sess.get("token"):
@@ -342,9 +338,30 @@ def validate() -> tuple[bool, str]:
         return True, ""
     code = data.get("error") or data.get("code") or ""
     message = _friendly(code, data.get("message", ""))
-    if code in ("license_revoked", "license_expired", "invalid_token",
-                "device_mismatch", "REVOKED", "EXPIRED", "INVALID_TOKEN",
-                "DEVICE_MISMATCH"):
+
+    if code in ("invalid_token", "INVALID_TOKEN"):
+        # The server-side token expired (tokens are short-lived), but the key
+        # itself is still bound to this PC. Re-activating with the stored key
+        # is idempotent on the same device, so this repairs the session with
+        # zero user input. A revoked/expired key surfaces from activate() and
+        # clears the session, so revocation is still enforced.
+        key = sess.get("license") or ""
+        if not key:
+            return False, message
+        try:
+            activate(key)
+            logger.info("license: stale token repaired via re-activation")
+            return True, ""
+        except LicenseError as exc:
+            if exc.code in ("license_revoked", "license_expired",
+                            "device_mismatch", "REVOKED", "EXPIRED",
+                            "DEVICE_MISMATCH"):
+                set_session(None)
+                logger.warn(f"license: session invalid ({exc.code})")
+            return False, exc.message
+
+    if code in ("license_revoked", "license_expired", "device_mismatch",
+                "REVOKED", "EXPIRED", "DEVICE_MISMATCH"):
         set_session(None)
         logger.warn(f"license: session invalid ({code})")
     return False, message

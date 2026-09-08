@@ -39,39 +39,55 @@ def _load_full() -> dict:
     return _load()
 
 
-def _save(state: dict) -> None:
+def _save(state: dict) -> bool:
+    """Persist state.json atomically. Returns True on success.
+
+    A failed write (disk full / permissions / locked file) is *not* silent:
+    apply/revert callers check the return value so a lost registry backup or
+    a lost "applied" record is surfaced to the user instead of quietly making
+    Revert fall back to hardcoded defaults.
+    """
     global _CACHE
     _CACHE = state
-    os.makedirs(STATE_DIR, exist_ok=True)
-    tmp = STATE_FILE + ".tmp"
     try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = STATE_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(state, fh, indent=2)
         os.replace(tmp, STATE_FILE)  # atomic on the same volume
+        return True
     except Exception as exc:  # noqa: BLE001
-        logger.warn(f"state: failed to write {STATE_FILE}: {exc}")
+        logger.error(f"state: FAILED to write {STATE_FILE}: {exc} "
+                     f"(state changes will not survive this session)")
+        return False
 
 
 def applied_ids() -> set[str]:
     return set(_load().get("applied", {}))
 
 
-def mark_applied(tweak_id: str) -> None:
+def mark_applied(tweak_id: str) -> bool:
     state = _load()
     state.setdefault("applied", {})[tweak_id] = time.strftime("%Y-%m-%d %H:%M")
-    _save(state)
-    logger.info(f"state: recorded applied tweak {tweak_id}")
+    ok = _save(state)
+    logger.info(f"state: recorded applied tweak {tweak_id} (saved={ok})")
+    return ok
 
 
-def unmark_applied(tweak_id: str) -> None:
+def unmark_applied(tweak_id: str) -> bool:
     state = _load()
     state.get("applied", {}).pop(tweak_id, None)
-    _save(state)
-    logger.info(f"state: removed applied tweak {tweak_id}")
+    ok = _save(state)
+    logger.info(f"state: removed applied tweak {tweak_id} (saved={ok})")
+    return ok
 
 
 def applied_at(tweak_id: str) -> str | None:
     return _load().get("applied", {}).get(tweak_id)
+
+
+def is_applied(tweak_id: str) -> bool:
+    return tweak_id in _load().get("applied", {})
 
 
 # --- Disabled (user-reverted) tweaks -------------------------------------
@@ -82,18 +98,20 @@ def disabled_ids() -> set[str]:
     return set(_load().get("disabled", {}))
 
 
-def mark_disabled(tweak_id: str) -> None:
+def mark_disabled(tweak_id: str) -> bool:
     state = _load()
     state.setdefault("disabled", {})[tweak_id] = time.strftime("%Y-%m-%d %H:%M")
-    _save(state)
-    logger.info(f"state: marked tweak {tweak_id} as disabled")
+    ok = _save(state)
+    logger.info(f"state: marked tweak {tweak_id} as disabled (saved={ok})")
+    return ok
 
 
-def unmark_disabled(tweak_id: str) -> None:
+def unmark_disabled(tweak_id: str) -> bool:
     state = _load()
     state.get("disabled", {}).pop(tweak_id, None)
-    _save(state)
-    logger.info(f"state: removed disabled mark {tweak_id}")
+    ok = _save(state)
+    logger.info(f"state: removed disabled mark {tweak_id} (saved={ok})")
+    return ok
 
 
 # --- Registry value backups (exact revert) --------------------------------
@@ -108,22 +126,80 @@ def get_reg_backups(tweak_id: str) -> dict | None:
     return _load().get("reg_backups", {}).get(tweak_id)
 
 
-def save_reg_backups(tweak_id: str, entries: dict) -> None:
+def save_reg_backups(tweak_id: str, entries: dict) -> bool:
     state = _load()
     state.setdefault("reg_backups", {})[tweak_id] = entries
-    _save(state)
-    logger.info(f"state: recorded {len(entries)} reg backups for {tweak_id}")
+    ok = _save(state)
+    logger.info(f"state: recorded {len(entries)} reg backups for {tweak_id} (saved={ok})")
+    return ok
 
 
-def clear_reg_backups(tweak_id: str) -> None:
+def clear_reg_backups(tweak_id: str) -> bool:
     state = _load()
     state.get("reg_backups", {}).pop(tweak_id, None)
-    _save(state)
-    logger.info(f"state: cleared reg backups for {tweak_id}")
+    ok = _save(state)
+    logger.info(f"state: cleared reg backups for {tweak_id} (saved={ok})")
+    return ok
 
 
 def reg_backup_ids() -> set[str]:
     return set(_load().get("reg_backups", {}))
+
+
+# --- File / ini value backups (exact revert) ------------------------------
+# ``file`` writes and ``ini`` edits overwrite existing content; the original
+# value is snapshotted before apply so Revert restores the user's real previous
+# state instead of the hardcoded revert list. Per tweak:
+#   file_backups {normpath_lower: {"kind","path","existed","content"}}
+#   ini_backups  {path|section|key_lower: {"kind","path","section","key",
+#                                           "existed","value"}}
+
+def get_file_backups(tweak_id: str) -> dict | None:
+    return _load().get("file_backups", {}).get(tweak_id)
+
+
+def save_file_backups(tweak_id: str, entries: dict) -> bool:
+    state = _load()
+    state.setdefault("file_backups", {})[tweak_id] = entries
+    ok = _save(state)
+    logger.info(f"state: recorded {len(entries)} file backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def clear_file_backups(tweak_id: str) -> bool:
+    state = _load()
+    state.get("file_backups", {}).pop(tweak_id, None)
+    ok = _save(state)
+    logger.info(f"state: cleared file backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def file_backup_ids() -> set[str]:
+    return set(_load().get("file_backups", {}))
+
+
+def get_ini_backups(tweak_id: str) -> dict | None:
+    return _load().get("ini_backups", {}).get(tweak_id)
+
+
+def save_ini_backups(tweak_id: str, entries: dict) -> bool:
+    state = _load()
+    state.setdefault("ini_backups", {})[tweak_id] = entries
+    ok = _save(state)
+    logger.info(f"state: recorded {len(entries)} ini backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def clear_ini_backups(tweak_id: str) -> bool:
+    state = _load()
+    state.get("ini_backups", {}).pop(tweak_id, None)
+    ok = _save(state)
+    logger.info(f"state: cleared ini backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def ini_backup_ids() -> set[str]:
+    return set(_load().get("ini_backups", {}))
 
 
 # --- Active game profile -------------------------------------------------
@@ -190,6 +266,23 @@ def clear_restart_required() -> None:
     state.pop("restart_required", None)
     _save(state)
     logger.info("state: restart_required cleared")
+
+
+def recompute_restart_required() -> None:
+    """Re-derive the restart flag from the currently applied tweaks.
+
+    Set while any applied tweak carries a ``reboot`` tag, otherwise clear.
+    Called after every apply/revert so reverting a reboot-tagged tweak never
+    leaves a stale "restart required" flag behind.
+    """
+    from database import BY_ID  # deferred: avoids import cycle
+    needs = any(
+        "reboot" in (BY_ID.get(tid) or {}).get("tags", [])
+        for tid in applied_ids())
+    if needs:
+        set_restart_required(True)
+    else:
+        clear_restart_required()
 
 
 # --- Ultra Mode (dashboard quick-toggle) -------------------------------

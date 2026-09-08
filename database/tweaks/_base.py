@@ -140,7 +140,8 @@ def make_T(category, win_default="7,8,10,11"):
 
     def T(tid, name, desc, actions=None, revert=None, why=None, changes=None,
           risk="low", impact="moderate", recommended="recommended", win=None,
-          admin=False, confirm=False, when=None, tags=None, crafted_for=None,
+          admin=False, confirm=False, warn=None, when=None, tags=None,
+          crafted_for=None,
           status="VALID", evidence="UNKNOWN", target="WINDOWS", verdict="SHIP"):
         if not tid or not isinstance(tid, str):
             raise ValueError("Tweak id required")
@@ -174,6 +175,7 @@ def make_T(category, win_default="7,8,10,11"):
             "win": win,
             "admin": bool(admin),
             "confirm": bool(confirm),
+            "warn": warn or "",
             "when": _normalize_when(when),
             "tags": list(tags or []),
             "crafted_for": crafted_for,

@@ -37,7 +37,12 @@ STATE_ORDER = {
 }
 
 READY_STATES = ("compatible", "optional")
-SELECTABLE_STATES = ("compatible", "optional", "driver_dependent", "unknown")
+# Only validated-and-compatible tweaks are selectable for auto-apply. A
+# driver_dependent tweak may look right on the surface but can silently no-op
+# on a driver that exposes no matching panel — never auto-apply it. "unknown"
+# (no evidence at all) is likewise not selectable. Both remain visible in the
+# report so the user can read why they were held back.
+SELECTABLE_STATES = READY_STATES
 
 _EVIDENCE_RANK = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
 _IMPACT_RANK = {"extreme": 6, "high": 5, "moderate": 4, "low": 3,

@@ -70,9 +70,9 @@ MAXIMUM = {
     "tagline": "Advanced tuning — read first",
     "description": (
         "Aggressive debloating and advanced latency settings. Disables "
-        "telemetry, diagnostics and unused services, turns off CPU mitigations "
-        "and memory compression, and trims storage. Security and stability "
-        "trade-offs apply. Best paired with a restore point."
+        "telemetry, diagnostics and unused services, disables memory "
+        "compression, and trims storage. Security and stability trade-offs "
+        "apply. Best paired with a restore point."
     ),
     "risk": "moderate",
     "tweaks": COMPETITIVE["tweaks"] + [
@@ -82,7 +82,6 @@ MAXIMUM = {
         "adv-006",     # Processor scheduling to programs
         "adv-012",     # Memory compression off
         "ram-006",     # I/O page lock limit
-        "sys-018",     # Spectre/Meltdown mitigations off
         "stor-003",    # Last access timestamps off
         "stor-002",    # 8.3 short names off
         "svc-003",     # DiagTrack off

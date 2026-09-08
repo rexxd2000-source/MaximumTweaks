@@ -157,10 +157,22 @@ class BundleCard(QFrame):
         warn.setObjectName("PageSub")
         warn.setWordWrap(True)
         n_admin = sum(1 for t in applyable if t.get("admin"))
+        notes = []
         if n_admin:
-            warn.setText(
+            notes.append(
                 f"{n_admin} tweak(s) require administrator privileges. Run Maximum Tweaks "
                 "as Administrator for those to take effect; otherwise they are skipped.")
+        risky = [t for t in applyable if t.get("confirm")]
+        if risky:
+            names = ", ".join(t["name"] for t in risky[:4])
+            more = f" and {len(risky) - 4} more" if len(risky) > 4 else ""
+            notes.append(
+                f"\u26a0\ufe0f {len(risky)} tweak(s) adjust low-level CPU boost "
+                f"or power-management settings. These are ordinary Windows "
+                f"settings, and everything can be turned back off in the app "
+                f"at any time ({names}{more}).")
+        if notes:
+            warn.setText("\n\n".join(notes))
         lay.addWidget(warn)
 
         opts = QVBoxLayout()
@@ -192,7 +204,9 @@ class BundleCard(QFrame):
         self._run(ids)
 
     def _run(self, ids):
-        dlg = ProgressDialog(self, ids, "apply", f"Applying {self.bundle['name']}…")
+        dlg = ProgressDialog(self, ids, "apply",
+                             f"Applying {self.bundle['name']}…",
+                             profile=self.ctx.profile)
         dlg.exec()
         self.ctx.note_state_change()
         self._update_preview()

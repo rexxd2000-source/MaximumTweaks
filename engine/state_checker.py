@@ -41,6 +41,7 @@ from rexlog import logger
 
 _LOCK = threading.RLock()
 _CACHE: dict = {}
+_GEN = 0
 
 # PowerShell power-settings aliases -> the GUIDs that powercfg reports.
 _ALIAS_GUIDS = {
@@ -151,21 +152,55 @@ def _run(args, timeout=10):
 
 def _cache_get(key):
     with _LOCK:
-        return _CACHE.get(key, _MISS)
+        entry = _CACHE.get(key)
+        if entry is None or entry[0] != _GEN:
+            return _MISS
+        return entry[1]
 
 
 _MISS = object()
 
 
-def _cache_set(key, value):
+def _current_gen() -> int:
+    """Snapshot of the cache generation (read before a slow system query)."""
     with _LOCK:
-        _CACHE[key] = value
+        return _GEN
+
+
+def _cache_set(key, value, gen=None):
+    """Store a value read under generation ``gen`` (default: the current one).
+
+    If ``gen`` is given and differs from the current generation, the value was
+    read before an invalidate_cache() happened (e.g. a concurrent audit that
+    started its query pre-apply and finished post-apply). It is tagged with the
+    old generation so _cache_get never serves the stale pre-change result.
+    """
+    with _LOCK:
+        _CACHE[key] = (_GEN if gen is None else gen, value)
 
 
 def invalidate_cache():
-    """Drop every cached system read (call after apply/revert)."""
+    """Drop every cached system read (call after apply/revert).
+
+    Also bumps the generation, so any system read that started BEFORE this call
+    (a concurrent in-flight audit query) is dropped when it completes and can
+    never be served to a later caller.
+    """
+    global _GEN
     with _LOCK:
+        _GEN += 1
         _CACHE.clear()
+
+
+def current_gen() -> int:
+    """Current cache generation.
+
+    A result computed under an older generation is stale: the system state was
+    invalidated (an apply/revert) while it was being read, so it must not be
+    shown. Audit workers snapshot this before each check and emit it with the
+    result so the UI can drop stale emissions.
+    """
+    return _current_gen()
 
 
 def invalidate_ini(path: str):
@@ -183,6 +218,7 @@ def _reg_map(hive: str, path: str) -> dict[str, tuple[str, str]]:
     if cached is not _MISS:
         return cached
     full = _HIVE_FULL.get(hive.upper(), hive.upper())
+    gen = _current_gen()
     ok, out = _run(f'reg query "{hive}\\{path}"')
     values: dict[str, tuple[str, str]] = {}
     if ok:
@@ -200,15 +236,15 @@ def _reg_map(hive: str, path: str) -> dict[str, tuple[str, str]]:
                 data = m.group("data")
                 if data.strip().lower() == "(value not set)":
                     continue
-                values[m.group("name")] = (m.group("type"), data)
-    _cache_set(key, values)
+                values[m.group("name").strip().lower()] = (m.group("type"), data)
+    _cache_set(key, values, gen)
     return values
 
 
 def _reg_data(hive: str, path: str, name: str):
     key = name.strip().lower()
     if key in ("", "(default)", "(default value)"):
-        key = "(Default)"
+        key = "(default)"
     return _reg_map(hive, path).get(key)
 
 
@@ -217,10 +253,11 @@ def _svc_start_type(name: str) -> str | None:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run(f'sc qc "{name}"')
     m = re.search(r"START_TYPE\s*:\s*\d+\s+([A-Z_]+)", out)
     result = m.group(1) if (ok and m) else None
-    _cache_set(key, result)
+    _cache_set(key, result, gen)
     return result
 
 
@@ -229,10 +266,17 @@ def _svc_running(name: str) -> bool | None:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run(f'sc query "{name}"')
-    running = bool(ok and re.search(r"STATE\s*:\s*\d+\s+RUNNING", out))
-    _cache_set(key, running)
-    return running
+    if not ok:
+        # Access denied / service not installed must NOT read as "stopped":
+        # a svcstop tweak would then falsely verify as applied. Report unknown
+        # and let the caller treat it as unmeasurable.
+        result: bool | None = None
+    else:
+        result = bool(re.search(r"STATE\s*:\s*\d+\s+RUNNING", out))
+    _cache_set(key, result, gen)
+    return result
 
 
 def _active_scheme() -> tuple[str, str]:
@@ -240,6 +284,7 @@ def _active_scheme() -> tuple[str, str]:
     cached = _cache_get(("scheme",))
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run("powercfg /getactivescheme")
     guid = name = ""
     if ok:
@@ -249,7 +294,7 @@ def _active_scheme() -> tuple[str, str]:
         n = re.search(r"\(([^)]*)\)", out)
         if n:
             name = n.group(1).strip()
-    _cache_set(("scheme",), (guid, name))
+    _cache_set(("scheme",), (guid, name), gen)
     return guid, name
 
 
@@ -258,6 +303,7 @@ def _power_map() -> dict[tuple[str, str], tuple[int, int]]:
     cached = _cache_get(("power",))
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run("powercfg /query SCHEME_CURRENT")
     power: dict[tuple[str, str], tuple[int, int]] = {}
     sub = setid = None
@@ -282,7 +328,7 @@ def _power_map() -> dict[tuple[str, str], tuple[int, int]]:
         if m and sub and setid:
             dc = int(m.group(1), 16)
             power[(sub, setid)] = (ac, dc)
-    _cache_set(("power",), power)
+    _cache_set(("power",), power, gen)
     return power
 
 
@@ -295,9 +341,10 @@ def _scheme_list() -> set[str]:
     cached = _cache_get(("scheme_list",))
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run("powercfg /list")
     guids = {g.lower() for g in (_GUID_RE.findall(out) if ok else [])}
-    _cache_set(("scheme_list",), guids)
+    _cache_set(("scheme_list",), guids, gen)
     return guids
 
 
@@ -306,6 +353,7 @@ def _sched_status(task: str) -> str | None:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run(f'schtasks /Query /TN "{task}" /FO LIST')
     status = None
     if ok:
@@ -317,7 +365,7 @@ def _sched_status(task: str) -> str | None:
             if low.startswith("scheduled task state:"):
                 status = line.split(":", 1)[1].strip()
                 break
-    _cache_set(key, status)
+    _cache_set(key, status, gen)
     return status
 
 
@@ -330,6 +378,7 @@ def _bcd_values():
     cached = _cache_get(("bcd",))
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run("bcdedit /enum")
     vals: dict[str, str] = {}
     if ok:
@@ -338,7 +387,7 @@ def _bcd_values():
             if m and not line.startswith(("identifier", "--")):
                 vals[m.group(1).lower()] = m.group(2).strip()
     result: dict[str, str] | None = vals if ok else None
-    _cache_set(("bcd",), result)
+    _cache_set(("bcd",), result, gen)
     return result
 
 
@@ -368,6 +417,7 @@ def _netsh_tcp_global() -> dict[str, str]:
     cached = _cache_get(("netsh",))
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     ok, out = _run("netsh interface tcp show global")
     vals: dict[str, str] = {}
     if ok:
@@ -375,7 +425,7 @@ def _netsh_tcp_global() -> dict[str, str]:
             m = re.match(r"^\s*(.+?)\s*:\s*(.+?)\s*$", line)
             if m:
                 vals[m.group(1).strip().lower()] = m.group(2).strip()
-    _cache_set(("netsh",), vals)
+    _cache_set(("netsh",), vals, gen)
     return vals
 
 
@@ -430,7 +480,7 @@ def _reg_value_matches(hive, path, name, target, vtype) -> bool:
         return _num_match(target, data)
     if vtype.upper() == "BINARY":
         return _bin_match(target, data)
-    return str(data) == str(target)
+    return str(data).strip().lower() == str(target).strip().lower()
 
 
 def _reg_value_absent(hive, path, name) -> bool:
@@ -438,7 +488,16 @@ def _reg_value_absent(hive, path, name) -> bool:
 
 
 def _reg_key_absent(hive, path) -> bool:
-    return not bool(_reg_map(hive, path))
+    # A key that exists but has no values must NOT read as "absent" (regkeydel
+    # would falsely verify). Existence is judged by the reg.exe exit code.
+    key = ("regkey_exists", hive.upper(), path.upper())
+    cached = _cache_get(key)
+    if cached is not _MISS:
+        return not bool(cached)
+    gen = _current_gen()
+    ok, _out = _run(f'reg query "{hive}\\{path}"')
+    _cache_set(key, ok, gen)
+    return not ok
 
 
 def _reg_subkeys(hive, path) -> list[str]:
@@ -447,6 +506,7 @@ def _reg_subkeys(hive, path) -> list[str]:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     full = _HIVE_FULL.get(hive.upper(), hive.upper())
     ok, out = _run(f'reg query "{hive}\\{path}"')
     names = []
@@ -458,7 +518,7 @@ def _reg_subkeys(hive, path) -> list[str]:
                 sec = m.group("path").upper()
                 if sec.startswith(wanted + "\\") and not sec.startswith(wanted + "\\\\"):
                     names.append(f"{path}\\{sec[len(wanted) + 1:]}")
-    _cache_set(key, names)
+    _cache_set(key, names, gen)
     return names
 
 
@@ -616,14 +676,18 @@ def _check_action(action) -> bool | None:
                 start = _svc_start_type(action[2])
                 return None if start is None else start == target
             if subop == "start":
-                return _svc_running(action[2])
+                running = _svc_running(action[2])
+                return None if running is None else bool(running)
             if subop == "stop":
-                return not bool(_svc_running(action[2]))
+                running = _svc_running(action[2])
+                return None if running is None else not bool(running)
             return None
         if kind == "svcstart":
-            return _svc_running(action[1])
+            running = _svc_running(action[1])
+            return None if running is None else bool(running)
         if kind == "svcstop":
-            return not bool(_svc_running(action[1]))
+            running = _svc_running(action[1])
+            return None if running is None else not bool(running)
         if kind == "power":
             spec = POWER_NAMES.get(action[1])
             if spec is None:
@@ -707,6 +771,7 @@ def _ini_map(path: str) -> dict[str, dict[str, str]]:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
+    gen = _current_gen()
     sections: dict[str, dict[str, str]] = {}
     cur = None
     try:
@@ -724,7 +789,7 @@ def _ini_map(path: str) -> dict[str, dict[str, str]]:
         if cur and "=" in line and not line.startswith((";", "#")):
             k, _, v = line.partition("=")
             sections[cur][k.strip().lower()] = v.strip()
-    _cache_set(key, sections)
+    _cache_set(key, sections, gen)
     return sections
 
 

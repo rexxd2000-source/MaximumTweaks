@@ -150,13 +150,30 @@ def _is_default_name(name) -> bool:
     return str(name).strip().lower() in ("", "(default)", "(default value)")
 
 
+def _missing(detail: str) -> bool:
+    """True when a failed reg delete means the target is already gone."""
+    low = (detail or "").lower()
+    return any(tok in low for tok in (
+        "unable to find the specified registry key or value",
+        "cannot find the specified registry key or value",
+        "does not exist", "could not be found"))
+
+
 def _reg_delete(hive, path, name):
     vflag = "/ve" if _is_default_name(name) else f'/v "{name}"'
-    return _run(f'reg delete "{hive}\\{path}" {vflag} /f')
+    ok, detail = _run(f'reg delete "{hive}\\{path}" {vflag} /f')
+    if not ok and _missing(detail):
+        # Deleting an already-absent value is a success (idempotent revert):
+        # the desired end state is achieved even though reg.exe errored.
+        return True, f"already absent: {hive}\\{path} [{name}]"
+    return ok, detail
 
 
 def _reg_key_delete(hive, path):
-    return _run(f'reg delete "{hive}\\{path}" /f')
+    ok, detail = _run(f'reg delete "{hive}\\{path}" /f')
+    if not ok and _missing(detail):
+        return True, f"already absent: {hive}\\{path}"
+    return ok, detail
 
 
 # ---------------- value snapshot / exact restore ----------------
@@ -208,31 +225,31 @@ def _values_equal(target, vtype, data) -> bool:
         else:
             want = str(target).replace(" ", "")
         return data.replace(" ", "").lower() == want.lower()
-    return data == str(target)
+    return data.strip().lower() == str(target).strip().lower()
 
 
 def _snapshot_reg_targets(tweak_id: str, actions: list) -> None:
-    """Record each reg value's previous state before the apply writes it.
+    """Record each reg/regall value's previous state before the apply writes it.
 
     Backups are kept from the FIRST apply: re-applying never overwrites the
     snapshot, so revert always lands on the true pre-tweak value.  A value that
     already equals the target is not snapshotted (revert then falls back to the
-    hardcoded revert list).
+    hardcoded revert list).  ``regall`` writes are snapshotted per subkey, so a
+    revert restores each subkey's real previous value instead of deleting it.
     """
     from engine import state as state_mgr  # deferred: avoids import cycle
 
     existing = state_mgr.get_reg_backups(tweak_id) or {}
     changed = False
-    for a in actions:
-        if a[0] != "reg" or len(a) < 6:
-            continue
-        hive, path, name, value, vtype = a[1], a[2], a[3], a[4], a[5]
+
+    def _one(hive, path, name, value, vtype):
+        nonlocal changed
         key = _target_key(hive, path, name)
         if key in existing:
-            continue  # keep the original snapshot
+            return  # keep the original snapshot
         existed, rtype, data = _reg_read_value(hive, path, name)
         if existed and _values_equal(value, vtype, data):
-            continue  # already at target; nothing meaningful to back up
+            return  # already at target; nothing meaningful to back up
         if existed:
             existing[key] = {"hive": hive, "path": path, "name": name,
                              "existed": True, "vtype": rtype, "data": data}
@@ -240,6 +257,17 @@ def _snapshot_reg_targets(tweak_id: str, actions: list) -> None:
             existing[key] = {"hive": hive, "path": path, "name": name,
                              "existed": False}
         changed = True
+
+    for a in actions:
+        if len(a) < 6:
+            continue
+        kind = a[0]
+        if kind == "reg":
+            _one(a[1], a[2], a[3], a[4], a[5])
+        elif kind == "regall":
+            hive, base, name, value, vtype = a[1], a[2], a[3], a[4], a[5]
+            for sub in _reg_subkeys(hive, base):
+                _one(hive, sub, name, value, vtype)
     if changed:
         state_mgr.save_reg_backups(tweak_id, existing)
 
@@ -254,7 +282,13 @@ def _restore_backup(entry: dict, dry_run: bool = False):
         short = _REV_TYPE.get((entry["vtype"] or "").upper(), "STRING")
         return _reg_write(entry["hive"], entry["path"], entry["name"],
                           entry["data"], short)
-    return _reg_delete(entry["hive"], entry["path"], entry["name"])
+    # The value was absent before the tweak ran -> revert means delete it.
+    # Deleting an already-absent value is a *success* (idempotent restore), so
+    # the backup can be cleared instead of failing forever.
+    ok, detail = _reg_delete(entry["hive"], entry["path"], entry["name"])
+    if not ok and _missing(detail):
+        return True, f"already absent: {entry['hive']}\\{entry['path']} [{entry['name']}]"
+    return ok, detail
 
 
 _FULL_HIVE = {
@@ -316,6 +350,8 @@ def _reg_delete_all(hive, base, name):
     ok_all, details = True, []
     for key in keys:
         ok, detail = _run(f'reg delete "{key}" /v "{name}" /f')
+        if not ok and _missing(detail):
+            ok, detail = True, "already absent"
         ok_all = ok_all and ok
         details.append(detail)
     return ok_all, "; ".join(details)
@@ -487,19 +523,131 @@ def apply_actions(actions, dry_run=False, admin_required=False):
 def apply_tweak(tweak_id, mode="apply", dry_run=False):
     """Apply or revert a tweak by id. Returns (ok, results).
 
-    Apply snapshots every registry value it is about to change; revert restores
-    those exact previous values (falling back to the hardcoded revert list only
-    when no snapshot exists, e.g. tweaks applied before this feature shipped).
+    Apply snapshots every registry value (and file/ini value) it is about to
+    change; revert restores those exact previous values (falling back to the
+    hardcoded revert list only when no snapshot exists, e.g. tweaks applied
+    before this feature shipped).
     """
     tweak = BY_ID.get(tweak_id)
     if tweak is None:
         return False, [(tweak_id, False, "unknown tweak id")]
     if mode == "revert":
         return _revert_tweak(tweak, dry_run=dry_run)
+    # Fail fast on missing elevation BEFORE any snapshot is taken: a failed
+    # apply must never leave behind backups for a change that never happened.
+    if tweak["admin"] and not dry_run and not _is_admin():
+        return False, [(a, False, "requires administrator privileges") for a in tweak["actions"]]
     if not dry_run:
         _snapshot_reg_targets(tweak_id, tweak["actions"])
+        _snapshot_file_targets(tweak_id, tweak["actions"])
+        _snapshot_ini_targets(tweak_id, tweak["actions"])
     return apply_actions(tweak["actions"], dry_run=dry_run,
                          admin_required=tweak["admin"])
+
+
+def _file_backup_key(path: str) -> str:
+    return os.path.normpath(os.path.expandvars(os.path.expanduser(path))).lower()
+
+
+def _ini_backup_key(path: str, section: str, key: str) -> str:
+    return (f"{_file_backup_key(path)}|{str(section).strip().lower()}"
+            f"|{str(key).strip().lower()}")
+
+
+def _ini_read_value(path, section, key):
+    """Read a raw ini key -> (existed, value) straight from disk (uncached)."""
+    from engine import state_checker  # deferred: avoids import cycle
+    vals = state_checker._ini_map(path)
+    sec = vals.get(str(section).strip().lower())
+    if not sec:
+        return False, None
+    value = sec.get(str(key).strip().lower())
+    return (True, value) if value is not None else (False, None)
+
+
+def _snapshot_file_targets(tweak_id: str, actions: list) -> None:
+    """Back up the previous content (or absence) of files a tweak will write."""
+    from engine import state as state_mgr  # deferred: avoids import cycle
+
+    existing = state_mgr.get_file_backups(tweak_id) or {}
+    changed = False
+    for a in actions:
+        if len(a) < 3 or a[0] != "file" or a[1] not in ("write", "append"):
+            continue
+        path = a[2]
+        pkey = _file_backup_key(path)
+        if pkey in existing:
+            continue
+        full = os.path.expandvars(os.path.expanduser(path))
+        if os.path.exists(full):
+            try:
+                with open(full, "r", encoding="utf-8", errors="replace") as fh:
+                    content = fh.read()
+            except OSError:
+                continue
+            existing[pkey] = {"kind": "file", "path": path,
+                              "existed": True, "content": content}
+        else:
+            existing[pkey] = {"kind": "file", "path": path,
+                              "existed": False, "content": ""}
+        changed = True
+    if changed:
+        state_mgr.save_file_backups(tweak_id, existing)
+
+
+def _restore_file_backup(entry: dict, dry_run: bool = False):
+    """Restore one backed-up file -> (ok, detail)."""
+    path = os.path.expandvars(os.path.expanduser(entry["path"]))
+    if dry_run:
+        verb = "restore" if entry["existed"] else "remove"
+        return True, f"dry-run: {verb} {path}"
+    if entry["existed"]:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(entry["content"] or "")
+            return True, f"restored {path}"
+        except OSError as exc:
+            return False, str(exc)
+    # The file did not exist before the tweak -> revert means delete it.
+    # Deleting an already-absent file is a success (idempotent restore).
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+        return True, f"removed {path}"
+    except OSError as exc:
+        return False, str(exc)
+
+
+def _snapshot_ini_targets(tweak_id: str, actions: list) -> None:
+    """Back up the previous value of every ini key a tweak will set."""
+    from engine import state as state_mgr  # deferred: avoids import cycle
+
+    existing = state_mgr.get_ini_backups(tweak_id) or {}
+    changed = False
+    for a in actions:
+        if len(a) < 5 or a[0] != "ini":
+            continue
+        path, section, key = a[1], a[2], a[3]
+        ikey = _ini_backup_key(path, section, key)
+        if ikey in existing:
+            continue
+        existed, value = _ini_read_value(path, section, key)
+        existing[ikey] = {"kind": "ini", "path": path, "section": section,
+                          "key": key, "existed": existed, "value": value}
+        changed = True
+    if changed:
+        state_mgr.save_ini_backups(tweak_id, existing)
+
+
+def _restore_ini_backup(entry: dict, dry_run: bool = False):
+    """Restore one backed-up ini key -> (ok, detail)."""
+    if dry_run:
+        verb = "restore" if entry["existed"] else "remove key"
+        return True, f"dry-run: {verb} {entry['section']}.{entry['key']} in {entry['path']}"
+    if entry["existed"]:
+        return _ini(entry["path"], entry["section"], entry["key"], entry["value"])
+    return _ini_delete(entry["path"], entry["section"], entry["key"])
 
 
 def _revert_tweak(tweak, dry_run=False):
@@ -507,37 +655,64 @@ def _revert_tweak(tweak, dry_run=False):
     from engine import state as state_mgr  # deferred: avoids import cycle
 
     tid = tweak["id"]
-    backups = state_mgr.get_reg_backups(tid)
-    if not backups:
+    reg_backups = state_mgr.get_reg_backups(tid) or {}
+    file_backups = state_mgr.get_file_backups(tid) or {}
+    ini_backups = state_mgr.get_ini_backups(tid) or {}
+    has_backups = bool(reg_backups or file_backups or ini_backups)
+    if not has_backups:
         return apply_actions(tweak["revert"], dry_run=dry_run,
                              admin_required=tweak["admin"])
 
-    # Run the hardcoded revert for everything EXCEPT reg values covered by a
-    # backup (those are restored to their true previous value below).  This
-    # keeps svc/cmd/power/file/ini/appx reversions exactly as authored.
-    restored_keys: set[str] = set()
+    def _covered_regdelall(hive, base):
+        prefix = f"{hive.upper()}\\{base.replace('\\\\', '\\').upper()}\\"
+        return any(k.startswith(prefix) for k in reg_backups)
+
+    # Run the hardcoded revert for everything EXCEPT targets covered by a
+    # backup (those are restored to their true previous value below). This
+    # keeps svc/cmd/power/appx reversions exactly as authored and stops
+    # hardcoded reg/regdelall/ini/file actions from clobbering restored values.
     results = []
+    restored_reg: set[str] = set()
     for a in tweak["revert"]:
         if a[0] == "reg" and len(a) >= 4:
             key = _target_key(a[1], a[2], a[3])
-            if key in backups:
-                restored_keys.add(key)
+            if key in reg_backups:
+                restored_reg.add(key)
+                continue
+        if a[0] == "regdelall" and len(a) >= 4 and _covered_regdelall(a[1], a[2]):
+            continue
+        if a[0] == "file" and len(a) >= 3:
+            if _file_backup_key(a[2]) in file_backups:
+                continue
+        if a[0] in ("ini", "inidel") and len(a) >= 4:
+            if _ini_backup_key(a[1], a[2], a[3]) in ini_backups:
                 continue
         ok, detail = _execute_action(a, dry_run=dry_run)
         results.append((a, ok, detail))
 
     # Restore the exact previous state of every snapshotted value.
     ok_all = True
-    for key, entry in backups.items():
-        if dry_run:
-            ok, detail = _restore_backup(entry, dry_run=True)
-        else:
-            ok, detail = _restore_backup(entry)
+    for key, entry in reg_backups.items():
+        ok, detail = _restore_backup(entry, dry_run=dry_run)
         if not ok:
             ok_all = False
         results.append(("restore", ok,
                         f"restored {entry['hive']}\\{entry['path']} "
                         f"[{entry['name']}] -> {detail}"))
+    for key, entry in file_backups.items():
+        ok, detail = _restore_file_backup(entry, dry_run=dry_run)
+        if not ok:
+            ok_all = False
+        results.append(("restore", ok,
+                        f"restored {entry['path']} -> {detail}"))
+    for key, entry in ini_backups.items():
+        ok, detail = _restore_ini_backup(entry, dry_run=dry_run)
+        if not ok:
+            ok_all = False
+        results.append(("restore", ok,
+                        f"restored {entry['section']}.{entry['key']} -> {detail}"))
     if ok_all and not dry_run:
         state_mgr.clear_reg_backups(tid)
+        state_mgr.clear_file_backups(tid)
+        state_mgr.clear_ini_backups(tid)
     return ok_all and all(ok for _, ok, _ in results), results
