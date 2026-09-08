@@ -392,7 +392,6 @@ SIDEBAR_TWEAKS = [
     ("laptop", "Laptop"),
     ("power", "Power"),
     ("fpsboost", "FPS Boost"),
-    ("delay_destroyer", "DELAY DESTROYER"),
 ]
 
 
