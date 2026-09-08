@@ -1,10 +1,8 @@
-"""Network observer — continuous TCP + UDP monitoring per game PID.
+"""Per-PID TCP/UDP connection monitor.
 
-Uses Windows IP Helper APIs (GetExtendedTcpTable / GetExtendedUdpTable) via ctypes
-for reliable process-to-endpoint mapping. Falls back to psutil when needed.
-
-Tracks connection lifecycle: first_seen, last_seen, observation_count, activity_rate.
-Distinguishes TCP from UDP. Maintains a rolling history of observations.
+Uses the Windows IP Helper APIs (GetExtendedTcpTable / GetExtendedUdpTable)
+via ctypes for reliable process-to-endpoint mapping, falling back to psutil.
+Tracks first_seen/last_seen, observation counts, and activity rate.
 """
 from __future__ import annotations
 

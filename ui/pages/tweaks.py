@@ -396,11 +396,13 @@ class TweaksPage(QWidget):
         strip = QWidget()
         striple = QHBoxLayout(strip)
         striple.setContentsMargins(0, 0, 0, 0)
-        striple.setSpacing(12)
+        striple.setSpacing(10)
 
+        # Clear hierarchy: Optimize RAM is the primary action (filled), Scan
+        # is a quiet secondary (ghost) — same height so they read as one unit.
         self.ram_scan_btn = QPushButton("Scan")
-        self.ram_scan_btn.setObjectName("Secondary")
-        self.ram_scan_btn.setMinimumHeight(30)
+        self.ram_scan_btn.setObjectName("Ghost")
+        self.ram_scan_btn.setMinimumHeight(32)
         self.ram_scan_btn.setCursor(Qt.PointingHandCursor)
         self.ram_scan_btn.setToolTip("Re-detect this system's installed memory.")
         self.ram_scan_btn.clicked.connect(lambda: self._scan_group(self.key))
@@ -408,7 +410,7 @@ class TweaksPage(QWidget):
 
         self.ram_opt_btn = QPushButton("Optimize RAM")
         self.ram_opt_btn.setObjectName("Primary")
-        self.ram_opt_btn.setMinimumHeight(30)
+        self.ram_opt_btn.setMinimumHeight(32)
         self.ram_opt_btn.setCursor(Qt.PointingHandCursor)
         self.ram_opt_btn.setToolTip(
             "Scan, validate and apply the recommended RAM tweaks for this "
@@ -417,36 +419,56 @@ class TweaksPage(QWidget):
             lambda _=False: self._open_optimizer_group(self.key))
         striple.addWidget(self.ram_opt_btn)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #262B38;")
-        striple.addWidget(sep)
+        striple.addSpacing(8)
 
+        # live specs grouped in one subtle card, divided so they scan at a
+        # glance instead of running together.
+        specs_card = QFrame()
+        specs_card.setObjectName("ram-specs")
+        specs_card.setStyleSheet(
+            "QFrame#ram-specs { background: rgba(255,255,255,0.032); "
+            "border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; }")
+        sl = QHBoxLayout(specs_card)
+        sl.setContentsMargins(16, 7, 16, 7)
+        sl.setSpacing(14)
         self._ram_specs = {}
-        for label in ("Total", "Modules", "Speed", "Configured"):
+        for i, label in enumerate(("Total", "Modules", "Speed", "Configured")):
+            if i:
+                vd = QFrame()
+                vd.setFixedWidth(1)
+                vd.setStyleSheet(
+                    "background: rgba(255,255,255,0.07); border: none;")
+                sl.addWidget(vd)
             box = QWidget()
             bl = QVBoxLayout(box)
             bl.setContentsMargins(0, 0, 0, 0)
-            bl.setSpacing(1)
+            bl.setSpacing(2)
             cap = QLabel(label)
             cap.setStyleSheet(
                 "font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px; "
-                "color: #575C6B;")
+                "color: #575C6B; background: transparent;")
             bl.addWidget(cap)
             val = QLabel("\u2014")
             val.setStyleSheet(
                 "font-family: 'JetBrains Mono', monospace; "
-                "font-size: 15px; font-weight: 700; color: #EFF0F4;")
+                "font-size: 14px; font-weight: 700; color: #EFF0F4; "
+                "background: transparent;")
             bl.addWidget(val)
             self._ram_specs[label] = val
-            striple.addWidget(box)
+            sl.addWidget(box)
+        striple.addWidget(specs_card)
         striple.addStretch()
         lay.addWidget(strip)
 
-        # ---- section label ----
+        # ---- section label (breathes equally from the strip above and the
+        # grid below: 12px each way) ----
+        lay.addSpacing(12)
         section = QLabel("Select your installed RAM size")
-        section.setStyleSheet("font-size: 16px; font-weight: 700; color: #EDEEF2;")
+        section.setStyleSheet(
+            "font-size: 17px; font-weight: 700; color: #EDEEF2;"
+            " background: transparent;")
         lay.addWidget(section)
+        lay.addSpacing(12)
 
         # ---- tier grid ----
         self._ram_rec_key = ram_mod.recommended_ram_key(self.ctx.profile)
@@ -471,12 +493,27 @@ class TweaksPage(QWidget):
             self._ram_cards[key] = card
         lay.addLayout(grid)
 
-        # ---- foot note ----
+        # ---- foot note: confirmation strip (high contrast, can't be missed)
+        self._ram_status_box = QFrame()
+        self._ram_status_box.setObjectName("ram-status")
+        self._ram_status_box.setStyleSheet(
+            "QFrame#ram-status { background: rgba(139,124,246,0.10); "
+            "border: 1px solid rgba(139,124,246,0.28); "
+            "border-radius: 10px; }")
+        sbl = QVBoxLayout(self._ram_status_box)
+        sbl.setContentsMargins(14, 10, 14, 10)
         self._ram_status = QLabel()
         self._ram_status.setObjectName("PageSub")
         self._ram_status.setWordWrap(True)
-        self._ram_status.setStyleSheet("font-size: 12px; color: #9399A9;")
-        lay.addWidget(self._ram_status)
+        self._ram_status.setStyleSheet(
+            "font-size: 13px; font-weight: 600; color: #E7E3F8; "
+            "background: transparent;")
+        self._ram_status.setText(
+            "Select the RAM tier that matches your installed memory \u2014 "
+            "its recommended tweaks are pre-checked below.")
+        sbl.addWidget(self._ram_status)
+        lay.addSpacing(12)
+        lay.addWidget(self._ram_status_box)
 
         self._ram_selected_tier = None
         self._ram_auto_selected = False
@@ -522,7 +559,8 @@ class TweaksPage(QWidget):
             card.set_selected(k == key)
         tier = RAM_TIERS[key]
         self._ram_status.setText(
-            f"<b>{tier['label']} ({tier['desc']})</b> selected \u2014 "
+            f"\u2713  <span style='color:#C9C0FF;'><b>{tier['label']} "
+            f"({tier['desc']})</b></span> selected \u2014 "
             f"{len(tier['tweaks'])} recommended tweaks are checked below; "
             f"adjust any of them, then click Apply All.")
         for tid in tier["tweaks"]:
@@ -537,7 +575,7 @@ class TweaksPage(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
 
-        prompt = QLabel("Select Your GPU")
+        prompt = QLabel("Select your GPU")
         prompt.setStyleSheet(
             "font-size: 18px; font-weight: 700; color: #F6F4FC;"
             " background: transparent;")
@@ -647,8 +685,8 @@ class TweaksPage(QWidget):
         self.opt_left.setVisible(True)
 
         scan = QPushButton("Scan")
-        scan.setObjectName("Secondary")
-        scan.setMinimumHeight(30)
+        scan.setObjectName("Ghost")
+        scan.setMinimumHeight(32)
         scan.setCursor(Qt.PointingHandCursor)
         scan.setToolTip("Re-detect this system's hardware for the active category.")
         scan.clicked.connect(lambda: self._scan_group(self.key))
@@ -657,7 +695,7 @@ class TweaksPage(QWidget):
         btn = QPushButton(
             f"Optimize {BUTTON_LABELS.get(self.key) or BUTTON_LABELS.get(keys[0], self.key)}")
         btn.setObjectName("Primary")
-        btn.setMinimumHeight(30)
+        btn.setMinimumHeight(32)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setToolTip(
             "Scan, validate and apply the recommended tweaks for this "

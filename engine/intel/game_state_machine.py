@@ -1,12 +1,10 @@
-"""Game state machine — detects LOBBY → MATCHMAKING → IN MATCH → ENDED transitions.
+"""Detects LOBBY → MATCHMAKING → IN MATCH → ENDED transitions.
 
-Uses network behavior and process state as signals.
-Labels inferred states as INFERRED — never claims access to internal game state.
-
-Transitions require confirmation across consecutive network snapshots before
-they are committed, so single background connections or transient churn do
-not produce false state changes. Matchmaking and match start timestamps are
-tracked explicitly for downstream scoring correlation.
+Driven by network behavior and process state; states are INFERRED, never
+from internal game data. Transitions need confirmation across consecutive
+snapshots before they are committed, so transient churn or single background
+connections cannot cause false transitions. Matchmaking and match-start
+timestamps are tracked for downstream scoring.
 """
 from __future__ import annotations
 

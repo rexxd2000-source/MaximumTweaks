@@ -13,8 +13,10 @@ API:
     splash.finished.connect(show_window_and_fade) # 100%
 
 Update flow (full-screen, ported from updater-flow.html — no card, no popup):
-    splash.update_checking()                      # "Checking for updates" view
-    on check result: update_ok() or update_available(cur, new, notes)
+    splash.arm_update_check()                     # check runs behind the boot
+    the boot sequence plays normally first; at its mid milestone either the
+    resolved result reveals directly or the "Checking for updates" view takes
+    over. splash.update_check_result(info, error) delivers the result.
     while downloading: update_progress(frac); then update_downloaded()
     on failure: update_error(msg)
     buttons: Install (install_clicked), Skip (skip_clicked), Retry
@@ -335,6 +337,8 @@ class CinematicSplash(QWidget):
         self._update_phase = False
         self._entered_phase = False
         self._update_state = "idle"
+        self._check_armed = False
+        self._check_parked: dict | None = None
         self._held = False
         self._ok_hold_until: float | None = None
         self._download_frac = 0.0
@@ -422,6 +426,32 @@ class CinematicSplash(QWidget):
         self._spinner.start()
         self.update()
 
+    def arm_update_check(self):
+        """Run the update check in the background: the boot sequence plays
+        normally first and the check view only takes over at the mid
+        milestone (never as the first thing on the loading screen)."""
+        self._check_parked = None
+        self._check_armed = True
+
+    def update_check_result(self, info: dict | None, error: str | None):
+        """Consume a finished background check. If the boot is still playing
+        its opening sequence, park the result until the mid milestone;
+        otherwise reveal it immediately."""
+        if self._check_armed:
+            self._check_parked = {"info": info, "error": error}
+            return
+        self._did_resolve_check(info, error)
+
+    def _did_resolve_check(self, info, error):
+        if error:
+            self.update_error(error)
+        elif info is None:
+            self.update_ok()
+        else:
+            self.update_available(
+                APP_VERSION, str(info.get("version") or ""),
+                info.get("notes") or "")
+
     def update_ok(self):
         self._update_state = "ok"
         self._held = False
@@ -491,10 +521,26 @@ class CinematicSplash(QWidget):
             ln = ln.lstrip("-*+#>\u26a1").strip()
             if not ln:
                 continue
-            if len(ln) > 62:
-                ln = ln[:61] + "\u2026"
             out.append(ln)
         return out
+
+    @staticmethod
+    def _wrap_text(fm, text: str, max_w: float) -> list[str]:
+        words = text.split(" ")
+        if not words:
+            return []
+        lines: list[str] = []
+        cur = ""
+        for word in words:
+            trial = word if not cur else cur + " " + word
+            if fm.horizontalAdvance(trial) <= max_w or not cur:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = word
+        if cur:
+            lines.append(cur)
+        return lines
 
     def _track_download_speed(self):
         now = _monotonic_ms()
@@ -596,6 +642,19 @@ class CinematicSplash(QWidget):
             self._done_emitted = True
             self.finished.emit()
         pct = self._current_pct(t)
+        # The update check runs behind the boot sequence; it only takes over
+        # the screen once the loading reaches the mid milestone (or at the end
+        # of the boot if it somehow never crossed it).
+        if self._check_armed and (pct >= float(self.HOLD_PCT)
+                                  or self._entered_phase):
+            self._check_armed = False
+            parked = self._check_parked
+            self._check_parked = None
+            if parked is not None:
+                self._did_resolve_check(parked.get("info"),
+                                        parked.get("error"))
+            else:
+                self.update_checking()
         if pct >= 88 and not self._build_emitted:
             self._build_emitted = True
             self.build_now.emit()
@@ -980,17 +1039,31 @@ class CinematicSplash(QWidget):
                    Qt.AlignVCenter | Qt.AlignLeft, "WHAT\u2019S NEW")
         if self._flow_items:
             iy = cy2 + 30
-            for i, item in enumerate(self._flow_items[:3]):
-                yy = iy + i * 26
-                p.setFont(_flow_font("Inter", 12.5, QFont.Weight.Normal))
-                dash = "\u2014"
-                dw = p.fontMetrics().horizontalAdvance(dash)
-                p.setPen(QColor("#C9C0FF"))
-                p.drawText(QRectF(clx, yy, dw, 18),
-                           Qt.AlignVCenter | Qt.AlignLeft, dash)
-                p.setPen(QColor("#928AAD"))
-                p.drawText(QRectF(clx + dw + 9, yy, cw - dw - 9, 18),
-                           Qt.AlignVCenter | Qt.AlignLeft, item)
+            note_font = _flow_font("Inter", 12.5, QFont.Weight.Normal)
+            p.setFont(note_font)
+            nfm = p.fontMetrics()
+            dash = "\u2014"
+            dw = nfm.horizontalAdvance(dash)
+            lx = clx + dw + 9
+            lw = cw - dw - 9
+            yy = iy
+            drawn = 0
+            for item in self._flow_items[:3]:
+                first = True
+                for ln in self._wrap_text(nfm, item, lw):
+                    if drawn >= 7 or yy + 16 > int(h * 0.66):
+                        break
+                    p.setFont(note_font)
+                    if first:
+                        p.setPen(QColor("#C9C0FF"))
+                        p.drawText(QRectF(clx, yy, dw, 16),
+                                   Qt.AlignVCenter | Qt.AlignLeft, dash)
+                    p.setPen(QColor("#928AAD"))
+                    p.drawText(QRectF(lx, yy, lw, 16),
+                               Qt.AlignVCenter | Qt.AlignLeft, ln)
+                    first = False
+                    yy += 18
+                    drawn += 1
 
     def _draw_downloading(self, p: QPainter, w: int, h: int):
         frac = _clamp01(self._download_frac)

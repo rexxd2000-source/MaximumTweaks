@@ -1,4 +1,4 @@
-﻿"""AI chat engine â€” tools + plumbing for a PC assistant.
+﻿"""AI chat engine — tools + plumbing for a PC assistant.
 
 This module owns the *capabilities* of the assistant and a demo backend.
 Every answer is grounded in the real system through the tool registry below:

@@ -1,8 +1,8 @@
 # Maximum Tweaks - build + publish a live-updatable release.
 #
 # Usage:
-#   .\release.ps1 -Version 2.0.1            # bump APP_VERSION, build, tag, release
-#   .\release.ps1 -Version 2.0.1 -SkipBuild # only tag + publish the existing exe
+#   .\release.ps1 -Version 2.4.3            # bump APP_VERSION, build, tag, release
+#   .\release.ps1 -Version 2.4.3 -SkipBuild # only tag + publish the existing exe
 #
 # Requirements:
 #   - Python 3.10+, pip install pyinstaller
@@ -95,12 +95,8 @@ function Publish-Release {
     $authPush = "https://$owner`:$env:GITHUB_TOKEN@github.com/$Repo.git"
 
     Write-Host "[4/5] Ensuring tag $tag exists..." -ForegroundColor Cyan
-    $tagExists = $false
-    & $git -C $root ls-remote --tags origin $tag 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        $tagExists = $true
-    }
-    $tagExists = (Test-Path "$root\.git\refs\tags\$tag") -or $tagExists
+    $tagLines = & $git -C $root ls-remote --tags origin "refs/tags/$tag" 2>$null
+    $tagExists = [bool]$tagLines
     if (-not $tagExists) {
         & $git -C $root tag $tag
         & $git -C $root push "$authPush" $tag

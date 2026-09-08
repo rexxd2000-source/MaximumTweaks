@@ -292,7 +292,7 @@ def lookup_geo(ip: str) -> GeoInfo:
         _cache(ck, geo)
         return geo
 
-    info2 = _get(f"http://ip-api.com/json/{ip}?fields=66846719")
+    info2 = _get(f"https://ip-api.com/json/{ip}?fields=66846719")
     if info2 and info2.get("status") == "success":
         geo.source = "ip-api.com"
         geo.lat = info2.get("lat", 0.0)
@@ -332,7 +332,7 @@ def lookup_asn(ip: str) -> AsnInfo:
         asn.country = info.get("country", "")
 
     if not asn.asn:
-        info2 = _get(f"http://ip-api.com/json/{ip}?fields=66846719")
+        info2 = _get(f"https://ip-api.com/json/{ip}?fields=66846719")
         if info2 and info2.get("status") == "success":
             asn_raw = info2.get("as", "")
             if asn_raw and " " in asn_raw:

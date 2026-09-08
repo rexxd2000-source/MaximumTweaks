@@ -1,4 +1,4 @@
-﻿"""Hop timeline, latency graph, detail panel, and event log widgets."""
+"""Hop timeline, latency graph, detail panel, and event log widgets."""
 from __future__ import annotations
 
 import time
@@ -136,7 +136,7 @@ def _scrollbar(p: QPainter, w: int, top: float, bottom: float,
 
 
 class HopTimelineWidget(QWidget):
-    """HOP ROUTE // TRACE â€” bezel-framed routing instrument.
+    """HOP ROUTE // TRACE — bezel-framed routing instrument.
 
     Every hop is a tile inside a machine console panel: numbered badge,
     journey spine with downward flow arrows, identity lines, a big latency
@@ -318,7 +318,7 @@ class HopTimelineWidget(QWidget):
         small_fm = QFontMetrics(small_font)
 
         # Scrolled tiles must never bleed over the header band or under the
-        # footer â€” clamp all tile painting to the scrollable body region.
+        # footer — clamp all tile painting to the scrollable body region.
         p.save()
         p.setClipRect(QRectF(0, self._BODY_T - 3, w, h - self._BODY_T + 1))
 
@@ -471,7 +471,7 @@ class HopTimelineWidget(QWidget):
 
 
 class LatencyGraphWidget(QWidget):
-    """RTT SIGNAL // SEGMENTS â€” bezel-framed latency gauge.
+    """RTT SIGNAL // SEGMENTS — bezel-framed latency gauge.
 
     A console instrument with a bordered panel, corner brackets, a header
     band with live chips, per-hop lanes (chip + identity + gradient bar +
@@ -612,7 +612,7 @@ class LatencyGraphWidget(QWidget):
                        Qt.AlignLeft, "FLOOR")
 
         # Scrolled lanes must never bleed over the header band or under the
-        # footer â€” clamp all lane painting to the scrollable body region.
+        # footer — clamp all lane painting to the scrollable body region.
         p.save()
         p.setClipRect(QRectF(0, body_top, w, foot_top - body_top))
 
@@ -733,178 +733,3 @@ class LatencyGraphWidget(QWidget):
             0, min(self._scroll_max(), self._scroll - step * self._ROW_H)
         )
         self.update()
-
-
-class HopDetailWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._hop: Optional[Hop] = None
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(380)
-
-    def set_hop(self, hop: Optional[Hop]):
-        self._hop = hop
-        self.update()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        w, h = self.width(), self.height()
-
-        p.fillRect(0, 0, w, h, QColor(10, 13, 24))
-
-        if not self._hop:
-            p.setPen(QColor(100, 120, 160))
-            p.setFont(QFont("Segoe UI", 11))
-            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, "Select a hop")
-            p.end()
-            return
-
-        hop = self._hop
-        font_title = QFont("Segoe UI", 13, QFont.Weight.Bold)
-        font_label = QFont("Segoe UI", 9)
-        font_value = QFont("Segoe UI", 10)
-        fm = QFontMetrics(font_value)
-
-        y = 16
-
-        p.setFont(font_title)
-        sc = _status_color(hop.status)
-        p.setPen(sc)
-        emoji = _status_emoji(hop.status)
-        title = f"{emoji} Hop {hop.number}"
-        p.drawText(QRectF(12, y, w - 24, 24), Qt.AlignLeft, title)
-        y += 30
-
-        p.setPen(QColor(50, 60, 80))
-        p.drawLine(12, y, w - 12, y)
-        y += 10
-
-        def draw_field(label, value, y_pos):
-            p.setFont(font_label)
-            p.setPen(QColor(100, 120, 160))
-            p.drawText(QRectF(12, y_pos, w - 24, 16), Qt.AlignLeft, label)
-            y_pos += 16
-            p.setFont(font_value)
-            p.setPen(QColor(220, 230, 245))
-            p.drawText(QRectF(12, y_pos, w - 24, 18), Qt.AlignLeft, str(value))
-            return y_pos + 22
-
-        y = draw_field("IP ADDRESS", hop.ip or "Unknown", y)
-        if hop.hostname:
-            y = draw_field("HOSTNAME", hop.hostname, y)
-        if hop.network.asn:
-            y = draw_field("ASN / ORG", f"AS{hop.network.asn} â€” {hop.network.as_org}", y)
-        if hop.network.isp:
-            y = draw_field("ISP / NETWORK", hop.network.isp, y)
-        if hop.location_str:
-            y = draw_field("LOCATION", hop.location_label, y)
-
-        p.setPen(QColor(50, 60, 80))
-        p.drawLine(12, y, w - 12, y)
-        y += 10
-
-        y = draw_field("LATENCY", f"{hop.latency:.1f} ms", y)
-        y = draw_field("JITTER", f"{hop.jitter:.1f} ms", y)
-        y = draw_field("PACKET LOSS", f"{hop.packet_loss:.0f}%", y)
-        y = draw_field("MIN / MAX", f"{hop.probes.min_latency:.0f} / {hop.probes.max_latency:.0f} ms", y)
-        y = draw_field("PROBES", f"{hop.probes.sent} sent, {hop.probes.received} received", y)
-
-        p.setPen(QColor(50, 60, 80))
-        p.drawLine(12, y, w - 12, y)
-        y += 10
-
-        role_labels = {
-            "local": "Local Infrastructure",
-            "gateway": "Default Gateway",
-            "isp_access": "ISP Access Network",
-            "isp_core": "ISP Core Network",
-            "transit": "Transit / Peering",
-            "peering": "Peering Point",
-            "cdn": "CDN / Edge Network",
-            "edge": "Edge Server",
-            "destination": "Destination",
-            "unknown": "Unknown",
-        }
-        y = draw_field("ROLE", role_labels.get(hop.role.value if hasattr(hop.role, 'value') else str(hop.role), "Unknown"), y)
-
-        status_labels = {
-            HopStatus.HEALTHY: "Healthy",
-            HopStatus.WARNING: "Warning",
-            HopStatus.CRITICAL: "Critical",
-            HopStatus.TIMEOUT: "No Response",
-            HopStatus.UNKNOWN: "Unknown",
-            HopStatus.PRIVATE: "Private/Local",
-            HopStatus.LOCAL: "Private/Local",
-        }
-        y = draw_field("STATUS", status_labels.get(hop.status, "Unknown"), y)
-
-        p.end()
-
-
-class EventLogWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._events: list[RouteEvent] = []
-        self.setMinimumHeight(120)
-        self.setMaximumHeight(180)
-
-    def set_events(self, events: list[RouteEvent]):
-        self._events = events
-        self.update()
-
-    def add_event(self, event: RouteEvent):
-        self._events.append(event)
-        if len(self._events) > 200:
-            self._events = self._events[-200:]
-        self.update()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        w, h = self.width(), self.height()
-
-        p.fillRect(0, 0, w, h, QColor(10, 13, 24))
-
-        p.setPen(QColor(100, 120, 160))
-        p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        p.drawText(QRectF(8, 4, w - 16, 16), Qt.AlignLeft, "EVENT LOG")
-        p.setPen(QColor(50, 60, 80))
-        p.drawLine(8, 20, w - 8, 20)
-
-        font = QFont("JetBrains Mono", 8)
-        p.setFont(font)
-        fm = QFontMetrics(font)
-        row_h = fm.height() + 2
-        y_start = 24
-        max_rows = max(1, (h - y_start) // row_h)
-
-        visible = self._events[-max_rows:]
-        for i, evt in enumerate(visible):
-            y = y_start + i * row_h
-            ts = datetime.fromtimestamp(evt.timestamp).strftime("%H:%M:%S")
-
-            level_colors = {
-                "info": QColor(100, 140, 200),
-                "warning": QColor(251, 191, 36),
-                "error": QColor(239, 68, 68),
-            }
-            color = level_colors.get(evt.level, QColor(148, 163, 184))
-
-            p.setPen(QColor(70, 85, 110))
-            p.drawText(QRectF(8, y, 70, row_h), Qt.AlignVCenter, ts)
-
-            p.setPen(color)
-            msg = evt.message
-            if len(msg) > 80:
-                msg = msg[:77] + "..."
-            p.drawText(QRectF(82, y, w - 90, row_h), Qt.AlignVCenter, msg)
-
-        if not self._events:
-            p.setPen(QColor(70, 85, 110))
-            p.drawText(QRectF(8, y_start, w - 16, row_h),
-                       Qt.AlignVCenter, "No events yet")
-
-        p.end()

@@ -1,4 +1,4 @@
-"""Network Intelligence — data models. Every field has provenance. Nothing is fabricated."""
+"""Network intelligence data models."""
 from __future__ import annotations
 
 import time

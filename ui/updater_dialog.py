@@ -320,7 +320,7 @@ def _glyph(text: str, tag: str) -> QLabel:
 def _change(bold: str, text: str, tag: str, glyph: str):
     row = QWidget()
     row.setObjectName("ChangeItem")
-    row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
     lay = QHBoxLayout(row)
     lay.setContentsMargins(11, 10, 11, 10)
     lay.setSpacing(10)
@@ -328,6 +328,8 @@ def _change(bold: str, text: str, tag: str, glyph: str):
     txt = QLabel(f"<b>{bold}</b> {text}")
     txt.setObjectName("ud-ct")
     txt.setWordWrap(True)
+    txt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    txt.setMinimumWidth(0)
     txt.setFont(_sans(13))
     lay.addWidget(txt, 1)
     return row
@@ -348,9 +350,9 @@ class UpdateDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # Fixed modal width matches update_dialog_v2.html; height varies per
-        # state (compact for no-update/checking/error, full for update-ready).
-        self.setFixedSize(452, 496)
+        # Fixed modal width matches update_dialog_v2.html; height auto-sizes
+        # (hugs content) so the button row sits right under the changelog.
+        self.setFixedWidth(452)
         self._info = None
         self._new_exe = None
         self._bytes_total = 0
@@ -558,8 +560,9 @@ class UpdateDialog(QDialog):
     # styling / content helpers
     # ------------------------------------------------------------------
     def _adopt_widgets(self):
-        """Keep the modal chrome laid out (size is set per-state)."""
+        """Keep the modal chrome laid out; height hugs the current content."""
         self._modal.layout().activate()
+        self.adjustSize()
 
     def _chip(self, bold: str, rest: str) -> QLabel:
         lbl = QLabel(f"<b>{bold}</b> {rest}")
@@ -616,7 +619,6 @@ class UpdateDialog(QDialog):
         self._btn_update.setText("\u2b07  Update now")
         self._btn_update.setEnabled(True)
         self._footnote.show()
-        self.setFixedSize(452, 496)
         self._adopt_widgets()
 
     def _show_up_to_date(self):
@@ -647,7 +649,6 @@ class UpdateDialog(QDialog):
         self._btn_update.setText("\u2713  Done")
         self._btn_update.setEnabled(True)
         self._footnote.hide()
-        self.setFixedSize(452, 424)
         self._num_status.setStyleSheet(f"color: {C['green']}; background: transparent; border: none;")
         self._adopt_widgets()
 
@@ -671,7 +672,6 @@ class UpdateDialog(QDialog):
         self._btn_update.setText("Retry")
         self._btn_update.setEnabled(True)
         self._footnote.hide()
-        self.setFixedSize(452, 424)
         self._adopt_widgets()
 
     # ------------------------------------------------------------------
@@ -729,7 +729,6 @@ class UpdateDialog(QDialog):
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Checking\u2026")
         self._footnote.hide()
-        self.setFixedSize(452, 424)
         self.worker = FetchWorker(self)
         self.worker.done.connect(self._on_checked)
         self.worker.start()

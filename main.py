@@ -151,9 +151,10 @@ def run_gui():
 
     holder: dict = {"window": None}
 
-    # Inline update check as a loading step (no popup): the splash parks its
-    # progress until the check resolves, and if a newer build exists the user
-    # decides on the splash itself before the main app launches.
+    # Update check as a background boot step (no popup at launch): the splash
+    # plays its normal loading sequence first and the check view only appears
+    # mid-way through; if a newer build exists the user decides on the splash
+    # before the main app launches.
     _update: dict = {}
 
     def _release_into_app():
@@ -162,7 +163,7 @@ def run_gui():
 
     def _start_update_check():
         from ui.updater_dialog import FetchWorker
-        splash.update_checking()
+        splash.arm_update_check()
         worker = FetchWorker(splash)
         worker.done.connect(_on_update_checked)
         _update["worker"] = worker  # keep a strong ref until finished
@@ -174,15 +175,11 @@ def run_gui():
         if holder.get("window") is not None:
             splash.update_ok()
             return
-        if error:
-            splash.update_error(error)
-            return
-        if info is None:
-            _release_into_app()
-            return
-        _update["info"] = info
-        splash.update_available(APP_VERSION, info["version"],
-                                info.get("notes") or "")
+        # The splash parks this until its mid-boot milestone unless the check
+        # view is already on screen.
+        if info is not None:
+            _update["info"] = info
+        splash.update_check_result(info, error)
 
     def _start_update_download():
         from ui.updater_dialog import DownloadWorker

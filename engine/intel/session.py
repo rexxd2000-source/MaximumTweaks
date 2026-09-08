@@ -1,7 +1,6 @@
-"""Game session tracker — monitors game state, captures network snapshots.
+"""Tracks one game session: launch -> lobby -> matchmaking -> in-game -> end.
 
-Tracks: game launch -> lobby -> matchmaking -> in-game -> ended.
-Scores endpoints, maintains timeline, detects state transitions.
+Records network snapshots, scores endpoints, and keeps a timeline.
 """
 from __future__ import annotations
 

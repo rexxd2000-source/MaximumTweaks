@@ -13,18 +13,13 @@ APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
 
-# ---- AI Assistant keys (env var, else <KEY>.txt next to the exe, else
-# offline demo router) ------------------------------------------------------
-# SECURITY: secrets are NEVER embedded in the frozen EXE. No client config
-# file (_secrets.py or similar) is ever read, and nothing under sys._MEIPASS
-# is consulted. Values come only from the process environment or a runtime
-# sidecar file the operator places next to the exe AFTER install (that file
-# is not shipped and cannot be extracted from the download).
+# AI provider keys: env var first, else a <KEY>.txt file placed next to the
+# exe after install. Secrets are never embedded in the frozen EXE.
 def _load_secret(name: str) -> str:
     token = os.environ.get(name, "").strip()
     if token:
         return token
-    try:  # drop a file named GEMINI_API_KEY.txt next to the exe (runtime-only)
+    try:  # e.g. GEMINI_API_KEY.txt next to the exe
         exe_dir = Path(sys.executable).resolve().parent
         side = exe_dir / (name + ".txt")
         if side.is_file():
@@ -34,26 +29,18 @@ def _load_secret(name: str) -> str:
     return ""
 
 
-# ---- AI Assistant (Groq) ---------------------------------------------------
-# The Maximum chat bot calls Groq's OpenAI-compatible endpoint. Set the
-# GROQ_API_KEY environment variable or _secrets.py (leave empty for the
-# offline demo router).
+# AI Assistant providers. Keys are loaded by _load_secret; with none set the
+# assistant falls back to the built-in offline demo router.
 GROQ_API_KEY = _load_secret("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-# ---- AI Assistant (Gemini fallback) ----------------------------------------
-# Google's Gemini free tier (get a key at https://aistudio.google.com/apikey)
-# has much higher daily limits than Groq, so it acts as the primary provider
-# when set. Leave empty to use Groq only.
+# Gemini free tier (key at https://aistudio.google.com/apikey), used when set.
 GEMINI_API_KEY = _load_secret("GEMINI_API_KEY")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 GEMINI_MODEL = "gemini-3.5-flash"
 
-# ---- AI Assistant (Cerebras primary) ---------------------------------------
-# Cerebras' free tier (no card, cloud.cerebras.ai) allows ~30 req/min and
-# ~14,400 req/day — effectively unlimited for a personal assistant. OpenAI
-# compatible; used first, Gemini/Groq act as automatic fallbacks.
+# Cerebras free tier (cloud.cerebras.ai); used first, Gemini/Groq fall back.
 CEREBRAS_API_KEY = _load_secret("CEREBRAS_API_KEY")
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_MODEL = "gpt-oss-120b"
@@ -68,12 +55,8 @@ GITHUB_URL = "https://github.com/rexxd2000-source/MaximumTweaks"
 # Repo owner/repo for update checks (used by build scripts/README only).
 GITHUB_REPO = "rexxd2000-source/MaximumTweaks"
 
-# Update auth token: read from the GITHUB_TOKEN env var ONLY. It is never
-# read from any file (_secrets.py or otherwise) and never embedded in the EXE,
-# because a private/repo token must not be extractable by anyone who downloads
-# the app. With a PUBLIC repo (the default) release reads/downloads work with
-# no token at all; set GITHUB_TOKEN in the running environment only if you
-# deliberately host updates on a PRIVATE repo.
+# Read from the GITHUB_TOKEN env var only; never embedded in the EXE. Public
+# repos need no token for update checks.
 def _load_github_token() -> str:
     return os.environ.get("GITHUB_TOKEN", "").strip()
 
@@ -94,11 +77,7 @@ MIN_WIN_BUILD = 18362
 
 
 def current_windows_user() -> str:
-    """The current Windows account/PC username, sanitized for display.
-
-    Detected automatically (never hardcoded) so it works on every machine
-    that runs the app. Falls back to a neutral label if it cannot resolve.
-    """
+    """Current Windows account/PC username, sanitized for display."""
     raw = ""
     try:
         raw = getpass.getuser()
@@ -117,8 +96,8 @@ def project_root() -> Path:
     """Absolute path to the MaximumTweaks package root (folder containing main.py).
 
     In a frozen (PyInstaller) build the source tree lives in a temp extraction
-    dir that is wiped on exit, so ROOT resolves to the folder that holds the
-    .exe Ã¢â‚¬â€ that is where Logs/ and data/ persist.
+    dir that is wiped on exit, so ROOT resolves to the folder holding the exe —
+    that is where Logs/ and data/ persist.
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -161,7 +140,6 @@ DIRS = {
     "reports": ROOT / "reports",
 }
 
-DB_JSON_EXPORT = ROOT / "database" / "tweaks.json"
 BACKUP_INDEX = ROOT / "backups" / "index.json"
 LOG_FILE = ROOT / "Logs" / "maximumtweaks.log"
 
@@ -208,34 +186,34 @@ THEME = {
 
 
 ICONS = {
-    "dashboard": "\u25c8",   # Ã¢â€”â€ 
-    "search": "\u2315",      # Ã¢Å’â€¢
-    "windows": "\u26fa",     # Ã¢â€ºÂº
-    "system": "\u2699",      # Ã¢Å¡â„¢
-    "cpu": "\u2b22",         # Ã¢Â¬Â¢
-    "gpu": "\u25c6",         # Ã¢â€”â€ 
-    "ram": "\u2588",         # Ã¢â€“Ë†
-    "storage": "\u25b6",     # Ã¢â€“Â¶
-    "network": "\u2637",     # Ã¢ËœÂ·
-    "input": "\u21a8",       # Ã¢â€ Â¨
-    "mouse": "\u21a8",       # Ã¢â€ Â¨
-    "keyboard": "\u2328",    # Ã¢Å’Â¨
-    "aim": "\u2694",         # Ã¢Å¡â€
-    "performance": "\u26a1", # Ã¢Å¡Â¡
-    "games": "\u2605",       # Ã¢Ëœâ€¦
-    "fortnite": "\u25c9",    # Ã¢â€”â€°
-    "tweaks": "\u2630",      # Ã¢ËœÂ°
-    "gaming": "\u2605",      # Ã¢Ëœâ€¦
-    "services": "\u2693",    # Ã¢Å¡â€œ
-    "power": "\u26a1",       # Ã¢Å¡Â¡
-    "tools": "\u26cf",       # Ã¢â€ºÂ
-    "profiles": "\u2654",    # Ã¢â„¢â€
-    "reports": "\u2711",     # Ã¢Å“â€˜
-    "logs": "\u2709",        # Ã¢Å“â€°
-    "shield": "\u26d1",      # Ã¢â€ºâ€˜
-    "wrench": "\u26b8",      # Ã¢Å¡Â¸
-    "flag": "\u2691",        # Ã¢Å¡â€˜
-    "settings": "\u2699",    # Ã¢Å¡â„¢
+    "dashboard": "\u25c8",
+    "search": "\u2315",
+    "windows": "\u26fa",
+    "system": "\u2699",
+    "cpu": "\u2b22",
+    "gpu": "\u25c6",
+    "ram": "\u2588",
+    "storage": "\u25b6",
+    "network": "\u2637",
+    "input": "\u21a8",
+    "mouse": "\u21a8",
+    "keyboard": "\u2328",
+    "aim": "\u2694",
+    "performance": "\u26a1",
+    "games": "\u2605",
+    "fortnite": "\u25c9",
+    "tweaks": "\u2630",
+    "gaming": "\u2605",
+    "services": "\u2693",
+    "power": "\u26a1",
+    "tools": "\u26cf",
+    "profiles": "\u2654",
+    "reports": "\u2711",
+    "logs": "\u2709",
+    "shield": "\u26d1",
+    "wrench": "\u26b8",
+    "flag": "\u2691",
+    "settings": "\u2699",
 }
 
 ADMIN_NOTE = (
@@ -247,28 +225,6 @@ ADMIN_NOTE = (
 DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
 
 
-# License activation (the ONLY access-control method for Maximum Tweaks).
-#
-# The desktop app sends the customer-entered key plus a hashed device
-# fingerprint to the license backend and stores the resulting session locally.
-# Once a key is activated it is bound to that PC and stays authorized across
-# reboots and app updates — no re-entry, no token-clock logouts.
-#     production:  https://maximumtweaks.onrender.com
-# ---------------------------------------------------------------------------
+# License activation (the only access control). A key binds to a device via
+# the license backend; sessions persist across reboots and updates.
 LICENSE_API_URL = "https://maximumtweaks.onrender.com"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

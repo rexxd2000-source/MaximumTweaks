@@ -9,22 +9,20 @@ from config.app_config import APP_NAME, APP_VERSION, ROOT
 block_cipher = None
 
 # Runtime data: the tweak database + assets are bundled so frozen builds keep
-# their database and logos. SECURITY: `config/` is deliberately NOT bundled,
-# and there is no config/_secrets.py at all — no API key, token, or credential
-# is ever compiled into the EXE. config.app_config is frozen as a hidden import
-# below, but it reads secrets only from the process environment or a runtime
-# sidecar .txt the operator places after install (neither is shipped).
+# their database and logos. config/ is deliberately NOT bundled either as data
+# or as a _secrets module — app_config is pulled in as a hidden import below
+# but reads secrets only from the process environment or a runtime sidecar
+# .txt the operator places after install (neither is shipped).
 datas = []
 for rel in ("database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
 # Provider-published IP range snapshot (GCP gstatic + AWS ip-ranges) used by
-# engine/netmonitor/cloudmap.py for authoritative geo overrides.
+# engine/netmonitor/cloudmap.py for geo overrides.
 datas.append((str(ROOT / "engine/netmonitor/cloud_regions.json"), "engine/netmonitor"))
 
-# SECURITY: nothing from auth_backend/ is bundled. The desktop app talks to the
-# hosted license backend over HTTPS and holds no secrets — LICENSE_SECRET,
-# ADMIN_TOKEN and the license DB must never end up inside the EXE.
+# Nothing from auth_backend/ is bundled; the app talks to the hosted license
+# backend over HTTPS and holds no secrets in the EXE.
 
 a = Analysis(
     ["main.py"],
@@ -44,7 +42,6 @@ a = Analysis(
         "engine.nvprofile",
         "engine.nvprofiles",
         "engine.nip_parser",
-        "engine.game_detector",
         "engine.game_config",
         "engine.tools_runner",
         "engine.updater",
@@ -82,9 +79,7 @@ a = Analysis(
         "ui.pages.ram_selector",
         "ui.pages.delay_destroyer",
         "ui.pages.debloat",
-        "ui.perf",
         "ui.widgets",
-        "ui.pc_3d",
         "ui.premium_widgets",
         "ui.context",
         "ui.styles",

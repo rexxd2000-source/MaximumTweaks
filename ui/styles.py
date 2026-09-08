@@ -285,20 +285,10 @@ QProgressBar::chunk {{
 }}
 
 /* ---------------- Panels / cards ---------------- */
-#Card, #Hero, #ProfileCard, #PerfCard, #ActionCard, #DiscordCard, #LicenseAccountCard, #GpuVendorCard {{
+#Card, #Hero, #ProfileCard, #ActionCard, #LicenseAccountCard, #GpuVendorCard {{
     background-color: {T["card"]};
     border: 1px solid {T["border"]};
     border-radius: 14px;
-}}
-/* Discord account card under Settings is the one that should stand out:
-   accent border + subtle accent wash from the top-left corner. */
-#DiscordCard {{
-    border: 1px solid {accent_45};
-    background-color: qlineargradient(x1:0, y1:0, x2:0.6, y2:1,
-        stop:0 {accent_07}, stop:0.45 {T["card"]}, stop:1 {T["card"]});
-}}
-#DiscordCard:hover {{
-    border-color: {accent_55};
 }}
 /* Dashboard license account card: same accent treatment as the old Discord card. */
 #LicenseAccountCard {{
@@ -314,7 +304,7 @@ QProgressBar::chunk {{
     border: 1px solid {T["border"]};
     border-radius: 12px;
 }}
-#Card:hover, #ActionCard:hover, #PerfCard:hover {{
+#Card:hover, #ActionCard:hover {{
     border-color: #2A313C;
     background-color: {T["card_alt"]};
 }}

@@ -70,7 +70,7 @@ def lookup_geo(ip: str) -> GeoInfo:
         _geo_cache[ip] = result
         return result
 
-    data = _http_json(f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,lat,lon")
+    data = _http_json(f"https://ip-api.com/json/{ip}?fields=status,country,countryCode,regionName,city,lat,lon")
     if data and data.get("status") == "success":
         result = GeoInfo(
             lat=data.get("lat", 0.0),
@@ -118,7 +118,7 @@ def lookup_asn(ip: str) -> AsnInfo:
             _asn_cache[ip] = result
             return result
 
-    data2 = _http_json(f"http://ip-api.com/json/{ip}?fields=as,isp,org")
+    data2 = _http_json(f"https://ip-api.com/json/{ip}?fields=as,isp,org")
     if data2 and data2.get("as"):
         as_str = data2["as"]
         parts = as_str.split(" ", 1)
@@ -202,7 +202,7 @@ def lookup_rdns(ip: str) -> str:
 
 def detect_user_location() -> tuple[float, float, str, str]:
     """Returns (lat, lon, city, country_code) — coarse only, never precise."""
-    data = _http_json("http://ip-api.com/json/?fields=lat,lon,city,country,countryCode")
+    data = _http_json("https://ip-api.com/json/?fields=lat,lon,city,country,countryCode")
     if data:
         return (
             data.get("lat", 0.0),
@@ -214,7 +214,7 @@ def detect_user_location() -> tuple[float, float, str, str]:
 
 
 def detect_isp() -> AsnInfo:
-    data = _http_json("http://ip-api.com/json/?fields=as,isp,org")
+    data = _http_json("https://ip-api.com/json/?fields=as,isp,org")
     if data and data.get("as"):
         as_str = data["as"]
         parts = as_str.split(" ", 1)

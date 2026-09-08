@@ -1,12 +1,12 @@
-﻿"""Smart Debloater â€” exact port of smart-debloater-scan.html +
+﻿"""Smart Debloater — exact port of smart-debloater-scan.html +
 smart-debloater-improved.html.
 
 Two states, matching the references:
-  SCAN    â€” centered head icon, title, mono tag line, lede, glass panel with
+  SCAN    — centered head icon, title, mono tag line, lede, glass panel with
             "Scan system" -> live stats strip, gradient progress bar and the
             9-step checklist (idle dots -> violet spinner -> green check +
             real "N found" counts) -> green "View results".
-  RESULTS â€” top bar (amber icon chip + title + OS subtitle + Rescan),
+  RESULTS — top bar (amber icon chip + title + OS subtitle + Rescan),
             Protected/Debloatable stat cards, note card, category groups of
             checkable row cards (risk + reversible tags, confidence %,
             description + impact lines) and a fixed bottom action bar
@@ -634,7 +634,7 @@ class DebloatPage(QWidget):
         wrap.addWidget(col)
         self._blay.addLayout(wrap)
 
-        # top bar â€” title block centered above the stat cards; Rescan pinned
+        # top bar — title block centered above the stat cards; Rescan pinned
         # right with a same-width ghost on the left so centering is exact
         bar = QHBoxLayout()
         left = QHBoxLayout()
@@ -838,7 +838,7 @@ class DebloatPage(QWidget):
         self._update_count()
 
     def _update_count(self):
-        # .sel-count: uniform 12.5px ink-400 â€” HTML's #sel-num span carries
+        # .sel-count: uniform 12.5px ink-400 — HTML's #sel-num span carries
         # no styling of its own.
         n = len(self._selected)
         self._sel_lbl.setText(
@@ -1025,7 +1025,7 @@ class DebloatPage(QWidget):
 
 
 class _Check(QFrame):
-    """Reference .cbx â€” 17px rounded checkbox, violet fill + white tick."""
+    """Reference .cbx — 17px rounded checkbox, violet fill + white tick."""
 
     changed = Signal(bool)
 

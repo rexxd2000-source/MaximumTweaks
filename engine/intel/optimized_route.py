@@ -1,11 +1,8 @@
-"""Optimized route abstraction — computes estimated optimized paths.
+"""Estimated optimized-path model.
 
-Currently uses heuristic analysis of the public route.
-Later: integrate with ExitLag, NoPing, or other routing services
-through their official APIs/SDKs.
-
-The optimized route is ALWAYS labeled as ESTIMATED unless real
-optimization data is available.
+The estimate is heuristic for now; a later version could plug into routing
+services (ExitLag, NoPing, ...) via their official APIs. The optimized route
+is always labeled ESTIMATED unless real optimization data is available.
 """
 from __future__ import annotations
 

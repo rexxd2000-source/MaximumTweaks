@@ -373,7 +373,7 @@ class DashboardPage(QWidget):
         self.welcome_label.setStyleSheet(
             "font-size: 20px; font-weight: 700; color: #F6F4FC;")
         ident.addWidget(self.welcome_label)
-        self.quote_label = QLabel("Every millisecond counts.")
+        self.quote_label = QLabel("Every optimization counts.")
         self.quote_label.setStyleSheet(
             "font-size: 12.5px; color: #928AAD;")
         ident.addWidget(self.quote_label)

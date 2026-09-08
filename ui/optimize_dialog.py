@@ -205,38 +205,6 @@ class OptimizeWorker(QThread):
         self.done.emit(merge_reports(reports, title, subtitle))
 
 
-def _wipe(widget: QWidget):
-    """Remove every child item/widget of a widget's layout recursively."""
-    lay = widget.layout()
-    if lay is None:
-        return
-    while lay.count():
-        it = lay.takeAt(0)
-        if it is None:
-            continue
-        w = it.widget()
-        if w is not None:
-            w.setParent(None)
-            w.deleteLater()
-        sub = it.layout()
-        if sub is not None:
-            _drain_layout(sub)
-
-
-def _drain_layout(lay):
-    while lay.count():
-        it = lay.takeAt(0)
-        if it is None:
-            continue
-        w = it.widget()
-        if w is not None:
-            w.setParent(None)
-            w.deleteLater()
-        sub = it.layout()
-        if sub is not None:
-            _drain_layout(sub)
-
-
 class _Elide(QLabel):
     """Left-elides on resize, tooltip keeps the full string."""
 
@@ -783,7 +751,8 @@ class OptimizeDialog(QDialog):
         self.ov_score.setText(str(len(recs)))
         # specs (live reads)
         host = self._ov_specs_host
-        _wipe(host)
+        if host.layout() is not None:
+            clear_layout(host.layout())
         g = QGridLayout(host)
         g.setContentsMargins(0, 0, 0, 0)
         g.setHorizontalSpacing(14)
@@ -812,7 +781,8 @@ class OptimizeDialog(QDialog):
         g.setColumnStretch(2, 1)
         # category bars
         host2 = self.ov_bar_host
-        _wipe(host2)
+        if host2.layout() is not None:
+            clear_layout(host2.layout())
         vl = QVBoxLayout(host2)
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(9)

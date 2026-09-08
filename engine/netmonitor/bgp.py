@@ -145,7 +145,7 @@ def lookup_ipapi(ip: str) -> Optional[dict]:
     cached = _cached(ck)
     if cached is not None:
         return cached
-    data = _get(f"http://ip-api.com/json/{ip}?fields=66846719")
+    data = _get(f"https://ip-api.com/json/{ip}?fields=66846719")
     if data and data.get("status") == "success":
         _cache(ck, data)
         return data

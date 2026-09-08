@@ -33,13 +33,9 @@ Desktop.ini
 auth_backend/licenses.db
 auth_backend/server.out.log
 auth_backend/server.err.log
-auth_backend/server.out.log
-auth_backend/server.err.log
-auth_backend/server.out.log
-auth_backend/server.err.log
 
 # Scratch / debug / local runtime artifacts (never release)
-$null
+publish_log.txt
 boot2.txt
 boot3.txt
 boot*.err.txt

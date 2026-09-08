@@ -1,8 +1,4 @@
-﻿"""Session manager — manages game session lifecycle.
-
-Each match creates a new session. Old sessions are archived.
-The current session tracks the game session endpoint, route, and timeline.
-"""
+﻿"""Owns the active game session and archives finished ones."""
 from __future__ import annotations
 
 import time

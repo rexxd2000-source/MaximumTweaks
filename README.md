@@ -2,8 +2,8 @@
 
 Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert
 
-Maximum Tweaks is a Windows system optimizer with a **603-tweak database** across
-45 categories (CPU, GPU, RAM, network, power, services, privacy, storage,
+Maximum Tweaks is a Windows system optimizer with an **854-tweak database** across
+52 categories (CPU, GPU, RAM, network, power, services, privacy, storage,
 audio, input, BIOS, game-specific and more). It detects your hardware, marks
 only **compatible** tweaks as ready, and applies/reverts them with one click.
 
@@ -21,7 +21,7 @@ only **compatible** tweaks as ready, and applies/reverts them with one click.
   with CPU / GPU / RAM / System cards (real-time usage via psutil + NVIDIA SMI,
   VRAM, temps, uptime), hero status chips, quick actions, gaming-optimization
   status and a premium **COMING SOON** Discord card.
-- **Game Profiles** — one-click per-game performance profiles for 12 titles
+- **Game Profiles** — one-click per-game performance profiles for 21 titles
   (Fortnite, Valorant, CS2, COD, Apex, Overwatch 2, Minecraft, Rocket League,
   LoL, Rust, Tarkov, Warzone) with an animated **"LAUNCHING <GAME> PROFILE…"**
   screen that steps through each stage and finishes on **"✓ PROFILE READY"**,
@@ -76,7 +76,7 @@ python -m PyInstaller MaximumTweaks.spec --noconfirm
 ```
 
 Run the resulting exe as **Administrator** to apply admin-requiring tweaks
-(186 of them need elevation).
+(many of them need elevation).
 
 ## Live updates
 
@@ -102,11 +102,10 @@ Requirements for publishing:
 - A GitHub Personal Access Token in `$env:GITHUB_TOKEN` (scope: `repo`).
 - GitHub CLI (`gh`) is **not** required — the script uses `curl`.
 
-> **Private repos**: if `GITHUB_REPO` is private, `release.ps1` embeds the
-> token into `config\_secrets.py` (gitignored) so the built exe can read the
-> latest release and download the asset. The updater then talks to the GitHub
-> API with that token — no public mirror is needed. Never commit
-> `config/_secrets.py`. This repo is public, so none of that is required here.
+> **Private repos**: if `GITHUB_REPO` is private, you must set the
+> `GITHUB_TOKEN` environment variable to a GitHub PAT (scope: `repo`) in the
+> running process before launching the app; no secrets are ever embedded in the
+> exe or read from `config/_secrets.py`.
 
 The app's update check resolves the **latest release tag** of `GITHUB_REPO`
 and downloads the asset named `MaximumTweaks.exe`. For a custom server instead of
@@ -123,7 +122,7 @@ The "Open GitHub" sidebar button is controlled by `GITHUB_URL`.
 
 ```
 config/     app configuration, theme, paths
-database/   tweak database (603 tweaks) + action executor
+database/   tweak database (854 tweaks) + action executor
 engine/     recommender, bundles, applier, applied-state tracking
 hardware/   hardware detection (WMI + psutil)
 ui/         PySide6 pages: dashboard, detect, tweaks, optimize, logs

@@ -1,13 +1,8 @@
-﻿"""Orchestrator — the main network intelligence pipeline.
+﻿"""Background network-intelligence pipeline for the Route Analyzer.
 
-Architecture:
-    Game Process → Process Identification → Live Network Observation →
-    TCP + UDP Endpoints → Lobby Baseline → Matchmaking Detection →
-    Match-Start Correlation → Endpoint Candidates → Candidate Scoring →
-    Current Game Session Endpoint → ASN/BGP/RDNS/Geo →
-    Route Measurement → ISP/Transit/Hop Analysis → Globe
-
-Runs as a background QThread. Emits signals to the UI.
+Reads the game process's live TCP/UDP connections, tracks lobby and
+matchmaking state, scores endpoint candidates, and emits a ranked
+game-session endpoint. Runs as a QThread and reports via Qt signals.
 """
 from __future__ import annotations
 
@@ -66,16 +61,7 @@ class IntelSnapshot:
 
 
 class IntelOrchestrator(QThread):
-    """Main network intelligence pipeline.
-
-    Polls every N seconds:
-    1. Detect game process
-    2. Observe network connections for game PID
-    3. Update game state machine
-    4. Score endpoint candidates
-    5. Select game session endpoint
-    6. Emit complete snapshot to UI
-    """
+    """Polled pipeline; collects one network snapshot per tick and emits it."""
 
     snapshot_updated = Signal(object)
     status_update = Signal(str)
@@ -121,7 +107,7 @@ class IntelOrchestrator(QThread):
         self._debug_lines.clear()
         now = time.time()
 
-        # Step 1: Detect game process
+        # detect the running game process
         game_proc = get_game_process(self._game_key) if self._game_key else None
         if not game_proc:
             for key in ["fortnite", "valorant", "cod", "cs2"]:
@@ -178,7 +164,7 @@ class IntelOrchestrator(QThread):
         elif not self._udp_capture.has_admin:
             self._add_debug("UDP raw capture: requires Administrator")
 
-        # Step 2: Observe network
+        # observe live connections for the game process
         if not self._observer or self._observer.pid != game_proc.pid:
             self._observer = NetworkObserver(game_proc.pid)
 
@@ -219,8 +205,7 @@ class IntelOrchestrator(QThread):
                 self._add_debug(f"  UDP local:{ep.local_port} remote:{ep.remote_ip or '?'}:{ep.remote_port or '?'} "
                                f"[obs:{ep.observation_count}, age:{age}] active:{ep.is_active}")
 
-        # Step 3: Update state machine
-        # New endpoints = connections that appeared in the last 15s.
+        # state machine update; "new" = connections that appeared in the last 15s
         lobby_baseline_count = self._baseline.baseline.total_endpoints if self._baseline.has_baseline else 0
         new_recent = len(self._observer.get_new_endpoints_since(now - 15.0))  # 15s window
         new_count = new_recent
@@ -261,7 +246,7 @@ class IntelOrchestrator(QThread):
                     self._scorer.set_match_timing(matchmaking_time=now, match_start_time=now)
                     self._add_debug("Direct lobby→match transition (fast matchmaking)")
 
-        # Step 4: Score candidates (always, not just when IN_MATCH)
+        # score candidates every cycle, not just in-match
         if active:
             candidates = self._scorer.score_all(
                 active,
@@ -271,7 +256,7 @@ class IntelOrchestrator(QThread):
             self._snapshot.all_candidates = candidates
             self._session_mgr.update_candidates(candidates)
 
-            # Step 5: Select best candidate (always, so UI shows data even in LOBBY)
+            # best candidate is updated even in LOBBY so the UI shows data
             best = self._scorer.get_best_candidate(candidates)
             if best:
                 prev = self._snapshot.game_endpoint

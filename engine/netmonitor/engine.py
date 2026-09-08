@@ -1,4 +1,4 @@
-﻿"""Main orchestrator â€” ties all network monitor components together."""
+﻿"""Main orchestrator — ties all network monitor components together."""
 from __future__ import annotations
 
 import threading
@@ -123,7 +123,7 @@ class NetworkMonitorEngine:
         # Throttle the stale-target warning so a dead match doesn't spam.
         self._stale_emit_ts: float = 0.0
 
-    # A live median needs a real sample set before it is authoritative â€”
+    # A live median needs a real sample set before it is authoritative —
     # with 1-2 pairs the median is noise and the displayed total toggles.
     _LIVE_MIN_SAMPLES = 8
     # How long a held value stays authoritative after the stream thins out.
@@ -601,7 +601,7 @@ class NetworkMonitorEngine:
         # â”€â”€ Real tunnel re-measurement â”€â”€
         # No static "optimized route" mocks: when an active VPN/GPN tunnel is
         # the OS interface carrying this server, we trace the REAL path through
-        # it. Otherwise the optimized side stays absent â€” but the scan itself
+        # it. Otherwise the optimized side stays absent — but the scan itself
         # is always recorded as checked evidence, so the UI never shows a
         # static "no tunnel" claim as if nothing was ever tested.
         if not self._stop.is_set():
@@ -663,7 +663,7 @@ class NetworkMonitorEngine:
                     })
                     self._emit_event(
                         "info",
-                        f"Tunnel '{tunnel.name}' carries the route â€” "
+                        f"Tunnel '{tunnel.name}' carries the route — "
                         f"re-measured via it ({tunnel_route.total_hops} hops, "
                         f"{tunnel_route.total_latency:.0f} ms)",
                     )
@@ -671,13 +671,13 @@ class NetworkMonitorEngine:
                     self._emit_event(
                         "info",
                         f"Active {tunnel.kind} '{tunnel.name}' present but does "
-                        f"not carry the route to {route.destination_ip} â€” "
+                        f"not carry the route to {route.destination_ip} — "
                         f"keeping the direct path",
                     )
                 else:
                     self._emit_event(
                         "info",
-                        f"Tunnel scan: {tunnel.reason} â€” keeping the direct path",
+                        f"Tunnel scan: {tunnel.reason} — keeping the direct path",
                     )
             except Exception as exc:
                 self._emit_event("warning", f"Tunnel trace failed: {exc}")
@@ -782,7 +782,7 @@ class NetworkMonitorEngine:
                     updated=now,
                 )
             elif healthy:
-                adopt = stats  # nothing better available â€” show what we have
+                adopt = stats  # nothing better available — show what we have
 
             if adopt is None:
                 return

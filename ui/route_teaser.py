@@ -1,4 +1,4 @@
-﻿"""Cinematic Route Analyzer teaser â€” a one-shot overlay announced when a new
+﻿"""Cinematic Route Analyzer teaser — a one-shot overlay announced when a new
 version ships.
 
 Shown over the main window once per APP_VERSION (persisted marker at
@@ -41,7 +41,7 @@ DIM = QColor(124, 147, 166)
 FAINT = QColor(74, 92, 110)
 HOME = QColor(4, 6, 10)
 
-# The features the overlay announces â€” real work that shipped behind the
+# The features the overlay announces — real work that shipped behind the
 # Route Analyzer between releases. Edited here, not in the analyzer itself.
 FEATURES = [
     "LIVE LATENCY BUDGET \u2014 where your ping comes from",
@@ -109,12 +109,12 @@ class RouteTeaserOverlay(QWidget):
 
     Fully obscures the underlying widget, swallows all input, and only
     dismisses when BOTH the sequence has finished AND the owner has signalled
-    readiness (application-state controlled â€” there is no user-triggered way
+    readiness (application-state controlled — there is no user-triggered way
     to bypass or interrupt it). Two modes: embedded (a child widget covering a
-    page â€” used on the Route Analyzer) or full-screen topmost.
+    page — used on the Route Analyzer) or full-screen topmost.
     """
 
-    # Emitted when the gate fully dismisses â€” the owner uses it to run whatever
+    # Emitted when the gate fully dismisses — the owner uses it to run whatever
     # "the loading is over" transition it owns (e.g. auto-start a trace).
     finished_dismiss = Signal()
 
@@ -144,12 +144,12 @@ class RouteTeaserOverlay(QWidget):
         # Overall fade factor (0..1) applied to everything painted; the gate
         # ramps to 1 over the first ~0.45s and back to 0 during the outgoing
         # fade. windowOpacity is not used because it does not affect child
-        # widgets (embedded mode) â€” the fade is drawn alpha-based instead.
+        # widgets (embedded mode) — the fade is drawn alpha-based instead.
         self._alpha_overlay: float = 0.0
 
     # ---- lifecycle -------------------------------------------------------
     def set_ready_check(self, fn) -> None:
-        """Dismissal is gated on `fn()` returning truthy â€” the animation never
+        """Dismissal is gated on `fn()` returning truthy — the animation never
         ends before the owner confirms initialization is complete."""
         self._ready_fn = fn
 
@@ -196,7 +196,7 @@ class RouteTeaserOverlay(QWidget):
         t = self.elapsed()
         if not self._fading:
             # Fade-in ramp (~0.45s), then the sequence holds until BOTH the
-            # full runtime has passed AND the owner reports ready â€” only then
+            # full runtime has passed AND the owner reports ready — only then
             # does the outgoing fade (the dismissal) begin.
             self._alpha_overlay = self._ease01(self._cl01(t / 0.45))
             if t >= 9.6 and self._ready_ok():
@@ -243,7 +243,7 @@ class RouteTeaserOverlay(QWidget):
         return super().eventFilter(obj, event)
 
     # ---- input: the gate swallows everything -------------------------------
-    # No focus/mouse/keyboard handler is installed and no shortcut exists â€”
+    # No focus/mouse/keyboard handler is installed and no shortcut exists —
     # there is deliberately no way to skip, dismiss or interrupt the sequence.
     def mousePressEvent(self, event):
         event.accept()
@@ -426,7 +426,7 @@ class RouteTeaserOverlay(QWidget):
 
 def maybe_show_teaser(geometry) -> "RouteTeaserOverlay | None":
     """Show the teaser once per app version, on the given screen/maximized
-    geometry. Returns None when it has already been seen (or on any failure â€”
+    geometry. Returns None when it has already been seen (or on any failure —
     the teaser must never break app startup)."""
     try:
         base = os.environ.get("APPDATA") or ""

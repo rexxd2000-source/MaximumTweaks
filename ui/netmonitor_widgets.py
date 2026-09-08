@@ -66,10 +66,10 @@ class RouteMapWidget(QWidget):
         def _has_geo(hop) -> bool:
             # A rejected geolocation (measured latency below the fiber floor,
             # e.g. a geo-DB "Port Elizabeth" for a 4 ms Vodacom router) must
-            # never be pinned on the map â€” that draws a fake route down the
+            # never be pinned on the map — that draws a fake route down the
             # coast. Such hops plot in path sequence like any no-geo hop.
             # Sub-15ms hops are the same story at finer granularity: the DB
-            # city for a hop 0-700 km away is registered-office noise â€”
+            # city for a hop 0-700 km away is registered-office noise —
             # unless the ISP itself named the PoP (reverse-DNS / prefix table),
             # which is authoritative even at short latency.
             geo = getattr(hop, "geo", None)
@@ -102,7 +102,7 @@ class RouteMapWidget(QWidget):
                     self._hop_positions[hop.number] = pos
                 else:
                     # No geo for this hop (private/CGNAT/unknown): still plot it
-                    # in its exact sequence position â€” never drop it from the
+                    # in its exact sequence position — never drop it from the
                     # visual. Alternate a small y-gap so consecutive CGNAT hops
                     # don't stack into one visible dot.
                     prev_x = w * 0.1 + i * x_step

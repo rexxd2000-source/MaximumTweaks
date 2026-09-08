@@ -857,9 +857,8 @@ class ControllerPage(QWidget):
     def _build_hidden(self, root):
         root.addSpacing(22)
         root.addWidget(_section_head(
-            "Hidden tier",
-            "for the best of the best — the pad's USB path and the "
-            "timer it's polled on"))
+            "Advanced controller settings",
+            "deep device and timer tuning for gamepads"))
         root.addSpacing(14)
         self._hidden_card = _Card(radius=14)
         hl = QVBoxLayout(self._hidden_card)
@@ -877,7 +876,7 @@ class ControllerPage(QWidget):
             f"font-size:12.5px; color:{_TEXT_4}; background:transparent;")
         self._hidden_lock_lbl = lock
         hl.addWidget(lock)
-        self._reveal_btn = QPushButton("Reveal hidden overclocking")
+        self._reveal_btn = QPushButton("Reveal hidden controller tweaks")
         self._reveal_btn.setObjectName("Secondary")
         self._reveal_btn.clicked.connect(self._reveal_hidden)
         rb = QHBoxLayout()

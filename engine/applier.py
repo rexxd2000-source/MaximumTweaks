@@ -1,17 +1,11 @@
 """Apply/revert tweaks in a batch with progress callbacks (UI-friendly).
 
-Every tweak passes :func:`engine.safety.preflight` before execution, so a
-batch assembled anywhere (toggles, Apply All, presets, optimizer dialog, CLI)
-can never silently apply a tweak that is blocked by validation status, targets
-the wrong Windows version, requires undetected hardware, or conflicts with an
-applied tweak.
-
-Verification after execution is honest: a tweak is only recorded as applied
-when the live system actually matches its target. ``verified is None``
-(unmeasurable actions like one-shot commands) is recorded but reported as
-"applied but not verifiable" — never as verified. ``verified is False``
-(written but the system does not match) is recorded as *not* applied so the
-UI never claims a change that did not take effect.
+Every tweak passes :func:`engine.safety.preflight` first, so a batch built
+anywhere (toggles, Apply All, presets, optimizer, CLI) can never apply a tweak
+that validation blocks. After execution, a tweak is recorded as applied only
+when the live system matches its target; ``verified is None`` (one-shot
+commands) is reported as applied but not verifiable, and ``verified is False``
+is recorded as not applied so the UI never claims a change that did not stick.
 """
 from __future__ import annotations
 

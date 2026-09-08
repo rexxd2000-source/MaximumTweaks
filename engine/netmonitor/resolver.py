@@ -197,7 +197,7 @@ def lookup_geo(ip: str) -> HopGeo:
                 approximate=True,
             )
 
-    data = _api_get(f"http://ip-api.com/json/{ip}?fields=66846719")
+    data = _api_get(f"https://ip-api.com/json/{ip}?fields=66846719")
     if data and data.get("status") == "success":
         _GEO_CACHE[ip] = {**data, "_ts": time.time()}
         _save_geo_cache()  # persist: same IP must stay the same label forever
@@ -225,7 +225,7 @@ def get_public_geo() -> HopGeo:
     cached, ts = _PUB_GEO_CACHE
     if cached is not None and time.time() - ts < _CACHE_TTL:
         return cached
-    data = _api_get("http://ip-api.com/json/?fields=66846719")
+    data = _api_get("https://ip-api.com/json/?fields=66846719")
     if data and data.get("status") == "success":
         geo = HopGeo(
             country=data.get("country", ""),
@@ -257,7 +257,7 @@ def lookup_asn(ip: str) -> HopNetwork:
     data = _api_get(
         # status..lot+timezone, isp, org, as, asname, reverse — the mask MUST
         # include `as` (4096) + `org` (2048) or ASN detection is always 0.
-        f"http://ip-api.com/json/{ip}?fields=32767"
+        f"https://ip-api.com/json/{ip}?fields=32767"
     )
     if data and data.get("status") == "success":
         _ASN_CACHE[ip] = {**data, "_ts": time.time()}

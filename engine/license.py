@@ -87,7 +87,8 @@ def owner_name(sess: dict | None = None) -> str:
 
 
 def is_configured() -> bool:
-    return bool(LICENSE_API_URL)
+    """License API is configured and uses HTTPS (plain-HTTP is refused)."""
+    return bool(LICENSE_API_URL and LICENSE_API_URL.lower().startswith("https://"))
 
 
 def dev_bypass_enabled() -> bool:
@@ -263,6 +264,16 @@ def _normalize_response(parsed, status: int) -> dict:
     return parsed
 
 
+def _mask_key(key: str | None) -> str:
+    """Mask a license key for logs: keep the first 4 chars, hide the rest."""
+    if not key:
+        return ""
+    k = str(key)
+    if len(k) <= 4:
+        return "*" * len(k)
+    return f"{k[:4]}...{k[-4:]}"
+
+
 def _http_json(url: str, payload: dict, timeout: float = _HTTP_TIMEOUT):
     """POST JSON; returns ``(status, normalized-dict)``.
 
@@ -270,6 +281,9 @@ def _http_json(url: str, payload: dict, timeout: float = _HTTP_TIMEOUT):
     network-level failures (offline, DNS, timeout) raise LicenseError so the
     caller can decide whether the cached session should stay valid.
     """
+    if not url.lower().startswith("https://"):
+        raise LicenseError("The license server must be reached over HTTPS.",
+                           "NETWORK")
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("User-Agent", "MaximumTweaks/2.0")
@@ -344,7 +358,7 @@ def activate(key: str) -> dict:
                               {"key": key, "device_id": dev})
     if status == 200 and (data.get("success") or data.get("ok")):
         sess = _store_record(data, dev)
-        logger.info(f"license: activated key {sess.get('license')}")
+        logger.info(f"license: activated key {_mask_key(sess.get('license'))}")
         return sess
     code = data.get("error") or data.get("code") or ""
     raise LicenseError(_friendly(code, data.get("message", "")), code)

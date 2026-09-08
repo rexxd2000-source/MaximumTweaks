@@ -270,7 +270,10 @@ class RamTierCard(QFrame):
         inner.setSpacing(4)
         root.addLayout(inner, 1)
 
-        # top row: mono size + Recommended badge + check box
+        # top row: mono size + Suggested tag (left cluster), selection box
+        # (right). Suggestion and selection now use distinct visual languages:
+        # the tag only ever marks the machine's recommendation, and the box is
+        # the single indicator of what the user picked.
         top = QHBoxLayout()
         top.setSpacing(8)
         top.setAlignment(Qt.AlignVCenter)
@@ -280,11 +283,11 @@ class RamTierCard(QFrame):
             f"font-family: 'JetBrains Mono', monospace; "
             f"font-size: 21px; font-weight: 600; color: #EFF0F4;")
         top.addWidget(self.size_lbl)
-        top.addStretch()
-        self.badge_lbl = QLabel("Recommended")
+        self.badge_lbl = QLabel("\u2726  Suggested")
         self.badge_lbl.setObjectName("RamRecBadge")
         self.badge_lbl.setVisible(self.recommended)
         top.addWidget(self.badge_lbl)
+        top.addStretch()
         self.check_lbl = QLabel("\u2713")
         self.check_lbl.setObjectName("RamCheck")
         self.check_lbl.setFixedSize(19, 19)
@@ -308,16 +311,29 @@ class RamTierCard(QFrame):
         bl.setAlignment(Qt.AlignVCenter)
         self.bar = QProgressBar()
         self.bar.setObjectName("RamBar")
+        pct = (bar_pct if bar_pct is not None
+               else TIER_BAR_PCT.get(tier_key, 0))
         self.bar.setRange(0, 100)
-        self.bar.setValue(bar_pct if bar_pct is not None else TIER_BAR_PCT.get(tier_key, 0))
+        self.bar.setValue(pct)
         self.bar.setTextVisible(False)
         self.bar.setFixedHeight(4)
+        tip = (f"{tier['label']} optimization depth \u2014 {pct}% of the "
+               f"deepest preset ({len(tier['tweaks'])} tweaks enabled); "
+               f"100% = the 128 GB tier.")
+        self.bar.setToolTip(tip)
         bl.addWidget(self.bar, 1)
+        pct_lbl = QLabel(f"{pct}%")
+        pct_lbl.setStyleSheet(
+            "font-family: 'JetBrains Mono', monospace; "
+            "font-size: 11px; color: #6E7390; background: transparent;")
+        pct_lbl.setToolTip(tip)
+        bl.addWidget(pct_lbl)
         count = QLabel(f"{len(tier['tweaks'])} tweaks")
         count.setObjectName("RamCount")
         count.setStyleSheet(
             "font-family: 'JetBrains Mono', monospace; "
-            "font-size: 11px; color: #575C6B;")
+            "font-size: 11px; color: #575C6B; background: transparent;")
+        count.setToolTip(tip)
         bl.addWidget(count)
         inner.addLayout(bl)
 
@@ -356,9 +372,10 @@ class RamTierCard(QFrame):
             f"font-size: 12px; font-weight: 700; }}"
         )
         badge = (
-            f"QLabel#RamRecBadge {{ font-size: 9.5px; font-weight: 700; color: {soft}; "
-            f"background: rgba(139,124,246,0.15); border: 1px solid rgba(139,124,246,0.4); "
-            f"border-radius: 100px; padding: 3px 8px; }}"
+            f"QLabel#RamRecBadge {{ font-size: 9px; font-weight: 600; "
+            f"color: #B7AEE8; background: rgba(139,124,246,0.10); "
+            f"border: 1px solid rgba(139,124,246,0.30); "
+            f"border-radius: 100px; padding: 2px 8px; }}"
         )
         bar_fill = violet if sel else "rgba(255,255,255,0.22)"
         bar = (
@@ -383,113 +400,3 @@ class RamTierCard(QFrame):
         super().mousePressEvent(event)
         if hasattr(self, "_on_click"):
             self._on_click(self.tier_key)
-
-
-class RamSelectorPage(QWidget):
-    """Full page for selecting RAM size and applying memory optimizations."""
-
-    def __init__(self, ctx, navigate, parent=None):
-        super().__init__(parent)
-        self.ctx = ctx
-        self.navigate = navigate
-        self._selected = None
-        self._cards = {}
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(16)
-
-        title = QLabel("RAM Optimizer")
-        title.setObjectName("PageTitle")
-        root.addWidget(title)
-
-        sub = QLabel(
-            "Select your installed RAM size. Maximum Tweaks will automatically "
-            "optimize Windows memory-management settings: Memory Compression, "
-            "I/O page-lock limits, SvcHost split threshold, pagefile behavior, "
-            "background services, and many other RAM-specific settings.")
-        sub.setObjectName("PageSub")
-        sub.setWordWrap(True)
-        root.addWidget(sub)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        body = QWidget()
-        grid = QGridLayout(body)
-        grid.setContentsMargins(4, 0, 12, 0)
-        grid.setSpacing(14)
-
-        keys = list(RAM_TIERS.keys())
-        rec_key = recommended_ram_key(ctx.profile)
-        for i, key in enumerate(keys):
-            tier = RAM_TIERS[key]
-            card = RamTierCard(key, tier, ctx, recommended=(key == rec_key))
-            card._on_click = self._select_tier
-            grid.addWidget(card, i // 2, i % 2)
-            self._cards[key] = card
-
-        body.setLayout(grid)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
-
-        # Apply button area
-        self._apply_frame = QFrame()
-        self._apply_frame.setObjectName("Card")
-        af_layout = QVBoxLayout(self._apply_frame)
-        af_layout.setContentsMargins(18, 14, 18, 14)
-        af_layout.setSpacing(8)
-
-        self._status = QLabel("Select your RAM size above, then click Apply.")
-        self._status.setObjectName("PageSub")
-        self._status.setWordWrap(True)
-        af_layout.addWidget(self._status)
-
-        row = QHBoxLayout()
-        self._btn_apply = QPushButton("Apply Memory Optimizations")
-        self._btn_apply.setObjectName("Primary")
-        self._btn_apply.setEnabled(False)
-        self._btn_apply.clicked.connect(self._apply)
-        row.addWidget(self._btn_apply)
-        row.addStretch()
-        af_layout.addLayout(row)
-
-        root.addWidget(self._apply_frame)
-
-        self.ctx.profile_changed.connect(self._refresh_status)
-        self._refresh_status()
-
-    def _select_tier(self, key):
-        self._selected = key
-        for k, card in self._cards.items():
-            card.set_selected(k == key)
-        tier = RAM_TIERS[key]
-        self._status.setText(
-            f"<b>{tier['label']} ({tier['desc']})</b> — "
-            f"{len(tier['tweaks'])} memory optimizations will be applied.")
-        self._btn_apply.setEnabled(True)
-
-    def _apply(self):
-        if not self._selected:
-            return
-        tier = RAM_TIERS[self._selected]
-        ids = [tid for tid in tier["tweaks"] if tid in BY_ID]
-        if not ids:
-            return
-        dlg = ProgressDialog(
-            self, ids, "apply",
-            f"Optimizing memory for {tier['label']}…",
-            profile=self.ctx.profile)
-        dlg.exec()
-        self.ctx.note_state_change()
-        self._refresh_status()
-
-    def _refresh_status(self):
-        profile = self.ctx.profile or {}
-        gb = profile.get("ram_gb") or 0
-        rec_key = recommended_ram_key(profile)
-        for key, card in self._cards.items():
-            if gb and key == rec_key:
-                card.set_recommended(True, f"Matches your installed {gb:g} GB")
-            else:
-                card.set_recommended(False)

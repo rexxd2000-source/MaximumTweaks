@@ -89,12 +89,12 @@ def _gpu_vendor(name):
 
 
 def _gpu_is_integrated(name, pnp: str | None = None):
-    """Integrated vs dedicated.
+    """Integrated vs dedicated GPU.
 
-    Integ gutter heuristics for name; when a PCI hardware id is available it is
-    authoritative: an Intel VEN_8086 device is integrated unless it is an Arc
-    discrete GPU; an AMD VEN_1002/1022 device is integrated only when its name
-    carries the "Graphics"/iGPU markers and no discrete model token.
+    Uses per-vendor name heuristics; when a PCI hardware id is available it is
+    authoritative: Intel VEN_8086 is integrated unless it is an Arc discrete
+    GPU, and AMD VEN_1002/1022 is integrated only when the name carries the
+    "Graphics"/iGPU markers and no discrete model token.
     """
     n = name.lower()
     ven = _vendor_from_pnp(pnp or "")

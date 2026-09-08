@@ -1,5 +1,5 @@
 # Maximum Tweaks - scheduled publish wrapper (runs at 14:00).
-# Pushes the latest commit to origin/main, then builds + tags v2.0.4 and
+# Pushes the latest commit to origin/main, then builds + tags and
 # publishes the GitHub Release so clients can update.
 $ErrorActionPreference = "Stop"
 $root = "C:\Users\Admin\Documents\Default Project\RexTweaks"
@@ -20,6 +20,15 @@ function Log([string]$msg) {
     Write-Host $line
 }
 
+# Read the current APP_VERSION from config/app_config.py.
+function Get-Version {
+    $cfg = Join-Path $root "config\app_config.py"
+    $m = (Get-Content $cfg -Raw) -match 'APP_VERSION\s*=\s*"([^"]*)"'
+    if ($m) { return $Matches[1] }
+    throw "APP_VERSION not found in $cfg"
+}
+$version = Get-Version
+
 # Load the update token from the ENVIRONMENT (set by the operator when
 # scheduling this task). SECURITY: never read from any config file or ship a
 # token in the repo/build — a publish token must not be extractable.
@@ -29,7 +38,7 @@ if (-not $token) {
     exit 1
 }
 
-Log "Publishing Maximum Tweaks v2.0.4"
+Log "Publishing Maximum Tweaks v$version"
 $env:GITHUB_TOKEN = $token
 
 # 1. Push the committed changes to origin/main (token-authenticated so the
@@ -52,11 +61,11 @@ finally {
 }
 
 # 2. Build + tag + release via release.ps1.
-Log "running release.ps1 -Version 2.0.4"
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "release.ps1") -Version "2.0.4" 2>&1 | ForEach-Object { Log $_ }
+Log "running release.ps1 -Version $version"
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "release.ps1") -Version "$version" 2>&1 | ForEach-Object { Log $_ }
 if ($LASTEXITCODE -ne 0) {
     Log "FATAL: release.ps1 failed"
     exit 1
 }
 
-Log "Done - v2.0.4 published."
+Log "Done - v$version published."

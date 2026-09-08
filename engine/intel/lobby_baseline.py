@@ -1,7 +1,7 @@
-"""Lobby baseline — captures the network connection pattern while in lobby.
+"""Snapshot of the connection pattern while in lobby.
 
-Used to detect when the user enters matchmaking (new endpoints appear)
-and when a match starts (significant endpoint changes).
+Diffing against it detects matchmaking (new endpoints appear) and match
+start (significant endpoint changes).
 """
 from __future__ import annotations
 

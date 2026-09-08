@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import os
 import time
+import hmac
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -218,7 +219,7 @@ def _require_admin(authorization: str | None):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise _err("unauthorized", "Admin bearer token required.", 401)
     token = authorization[7:].strip()
-    if token != ADMIN_TOKEN:
+    if not hmac.compare_digest(token, ADMIN_TOKEN):
         raise _err("unauthorized", "Invalid admin token.", 401)
 
 
