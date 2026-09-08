@@ -9,19 +9,19 @@ from engine.audit import StateAuditor
 from engine.recommender import evaluate_many
 
 
-#: Verified Discord display name (global_name or username), or None while the
-#: user is still a guest (no verified identity).
-DISCORD_USERNAME: str | None = None
+#: Verified license owner display name, or None while the user is a guest
+#: (no active license session).
+LICENSE_NAME: str | None = None
 
-#: True when the verified identity was linked for the first time this session.
-DISCORD_FIRST_VERIFY: bool = False
+#: True when the license was activated for the first time this session.
+LICENSE_FIRST_VERIFY: bool = False
 
 
 class AppContext(QObject):
     profile_changed = Signal()
     state_changed = Signal()
     pfp_changed = Signal()
-    discord_changed = Signal()
+    license_changed = Signal()
     live_state_changed = Signal(str, object)  # tid, value (True/False/None)
 
     def __init__(self, parent=None):

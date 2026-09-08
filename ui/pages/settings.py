@@ -67,7 +67,7 @@ class SettingsPage(QWidget):
         root.addWidget(SettingRow(
             "Administrator privileges",
             "Elevated mode lets every tweak apply, including registry and service "
-            "changes. Rex Tweaks is running as "
+            "changes. Maximum Tweaks is running as "
             f"{'Administrator' if admin else 'a standard user'}.",
             btn))
 

@@ -33,13 +33,16 @@ from ui.categories import (
     ALL_TWEAK_KEYS,
     CATEGORY_GROUPS,
     group_tweaks,
+    logo_path,
     recommended_count,
 )
 from ui.widgets import (
     BatchWorker,
+    GuideDialog,
     IconTile,
     TweakCard,
     clear_layout,
+    qss_rgba,
     toast,
 )
 
@@ -58,7 +61,7 @@ IMPACT_RANK = {"extreme": 6, "high": 5, "moderate": 4, "low": 3, "very low": 2}
 RISK_RANK = {"safe": 0, "low": 1, "moderate": 2, "advanced": 3}
 REC_RANK = {
     "recommended": 0, "optional": 1, "experimental": 2,
-    "advanced": 3, "not_recommended": 4,
+    "advanced": 3, "guide": 4, "not_recommended": 5,
 }
 
 ALL_KEY = "__all__"
@@ -77,6 +80,8 @@ HEADER_TITLES = {
     "performance": "Performance Tweaks",
     "fortnite": "Fortnite Tweaks",
     "games": "Game Tweaks",
+    "guides": "Guides",
+    "laptop": "Laptop Tweaks",
 }
 
 HEADER_ICONS = {
@@ -92,6 +97,8 @@ HEADER_ICONS = {
     "performance": "\u26a1",
     "fortnite": "\u25c9",
     "games": "\u2605",
+    "guides": "\u2139",
+    "laptop": "\u25c8",
 }
 
 
@@ -226,7 +233,22 @@ class TweaksPage(QWidget):
         title, blurb = self._header_for(self.key)
         self.title_lbl.setText(title)
         self.blurb_lbl.setText(blurb)
-        self.head_icon.setText(HEADER_ICONS.get(self.key, "\u26a1"))
+        meta = CATEGORY_GROUPS.get(self.key)
+        if meta:
+            color = meta["color"]
+            self.head_icon.set_logo(logo_path(self.key))
+            self.head_icon.setStyleSheet(
+                f"background-color: {qss_rgba(color, 0x22)}; color: {color};"
+                f" border-radius: 11px; font-size: 23px; font-weight: 900;"
+                f" border: 1px solid {qss_rgba(color, 0x33)};")
+        else:
+            color = T["accent"]
+            self.head_icon.set_logo(None)
+            self.head_icon.setText(HEADER_ICONS.get(self.key, "\u26a1"))
+            self.head_icon.setStyleSheet(
+                f"background-color: {qss_rgba(color, 0x22)}; color: {color};"
+                f" border-radius: 11px; font-size: 23px; font-weight: 900;"
+                f" border: 1px solid {qss_rgba(color, 0x33)};")
         self.head_icon.setToolTip(title)
 
     # ---------------- Toolbar ----------------
@@ -425,10 +447,19 @@ class TweaksPage(QWidget):
     def _revert(self, tid):
         self._run_batch([tid], "revert")
 
+    def _show_guide(self, tid):
+        from database import BY_ID
+        tweak = BY_ID.get(tid)
+        if tweak is None:
+            return
+        GuideDialog(tweak, self).exec()
+
     def _apply_all(self):
         from database.validation import gate as _gate
         ids, skipped = [], []
         for t in self._visible_tweaks():
+            if t.get("guidance"):
+                continue
             if self.ctx.state_of(t["id"]) in ("incompatible", "not_for_you"):
                 continue
             if self.ctx.live_active(t["id"]):
@@ -661,6 +692,7 @@ class TweaksPage(QWidget):
             self._cards[t["id"]] = card
             card.apply_requested.connect(self._apply)
             card.revert_requested.connect(self._revert)
+            card.guide_requested.connect(self._show_guide)
             card.setFixedSize(card_w, card_h)
             r, c = divmod(idx, cols)
             self.grid.addWidget(card, r, c)

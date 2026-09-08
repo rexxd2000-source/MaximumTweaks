@@ -27,3 +27,12 @@ Desktop.ini
 .DS_Store
 .idea/
 .vscode/
+
+# License backend local data
+auth_backend/licenses.db
+auth_backend/server.out.log
+auth_backend/server.err.log
+auth_backend/server.out.log
+auth_backend/server.err.log
+auth_backend/server.out.log
+auth_backend/server.err.log

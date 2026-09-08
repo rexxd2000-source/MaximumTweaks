@@ -159,7 +159,7 @@ class BundleCard(QFrame):
         n_admin = sum(1 for t in applyable if t.get("admin"))
         if n_admin:
             warn.setText(
-                f"{n_admin} tweak(s) require administrator privileges. Run Rex Tweaks "
+                f"{n_admin} tweak(s) require administrator privileges. Run Maximum Tweaks "
                 "as Administrator for those to take effect; otherwise they are skipped.")
         lay.addWidget(warn)
 

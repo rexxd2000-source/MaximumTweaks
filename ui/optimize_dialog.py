@@ -106,7 +106,7 @@ class OptimizeDialog(QDialog):
         self._apply_worker: BatchWorker | None = None
         self._report = None
 
-        self.setWindowTitle(self.group_title + " \u2014 Rex Tweaks")
+        self.setWindowTitle(self.group_title + " \u2014 Maximum Tweaks")
         self.setModal(True)
         self.resize(760, 700)
 
@@ -131,7 +131,7 @@ class OptimizeDialog(QDialog):
         lay.setContentsMargins(36, 30, 36, 30)
         lay.setSpacing(10)
 
-        kicker = QLabel("REX OPTIMIZATION ENGINE \u2014 CATEGORY SCAN")
+        kicker = QLabel("MAXIMUM OPTIMIZATION ENGINE \u2014 CATEGORY SCAN")
         kicker.setStyleSheet(
             f"color: {T['accent']}; font-size: 11px; font-weight: 800;"
             "letter-spacing: 3px;")
@@ -312,8 +312,8 @@ class OptimizeDialog(QDialog):
             "QCheckBox#RecToggle::indicator { width: 18px; height: 18px;"
             " border-radius: 5px; border: 1px solid #2A323D;"
             " background-color: #151A21; }"
-            "QCheckBox#RecToggle::indicator:checked { background-color: #00F2FE;"
-            " border-color: #00F2FE; }")
+            "QCheckBox#RecToggle::indicator:checked { background-color: #8B5CF6;"
+            " border-color: #8B5CF6; }")
         if rec.selectable:
             box.setChecked(rec.default_checked)
             box.toggled.connect(self._update_apply_label)

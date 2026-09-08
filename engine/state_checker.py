@@ -62,6 +62,22 @@ POWER_NAMES = {
                                 "06cadf0e-64ed-448a-8927-ce7bf90eb35d"),
     "perf_decrease_threshold": ("54533251-82be-4824-96c1-47b60b740d00",
                                 "12a0ab44-fe28-4fa9-b3fb-4b64a26f8725"),
+    "idle_disable": ("54533251-82be-4824-96c1-47b60b740d00",
+                     "5d76a2ca-e8c0-402f-a133-2158312c3406"),
+    "time_check": ("54533251-82be-4824-96c1-47b60b740d00",
+                   "18a7d39f-c168-4f6f-b3c4-bbf17f66a4c9"),
+    "parking_min": ("54533251-82be-4824-96c1-47b60b740d00",
+                    "0cc5b647-c1df-4637-891a-dec35c318583"),
+    "parking_max": ("54533251-82be-4824-96c1-47b60b740d00",
+                    "ea062031-0e34-4ff1-9b6d-eb1059334028"),
+    "perf_increase_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+                             "465e1f50-b610-473a-ab58-00d1077dc418"),
+    "perf_decrease_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+                             "8baa4a8a-14c6-4451-8e8b-14bdbd197537"),
+    "boost_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+                     "45bcc044-d885-43a2-8605-ee0ec6e96b59"),
+    "epp": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+            "36687f9e-e3a5-4dbf-b1dc-15eb381c6863"),
     "display_timeout": ("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",
                         "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"),
     "adaptive_brightness": ("7516b95f-f776-4464-8c53-06167f40cc99",
@@ -181,13 +197,19 @@ def _reg_map(hive: str, path: str) -> dict[str, tuple[str, str]]:
                 continue
             m = _REG_VALUE_RE.match(line)
             if m:
-                values[m.group("name")] = (m.group("type"), m.group("data"))
+                data = m.group("data")
+                if data.strip().lower() == "(value not set)":
+                    continue
+                values[m.group("name")] = (m.group("type"), data)
     _cache_set(key, values)
     return values
 
 
 def _reg_data(hive: str, path: str, name: str):
-    return _reg_map(hive, path).get(name)
+    key = name.strip().lower()
+    if key in ("", "(default)", "(default value)"):
+        key = "(Default)"
+    return _reg_map(hive, path).get(key)
 
 
 def _svc_start_type(name: str) -> str | None:

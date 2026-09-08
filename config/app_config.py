@@ -1,14 +1,34 @@
-﻿"""Rex Tweaks global configuration and path helpers."""
+"""Maximum Tweaks global configuration and path helpers."""
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
 
-APP_NAME = "Rex Tweaks"
-APP_VERSION = "1.3.2"
+APP_NAME = "Maximum Tweaks"
+APP_VERSION = "2.0.0"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
-ENGINE_NAME = "Rex Engine"
+ENGINE_NAME = "Maximum Engine"
+BOT_NAME = "Maximum"
+
+# ---- AI Assistant (Groq) ---------------------------------------------------
+# The Maximum chat bot calls Groq's OpenAI-compatible endpoint. Set the
+# GROQ_API_KEY environment variable (leave empty for the offline demo router).
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+# ---- AI Assistant (Gemini fallback) ----------------------------------------
+# Google's Gemini free tier (get a key at https://aistudio.google.com/apikey)
+# has much higher daily limits than Groq, so it acts as the primary provider
+# when set. Leave the GEMINI_API_KEY environment variable empty to use Groq only.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+GEMINI_MODEL = "gemini-3.5-flash"
+
+# Launch countdown target (local time). The dashboard shows a countdown to
+# this moment; the update goes live here too.
+LAUNCH_DATETIME = "2026-08-14 16:00:00"
 
 # Set to your repository URL to enable the "Open GitHub" button in the sidebar.
 GITHUB_URL = "https://github.com/rexxd2000-source/RexTweaks"
@@ -20,17 +40,17 @@ GITHUB_REPO = "rexxd2000-source/RexTweaks"
 # The app checks for a "latest" GitHub Release (tag name doubles as the
 # version, asset must be named exactly `UPDATE_EXE_NAME`) unless
 # UPDATE_MANIFEST_URL points at a plain JSON manifest, which takes priority:
-#     { "version": "1.1.0", "notes": "...", "url": ".../RexTweaks.exe" }
+#     { "version": "1.1.0", "notes": "...", "url": ".../MaximumTweaks.exe" }
 # Leave both empty to disable update checks entirely.
 UPDATE_MANIFEST_URL = ""
-UPDATE_EXE_NAME = "RexTweaks.exe"  # must match the build name in RexTweaks.spec
+UPDATE_EXE_NAME = "MaximumTweaks.exe"  # must match the build name in MaximumTweaks.spec
 
 # Minimal supported Windows build (Win10 1903 / 19041+ preferred)
 MIN_WIN_BUILD = 18362
 
 
 def project_root() -> Path:
-    """Absolute path to the RexTweaks package root (folder containing main.py).
+    """Absolute path to the MaximumTweaks package root (folder containing main.py).
 
     In a frozen (PyInstaller) build the source tree lives in a temp extraction
     dir that is wiped on exit, so ROOT resolves to the folder that holds the
@@ -38,7 +58,7 @@ def project_root() -> Path:
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    here = Path(__file__).resolve().parent.parent  # config -> RexTweaks
+    here = Path(__file__).resolve().parent.parent  # config -> MaximumTweaks
     if here.name.lower() == "rextweaks":
         return here
     # Fallback: folder that contains this package
@@ -84,40 +104,40 @@ LOG_FILE = ROOT / "Logs" / "rextweaks.log"
 
 RISK_LEVELS = ("safe", "low", "moderate", "advanced")
 IMPACT_LEVELS = ("very low", "low", "moderate", "high", "extreme")
-REC_FLAGS = ("recommended", "optional", "experimental", "advanced", "not_recommended")
+REC_FLAGS = ("recommended", "optional", "experimental", "advanced", "guide", "not_recommended")
 WINDOWS_VERSIONS = ("7", "8", "10", "11")
 
 # Active theme values used by the UI.
 THEME = {
-    "accent": "#00F2FE",
-    "accent2": "#94A3B8",
-    "accent_hover": "#3CF4FF",
-    "accent_press": "#00AEB8",
-    "accent_dark": "#031518",
-    "success": "#00F2FE",
-    "green": "#00F2FE",
+    "accent": "#8B5CF6",
+    "accent2": "#C484FF",
+    "accent_hover": "#A78BFA",
+    "accent_press": "#6D28D9",
+    "accent_dark": "#140D26",
+    "success": "#A78BFA",
+    "green": "#A78BFA",
     "red": "#F87979",
     "amber": "#F0B54D",
     "orange": "#F0B54D",
-    "purple": "#00F2FE",
-    "info": "#00F2FE",
-    "bg": "#090B0E",
-    "bg_alt": "#0C0F13",
-    "sidebar": "#07090B",
-    "card": "#11141A",
-    "card_alt": "#151A21",
-    "card_hover": "#1A2029",
-    "border": "#1D222A",
-    "border_soft": "#171C23",
-    "text": "#F2F5F9",
-    "text_dim": "#94A3B8",
-    "text_faint": "#5B6675",
+    "purple": "#C484FF",
+    "info": "#C484FF",
+    "bg": "#0B0D12",
+    "bg_alt": "#101320",
+    "sidebar": "#080A0F",
+    "card": "#141724",
+    "card_alt": "#191D2E",
+    "card_hover": "#1E2336",
+    "border": "#2A2340",
+    "border_soft": "#201A33",
+    "text": "#F2F4FA",
+    "text_dim": "#A7A9C9",
+    "text_faint": "#5F6178",
     "danger": "#F87979",
     "warning": "#F0B54D",
-    "glow_green": "rgba(0, 242, 254, 0.10)",
+    "glow_green": "rgba(139, 92, 246, 0.10)",
     "glow_red": "rgba(248, 121, 121, 0.08)",
-    "glow_accent": "rgba(0, 242, 254, 0.10)",
-    "glow": "rgba(0, 242, 254, 0.15)",
+    "glow_accent": "rgba(139, 92, 246, 0.10)",
+    "glow": "rgba(167, 139, 250, 0.15)",
 }
 
 
@@ -150,31 +170,30 @@ ICONS = {
     "wrench": "\u26b8",      # âš¸
     "flag": "\u2691",        # âš‘
     "settings": "\u2699",    # âš™
-    "discord": "\u25c9",     # â—‰
 }
 
 ADMIN_NOTE = (
     "This operation requires administrator privileges. "
-    "Rex Tweaks will ask Windows to relaunch itself elevated."
+    "Maximum Tweaks will ask Windows to relaunch itself elevated."
 )
 
-# ---------------------------------------------------------------------------
-# Discord identity verification.
-#
-# The desktop app never holds the Discord Client Secret. All OAuth2 plus the
-# guild-membership / Verified-role checks happen inside the separate
-# `auth_backend/` FastAPI service; the desktop only knows where that service
-# lives and polls it for the result.
-#     local dev:   http://127.0.0.1:8000
-#     production:  https://your-auth-domain.example.com
-# ---------------------------------------------------------------------------
-AUTH_SERVER_URL = "http://127.0.0.1:8000"
-
-# Discord CDN (used to fetch the user's avatar once identity is confirmed).
-DISCORD_CDN = "https://cdn.discordapp.com"
-
 # Official community invite link (enables the Join button / sidebar).
-DISCORD_INVITE_URL = "https://discord.gg/NKnkgKzex"
+DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
+
+
+# ---------------------------------------------------------------------------
+# License-key activation (the ONLY access-control method for Maximum Tweaks).
+#
+# The desktop app sends the customer-entered key plus a hashed device
+# fingerprint to the license backend and stores the returned short-lived
+# session token locally. The backend always stays the authority.
+#     production:  https://maximumtweaks.onrender.com
+# ---------------------------------------------------------------------------
+LICENSE_API_URL = "https://maximumtweaks.onrender.com"
+
+# Offline grace after the session token expires (hours): lets an activated PC
+# keep running without internet for a while before the gate reappears.
+OFFLINE_GRACE_HOURS = 24
 
 
 

@@ -5,12 +5,10 @@ import ctypes
 import sys
 
 from PySide6.QtCore import (
-    QEasingCurve,
-    QPropertyAnimation,
+    QSize,
     Qt,
-    QUrl,
 )
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,25 +24,25 @@ from config.app_config import (
     APP_NAME,
     APP_VERSION,
     GITHUB_REPO,
-    GITHUB_URL,
     ICONS,
     UPDATE_MANIFEST_URL,
 )
-from engine import activity, discord_auth
+from engine import activity
 from rexlog import logger
-from ui.categories import SIDEBAR_TWEAKS
+from ui.categories import SIDEBAR_TWEAKS, logo_path
 from ui.context import AppContext
-from ui.discord import SidebarDiscordCard
-from ui.goodbye import GoodbyeScreen
+from ui.license import SidebarLicenseCard
 from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
 from ui.pages.optimize import OptimizePage
-from ui.premium_widgets import AssistantComingSoon, ComingSoonPage
+from ui.pages.chat import ChatPage
+from ui.premium_widgets import ComingSoonPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
 from ui.pages.tweaks import ALL_KEY, TweaksPage
 from ui.monitor_widgets import RexLogo
+from ui.space import SpaceBackground
 from ui.widgets import repolish
 
 
@@ -76,13 +74,15 @@ class MainWindow(QWidget):
         self.ctx = AppContext(self)
         self.pages = {}
         self.nav_buttons = {}
-        self.goodbye: GoodbyeScreen | None = None
-        self._locked = False
-        self.ctx.discord_changed.connect(self._on_discord_changed)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # Deep-space ambient background (glow orbs + stars) behind the pages.
+        self.space = SpaceBackground(self)
+        self.space.setGeometry(self.rect())
+        self.space.lower()
 
         self.sidebar = self._build_sidebar()
         root.addWidget(self.sidebar)
@@ -91,7 +91,6 @@ class MainWindow(QWidget):
 
         self._register_pages()
         self.navigate("dashboard")
-        self._on_discord_changed()
 
         # Background system-state audit: reads live registry/power/service
         # state so every toggle reflects the real system, not just what this
@@ -140,66 +139,16 @@ class MainWindow(QWidget):
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
 
-    def _on_discord_changed(self):
-        # Run after ctx emits a change. The sidebar card rebuilds itself off
-        # this signal; here we handle lock/unlock on live disconnects.
-        if not discord_auth.session():
-            self.on_disconnect()
-        else:
-            self._unlock()
+    def _show_license_gate(self):
+        """Re-open the license gate (e.g. the sidebar Activate button)."""
+        from ui.gate import GateWindow
+        gate = GateWindow()
+        gate.setGeometry(self.frameGeometry())
+        gate.show()
 
-    def on_disconnect(self):
-        """Public hook: handed off by main.py when a fresh launch finds the
-        session already signed out (there is no signal for that case)."""
-        self._lock_away()
-
-    def _lock_away(self):
-        """Signed out mid-session: fade out and hand off to the goodbye screen."""
-        if self._locked:
-            return
-        self._locked = True
-        if self.goodbye is None:
-            self.goodbye = GoodbyeScreen(self.ctx)
-        self.goodbye.pick_quote()
-        self.goodbye.resize(self.size())
-        self.fade_window(self, 450, done=self._show_goodbye)
-
-    def _show_goodbye(self):
-        self.hide()
-        self.goodbye.setGeometry(self.frameGeometry())
-        self.goodbye.show()
-        self.goodbye.raise_()
-        self.fade_window(self.goodbye, 350, fade_in=True)
-
-    def _unlock(self):
-        """Back online: tear down the goodbye screen and restore the window."""
-        if not self._locked:
-            return
-        self._locked = False
-        if self.goodbye is not None:
-            self.goodbye.hide()
-        self.show()
-        self.raise_()
-        self.fade_window(self, 450, fade_in=True)
-
-    @staticmethod
-    def fade_window(widget, duration_ms: int, done=None, fade_in: bool = False):
-        """Simple opacity cross-fade that flushes its effect out afterwards."""
-        from PySide6.QtCore import QEasingCurve, QPropertyAnimation
-        anim = QPropertyAnimation(widget, b"windowOpacity", widget)
-        anim.setDuration(duration_ms)
-        start = widget.windowOpacity()
-        target = 1.0 if fade_in else 0.0
-        anim.setStartValue(start)
-        anim.setEndValue(target)
-        anim.setEasingCurve(QEasingCurve.OutCubic)
-
-        def _finish():
-            widget.setWindowOpacity(1.0)
-            if done:
-                done()
-        anim.finished.connect(_finish)
-        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        def unlock(_session):
+            gate.fade_out(600)
+        gate.unlocked.connect(unlock)
 
 
     # ---------------- Sidebar ----------------
@@ -275,6 +224,10 @@ class MainWindow(QWidget):
         self.nav_buttons["tweaks"] = btn
         for cat_key, label in SIDEBAR_TWEAKS:
             sub_btn = self._nav_button(label, "NavSub")
+            logo = logo_path(cat_key)
+            if logo.is_file():
+                sub_btn.setIcon(QIcon(str(logo)))
+                sub_btn.setIconSize(QSize(15, 15))
             nav_key = f"tweak:{cat_key}"
             sub_btn.clicked.connect(
                 lambda _=False, k=cat_key: self.navigate(f"tweak:{k}"))
@@ -321,18 +274,13 @@ class MainWindow(QWidget):
         scroll.setWidget(nav)
         lay.addWidget(scroll, 1)
 
-        # Discord identity block pinned below the nav (outside the scroll area)
+        # License status block pinned below the nav (outside the scroll area)
         # so its rounded corners are never clipped by the sidebar viewport.
-        self.sidebar_discord = SidebarDiscordCard(self.ctx)
-        lay.addWidget(self.sidebar_discord)
+        self.sidebar_license = SidebarLicenseCard(self.ctx)
+        self.sidebar_license.activate_requested.connect(self._show_license_gate)
+        lay.addWidget(self.sidebar_license)
 
-        if GITHUB_URL and GITHUB_URL != "https://github.com":
-            gh = QPushButton(f"{ICONS['flag']}   Open GitHub")
-            gh.setObjectName("Ghost")
-            gh.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(GITHUB_URL)))
-            lay.addWidget(gh)
-
-        ver = QLabel(f"v{APP_VERSION} \u00b7 Rex Engine")
+        ver = QLabel(f"v{APP_VERSION} \u00b7 Maximum Engine")
         ver.setObjectName("Tag")
         lay.addWidget(ver, alignment=Qt.AlignHCenter)
 
@@ -347,7 +295,7 @@ class MainWindow(QWidget):
         self.pages["profiles"] = ComingSoonPage("Game Profiles")
         self.pages["optimize"] = OptimizePage(self.ctx)
         self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
-        self.pages["chat"] = AssistantComingSoon("AI Assistant")
+        self.pages["chat"] = ChatPage(self.ctx)
         self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
         self.pages["logs"] = LogsPage()
         for page in self.pages.values():
@@ -377,13 +325,15 @@ class MainWindow(QWidget):
             header.setText(f"TWEAKS  {'\u25be' if visible else '\u25b8'}")
         container.update()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.space.setGeometry(self.rect())
+
     def closeEvent(self, event):
         dashboard = self.pages.get("dashboard")
         if dashboard is not None and dashboard.sampler is not None:
             dashboard.sampler.stop()
             dashboard.sampler.wait(2000)
-        if self.goodbye is not None:
-            self.goodbye.hide()
         try:
             self.ctx.auditor.shutdown()
         except Exception:  # noqa: BLE001

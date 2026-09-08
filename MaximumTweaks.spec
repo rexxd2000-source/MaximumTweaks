@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Rex Tweaks.
-# Build:  pyinstaller RexTweaks.spec  (run from the project root)
+# PyInstaller spec for Maximum Tweaks.
+# Build:  pyinstaller MaximumTweaks.spec  (run from the project root)
 
 import os
 
@@ -15,13 +15,9 @@ for rel in ("config", "database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
 
-# The Discord credentials (.env) must ship INSIDE the exe so the bundled auth
-# backend works no matter where the user drops the file. Without it every copy
-# reports "Auth backend is not configured." (engine/auth_server.py reads the
-# bundled copy from sys._MEIPASS on startup.)
-_env_file = ROOT / "auth_backend" / ".env"
-if _env_file.is_file():
-    datas.append((str(_env_file), "auth_backend"))
+# SECURITY: nothing from auth_backend/ is bundled. The desktop app talks to the
+# hosted license backend over HTTPS and holds no secrets — LICENSE_SECRET,
+# ADMIN_TOKEN and the license DB must never end up inside the EXE.
 
 a = Analysis(
     ["main.py"],
@@ -44,8 +40,6 @@ a = Analysis(
         "engine.game_config",
         "engine.tools_runner",
         "engine.updater",
-        "auth_backend.main",
-        "uvicorn",
         "ui.main_window",
         "ui.categories",
         "ui.updater_dialog",

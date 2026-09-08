@@ -1,4 +1,4 @@
-"""Original custom-painted widgets for the Rex Tweaks Engine Dashboard.
+"""Original custom-painted widgets for the Maximum Tweaks Engine Dashboard.
 
 Every dashboard visual is painted directly with QPainter so the widgets stay
 crisp at any DPI and keep the signature neon-cyan identity. Includes the
@@ -47,6 +47,8 @@ from PySide6.QtWidgets import (
 
 from config.app_config import DISCORD_INVITE_URL, DIRS, THEME as T
 
+from ui.widgets import qss_rgba
+
 ACCENT = T["accent"]
 DANGER = T["danger"]
 WARNING = T["warning"]
@@ -89,11 +91,11 @@ class LinkLabel(QLabel):
 
 
 # --------------------------------------------------------------------------
-# Rex logo mark — the official dashboard brand tile
+# Maximum logo mark — the official dashboard brand tile
 # --------------------------------------------------------------------------
 
 class RexLogo(QWidget):
-    """Brand mark: the Rex app artwork on a frosted cyan-edged tile.
+    """Brand mark: the Maximum app artwork on a frosted cyan-edged tile.
 
     Renders the official ``assets/rex_logo.png`` artwork cover-fitted into the
     tile; falls back to the glowing 'R' monogram painter if that file is
@@ -137,17 +139,17 @@ class RexLogo(QWidget):
 
         # cyan frame with a soft outer glow
         for width, alpha in ((7, 22), (3, 90)):
-            glow = QPen(QColor(0, 242, 254, alpha))
+            glow = QPen(QColor(139, 92, 246, alpha))
             glow.setWidthF(width)
             p.setPen(glow)
             p.drawRoundedRect(r, radius, radius)
-        frame = QPen(QColor(0, 242, 254, 150), 1.4)
+        frame = QPen(QColor(139, 92, 246, 150), 1.4)
         p.setPen(frame)
         p.drawRoundedRect(r, radius, radius)
 
         if self._pixmap.isNull():
             # inner accent tick at the bottom-left corner
-            accent = QPen(QColor(0, 242, 254, 210), 3)
+            accent = QPen(QColor(139, 92, 246, 210), 3)
             accent.setCapStyle(Qt.RoundCap)
             p.setPen(accent)
             p.drawLine(QPointF(r.left() + 11, r.bottom() - 9),
@@ -160,10 +162,10 @@ class RexLogo(QWidget):
             font.setPixelSize(27)
             font.setBold(True)
             p.setFont(font)
-            p.setPen(QColor(0, 242, 254, 70))
+            p.setPen(QColor(139, 92, 246, 70))
             p.drawText(QRectF(6, 6, self.width() - 12, self.height() - 8),
                        Qt.AlignCenter, "R")
-            p.setPen(QColor(0, 242, 254))
+            p.setPen(QColor(139, 92, 246))
             p.drawText(QRectF(5, 5, self.width() - 12, self.height() - 8),
                        Qt.AlignCenter, "R")
 
@@ -734,16 +736,16 @@ class _CommunityArt(QWidget):
 
         p.setClipping(False)
         p.setBrush(Qt.NoBrush)
-        p.setPen(QPen(QColor(0, 242, 254, 55), 1))
+        p.setPen(QPen(QColor(139, 92, 246, 55), 1))
         p.drawRoundedRect(r, radius, radius)
 
     def _controller(self, p: QPainter, cx: float, cy: float):
-        color = QColor(0, 242, 254, 230)
+        color = QColor(139, 92, 246, 230)
         pen = QPen(color, 2.2)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         p.setPen(pen)
-        p.setBrush(QColor(0, 242, 254, 26))
+        p.setBrush(QColor(139, 92, 246, 26))
         # body
         p.drawRoundedRect(QRectF(cx - 30, cy - 11, 60, 22), 11, 11)
         # grips
@@ -779,10 +781,11 @@ class DiscordCommunityCard(GlassCard):
         badge_row = QHBoxLayout()
         has_invite = bool(DISCORD_INVITE_URL)
         coming = QLabel("\u25cf LIVE" if has_invite else "\u25cf COMING SOON")
+        badge_color = ACCENT if has_invite else WARNING
         coming.setStyleSheet(
-            f"background-color: {ACCENT if has_invite else WARNING}26;"
-            f" color: {ACCENT if has_invite else WARNING};"
-            f" border: 1px solid {ACCENT if has_invite else WARNING}88;"
+            f"background-color: {qss_rgba(badge_color, 0x26)};"
+            f" color: {badge_color};"
+            f" border: 1px solid {qss_rgba(badge_color, 0x88)};"
             " border-radius: 9px; padding: 3px 10px; font-size: 10px;"
             " font-weight: 800; letter-spacing: 0.7px;")
         badge_row.addWidget(coming)
@@ -793,7 +796,7 @@ class DiscordCommunityCard(GlassCard):
         lay.addWidget(art)
 
         body = QLabel(
-            "Join the Rex Tweaks community for exclusive beta builds, custom "
+            "Join the Maximum Tweaks community for exclusive beta builds, custom "
             "Fortnite game profiles, and live support.")
         body.setObjectName("CardDetail")
         body.setWordWrap(True)

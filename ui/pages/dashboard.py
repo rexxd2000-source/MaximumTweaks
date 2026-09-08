@@ -1,15 +1,15 @@
-﻿"""Rex Tweaks Engine Dashboard — the original telemetry control center.
+﻿"""Maximum Tweaks Engine Dashboard — the original telemetry control center.
 
-Fully custom layout: Rex brand header with a prominent backend status block,
+Fully custom layout: Maximum brand header with a prominent backend status block,
 neon utilization bars (CPU / GPU / RAM), a dual-axis thermal + CPU clock
-stability chart, an Official Discord community card, a compact Rex Ultra Mode
+stability chart, a license status card, a compact Ultra Mode
 toggle, a system storage monitor with AppData tracking and one-click cache
 cleanup, and the Active Profile quick-state card. Metrics are polled every
 second on a background thread (engine.telemetry).
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsBlurEffect,
@@ -22,13 +22,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import ICONS, THEME as T
-from engine import activity, discord_auth, state as state_mgr
+from config.app_config import ICONS, LAUNCH_DATETIME, THEME as T
+from engine import activity, license as license_mgr, state as state_mgr
 from engine.telemetry import TelemetrySampler, invalidate_disk_cache
+from ui.license import LicenseAccountCard
 from ui.monitor_widgets import (
     BackendStatusBlock,
     CleanupThread,
-    DiscordCommunityCard,
     DiskBar,
     GlassCard,
     LatencyChart,
@@ -39,7 +39,8 @@ from ui.monitor_widgets import (
     threshold_color,
 )
 from ui import context
-from ui.widgets import IconTile, ToggleSwitch, chip, clear_layout, toast
+from ui.categories import logo_path
+from ui.widgets import IconTile, ToggleSwitch, chip, clear_layout, qss_rgba, toast
 
 
 #: Rotating daily mini-quote shown under the dashboard welcome. Picked
@@ -70,7 +71,6 @@ class DashboardPage(QWidget):
         self._last: dict = {}
         self._clean_thread: CleanupThread | None = None
         self._busy = False
-        self._discord_worker = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 20, 20, 20)
@@ -102,7 +102,10 @@ class DashboardPage(QWidget):
         rlay = QVBoxLayout(right)
         rlay.setContentsMargins(0, 0, 0, 0)
         rlay.setSpacing(10)
-        rlay.addWidget(DiscordCommunityCard())
+        self.license_card = LicenseAccountCard(self.ctx)
+        self.license_card.activate_requested.connect(
+            self._open_license_gate)
+        rlay.addWidget(self.license_card)
         rlay.addWidget(self._build_ultra_card())
         rlay.addStretch()
         work.addWidget(right, 0, 1)
@@ -126,8 +129,8 @@ class DashboardPage(QWidget):
         self.ctx.state_changed.connect(self._refresh_mode_card)
         self.ctx.state_changed.connect(self._refresh_profile_card)
         self.ctx.pfp_changed.connect(self._refresh_hw)
-        self.ctx.discord_changed.connect(self._refresh_backend_block)
-        self.ctx.discord_changed.connect(self._refresh_welcome)
+        self.ctx.license_changed.connect(self._refresh_backend_block)
+        self.ctx.license_changed.connect(self._refresh_welcome)
         self._refresh_hw()
         self._refresh_mode_card()
         self._refresh_profile_card()
@@ -139,7 +142,7 @@ class DashboardPage(QWidget):
     # ---------------- Header / brand ----------------
 
     def _welcome_text(self):
-        name = context.DISCORD_USERNAME
+        name = context.LICENSE_NAME
         if name:
             return f"Welcome, {name}!"
         return "Welcome, guest!"
@@ -182,7 +185,49 @@ class DashboardPage(QWidget):
         self.backend_block = BackendStatusBlock()
         self._refresh_backend_block()
         lay.addWidget(self.backend_block, 0, Qt.AlignVCenter)
+
+        # Launch countdown to the scheduled 4 PM release.
+        self.launch_countdown = QLabel()
+        self.launch_countdown.setAlignment(Qt.AlignCenter)
+        self.launch_countdown.setMinimumWidth(150)
+        lay.addWidget(self.launch_countdown, 0, Qt.AlignVCenter)
+        self._launch_timer = QTimer(self)
+        self._launch_timer.timeout.connect(self._tick_launch)
+        self._launch_timer.start(1000)
+        self._tick_launch()
         return hero
+
+    def _tick_launch(self):
+        import datetime
+        target = None
+        try:
+            target = datetime.datetime.strptime(
+                LAUNCH_DATETIME, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            pass
+        now = datetime.datetime.now()
+        if target is None or now >= target:
+            self._launch_timer.stop()
+            self.launch_countdown.setText("\u25cf LAUNCHED")
+            self.launch_countdown.setStyleSheet(
+                f"color: {T['accent']}; font-size: 11px; font-weight: 800;"
+                " letter-spacing: 1px; padding: 6px 12px;"
+                f" background-color: {qss_rgba(T['accent'], 0x12)};"
+                f" border: 1px solid {qss_rgba(T['accent'], 0x44)};"
+                " border-radius: 10px;")
+            return
+        delta = target - now
+        total = int(delta.total_seconds())
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        self.launch_countdown.setText(
+            f"\u25cf LAUNCH IN {h:02d}:{m:02d}:{s:02d}")
+        self.launch_countdown.setStyleSheet(
+            f"color: {T['warning']}; font-size: 11px; font-weight: 800;"
+            " letter-spacing: 1px; padding: 6px 12px;"
+            f" background-color: {qss_rgba(T['warning'], 0x12)};"
+            f" border: 1px solid {qss_rgba(T['warning'], 0x44)};"
+            " border-radius: 10px;")
 
     def _build_system_bar(self):
         bar = QFrame()
@@ -202,12 +247,21 @@ class DashboardPage(QWidget):
         return bar
 
     def _refresh_backend_block(self):
-        prof = discord_auth.session()
-        if prof:
-            color = T["accent"] if prof.get("verified") else T["warning"]
-            self.backend_block.set_status("CONNECTED TO BACKEND", color)
+        sess = license_mgr.session()
+        if sess and license_mgr.is_authorized():
+            self.backend_block.set_status("LICENSE ACTIVE", T["accent"])
         else:
-            self.backend_block.set_status("AWAITING CONNECTION", T["warning"])
+            self.backend_block.set_status("AWAITING ACTIVATION", T["warning"])
+
+    def _open_license_gate(self):
+        from ui.gate import GateWindow
+        gate = GateWindow()
+        gate.setGeometry(self.window().frameGeometry())
+        gate.show()
+
+        def unlock(_session):
+            gate.fade_out(600)
+        gate.unlocked.connect(unlock)
 
 
     def _refresh_hw(self):
@@ -260,21 +314,21 @@ class DashboardPage(QWidget):
         head.addStretch()
         lay.addLayout(head)
 
-        self.cpu_row = self._metric_row(ICONS["cpu"], "CPU")
-        self.gpu_row = self._metric_row(ICONS["gpu"], "GPU")
-        self.ram_row = self._metric_row(ICONS["ram"], "RAM")
+        self.cpu_row = self._metric_row(ICONS["cpu"], "CPU", logo=logo_path("cpu"))
+        self.gpu_row = self._metric_row(ICONS["gpu"], "GPU", logo=logo_path("gpu"))
+        self.ram_row = self._metric_row(ICONS["ram"], "RAM", logo=logo_path("ram"))
         for row in (self.cpu_row, self.gpu_row, self.ram_row):
             lay.addWidget(row[0])
         return card
 
-    def _metric_row(self, icon, name):
+    def _metric_row(self, icon, name, logo=None):
         wrap = QWidget()
         v = QVBoxLayout(wrap)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(6)
         top = QHBoxLayout()
         top.setSpacing(10)
-        top.addWidget(IconTile(icon, T["accent"], size=26, font_scale=0.5))
+        top.addWidget(IconTile(icon, T["accent"], size=26, font_scale=0.5, logo=logo))
         nm = QLabel(name)
         nm.setStyleSheet("font-size: 13px; font-weight: 800; letter-spacing: 1px;")
         top.addWidget(nm)
@@ -325,7 +379,7 @@ class DashboardPage(QWidget):
     def _on_chart_mode(self, mode: str):
         self.latency_chart.set_mode(mode.lower())
 
-    # ---------------- Rex Ultra Mode ----------------
+    # ---------------- Ultra Mode ----------------
 
     def _build_ultra_card(self):
         card = GlassCard()
@@ -341,7 +395,7 @@ class DashboardPage(QWidget):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(IconTile("\u26a1", T["accent"], size=28, font_scale=0.45))
-        title = QLabel("Rex Ultra Mode")
+        title = QLabel("Ultra Mode")
         title.setObjectName("GlassCardTitle")
         title.setStyleSheet("font-size: 13px; font-weight: 800; letter-spacing: 0.5px;")
         head.addWidget(title)
@@ -390,7 +444,7 @@ class DashboardPage(QWidget):
         crow = QHBoxLayout()
         crow.setSpacing(8)
         crow.addWidget(IconTile("\u26a1", T["accent"], size=22, font_scale=0.5))
-        ctitle = QLabel("REX ULTRA MODE")
+        ctitle = QLabel("ULTRA MODE")
         ctitle.setStyleSheet(
             f"color: {T['text_dim']}; font-size: 10px; font-weight: 800;"
             "letter-spacing: 1.5px;")
@@ -410,7 +464,7 @@ class DashboardPage(QWidget):
         olay.addWidget(sub)
         overlay.setStyleSheet(
             "QFrame#UltraSoon { background-color: rgba(8, 12, 18, 190);"
-            " border: 1px solid rgba(0, 242, 254, 0.55);"
+            " border: 1px solid rgba(139, 92, 246, 0.55);"
             " border-radius: 10px; }")
 
         grid.addWidget(content, 0, 0)
@@ -517,8 +571,8 @@ class DashboardPage(QWidget):
             self.profile_name.setText("No profile engaged")
             self.profile_pill.setText("\u25cf STANDBY")
             self.profile_pill.setStyleSheet(
-                "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-                " border: 1px solid rgba(0, 242, 254, 0.25);"
+                "color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+                " border: 1px solid rgba(139, 92, 246, 0.25);"
                 " border-radius: 9px; padding: 3px 10px; font-size: 10.5px;"
                 " font-weight: 500; letter-spacing: 0.6px;")
             self.profile_desc.setText(
@@ -581,12 +635,12 @@ class DashboardPage(QWidget):
                 f"Local AppData \u00b7 {appdata:.1f} GB \u00b7 "
                 f"{pct:.1f}% of this drive")
 
-    # ---------------- Rex Ultra Mode ----------------
+    # ---------------- Ultra Mode ----------------
 
     def _on_mode_toggled(self, on: bool):
         state_mgr.set_ultra_mode(on)
-        activity.emit("info", f"Rex Ultra Mode {'enabled' if on else 'disabled'}")
-        toast(f"Rex Ultra Mode {'enabled' if on else 'disabled'}",
+        activity.emit("info", f"Ultra Mode {'enabled' if on else 'disabled'}")
+        toast(f"Ultra Mode {'enabled' if on else 'disabled'}",
               "success" if on else "info", self)
         self._refresh_mode_card()
 
@@ -604,15 +658,15 @@ class DashboardPage(QWidget):
         elif self.ctx.live_active_count() >= 10:
             self.mode_pill.setText("\u25cf CONFIGURED")
             self.mode_pill.setStyleSheet(
-                "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-                " border: 1px solid rgba(0, 242, 254, 0.25);"
+                "color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+                " border: 1px solid rgba(139, 92, 246, 0.25);"
                 " border-radius: 9px; padding: 3px 10px; font-size: 10.5px;"
                 " font-weight: 500; letter-spacing: 0.6px;")
         else:
             self.mode_pill.setText("\u25cf INACTIVE")
             self.mode_pill.setStyleSheet(
-                "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-                " border: 1px solid rgba(0, 242, 254, 0.25);"
+                "color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+                " border: 1px solid rgba(139, 92, 246, 0.25);"
                 " border-radius: 9px; padding: 3px 10px; font-size: 10.5px;"
                 " font-weight: 500; letter-spacing: 0.6px;")
 

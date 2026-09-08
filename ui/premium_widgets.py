@@ -1,4 +1,4 @@
-"""Premium visual widgets for Rex Tweaks — scan overlay, custom painted
+"""Premium visual widgets for Maximum Tweaks — scan overlay, custom painted
 cards, glass dropdowns, preset bar, changes preview, and micro-interaction
 components.
 
@@ -59,13 +59,13 @@ GAME_ICONS: dict[str, dict] = {
                "platform": "RIOT", "platform_color": "#f87171"},
     "gp-003": {"initials": "CS", "color": "#fbbf24", "shape": "target",
                "platform": "STEAM", "platform_color": "#60a5fa"},
-    "gp-004": {"initials": "CD", "color": "#34d399", "shape": "bolt",
+    "gp-004": {"initials": "CD", "color": "#8b5cf6", "shape": "bolt",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
     "gp-005": {"initials": "AP", "color": "#f472b6", "shape": "diamond",
                "platform": "STEAM", "platform_color": "#60a5fa"},
     "gp-006": {"initials": "OW", "color": "#fb923c", "shape": "circle",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
-    "gp-007": {"initials": "MC", "color": "#a3e635", "shape": "cube",
+    "gp-007": {"initials": "MC", "color": "#d946ef", "shape": "cube",
                "platform": "MICROSOFT", "platform_color": "#38bdf8"},
     "gp-008": {"initials": "RL", "color": "#38bdf8", "shape": "ring",
                "platform": "EPIC GAMES", "platform_color": "#818cf8"},
@@ -75,7 +75,7 @@ GAME_ICONS: dict[str, dict] = {
                "platform": "STEAM", "platform_color": "#60a5fa"},
     "gp-011": {"initials": "EF", "color": "#fb7185", "shape": "exclamation",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
-    "gp-012": {"initials": "WZ", "color": "#2dd4bf", "shape": "wave",
+    "gp-012": {"initials": "WZ", "color": "#a78bfa", "shape": "wave",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
 }
 
@@ -340,7 +340,7 @@ class ScanOverlay(QWidget):
             for i in range(4):
                 r = 40 + i * 35
                 alpha = max(0, 60 - i * 15)
-                p.setPen(QPen(QColor(0, 242, 254, alpha), 1))
+                p.setPen(QPen(QColor(139, 92, 246, alpha), 1))
                 p.setBrush(Qt.NoBrush)
                 p.drawEllipse(QPointF(cx, cy - 30), r, r)
 
@@ -350,8 +350,8 @@ class ScanOverlay(QWidget):
             ex = cx + line_len * math.cos(angle)
             ey = (cy - 30) + line_len * math.sin(angle)
             sweep = QLinearGradient(cx, cy - 30, ex, ey)
-            sweep.setColorAt(0, QColor(0, 242, 254, 120))
-            sweep.setColorAt(1, QColor(0, 242, 254, 0))
+            sweep.setColorAt(0, QColor(139, 92, 246, 120))
+            sweep.setColorAt(1, QColor(139, 92, 246, 0))
             p.setPen(QPen(QBrush(sweep), 2))
             p.drawLine(QPointF(cx, cy - 30), QPointF(ex, ey))
 
@@ -363,7 +363,7 @@ class ScanOverlay(QWidget):
                 cone.lineTo(cx + line_len * math.cos(a2),
                             (cy - 30) + line_len * math.sin(a2))
             cone.closeSubpath()
-            cone_fill = QColor(0, 242, 254, 15)
+            cone_fill = QColor(139, 92, 246, 15)
             p.setBrush(QBrush(cone_fill))
             p.setPen(Qt.NoPen)
             p.drawPath(cone)
@@ -371,14 +371,14 @@ class ScanOverlay(QWidget):
         # Scan line (horizontal sweep).
         if self._phase in (1, 2):
             scan_y_pos = 80 + self._scan_y * (h - 160)
-            scan_pen = QPen(QColor(0, 242, 254, 180), 2)
+            scan_pen = QPen(QColor(139, 92, 246, 180), 2)
             p.setPen(scan_pen)
             p.drawLine(QPointF(cx - 200, scan_y_pos), QPointF(cx + 200, scan_y_pos))
             # Glow around scan line.
             scan_glow = QLinearGradient(cx - 200, scan_y_pos - 15, cx - 200, scan_y_pos + 15)
-            scan_glow.setColorAt(0, QColor(0, 242, 254, 0))
-            scan_glow.setColorAt(0.5, QColor(0, 242, 254, 25))
-            scan_glow.setColorAt(1, QColor(0, 242, 254, 0))
+            scan_glow.setColorAt(0, QColor(139, 92, 246, 0))
+            scan_glow.setColorAt(0.5, QColor(139, 92, 246, 25))
+            scan_glow.setColorAt(1, QColor(139, 92, 246, 0))
             p.setBrush(QBrush(scan_glow))
             p.setPen(Qt.NoPen)
             p.drawRect(QRectF(cx - 200, scan_y_pos - 15, 400, 30))
@@ -515,7 +515,7 @@ class LoadingCard(QWidget):
 
         # Card body.
         p.setBrush(QBrush(QColor(18, 23, 32, 220)))
-        p.setPen(QPen(QColor(0, 242, 254, 40), 1))
+        p.setPen(QPen(QColor(139, 92, 246, 40), 1))
         p.drawRoundedRect(QRectF(cx, cy, card_w, card_h), 16, 16)
 
         # Header.
@@ -533,7 +533,7 @@ class LoadingCard(QWidget):
         spinner_cx = w / 2
         spinner_cy = cy + 140
         spinner_r = 22
-        pen = QPen(QColor(0, 242, 254, 180), 3)
+        pen = QPen(QColor(139, 92, 246, 180), 3)
         pen.setCapStyle(Qt.RoundCap)
         p.setPen(pen)
         p.drawArc(QRectF(spinner_cx - spinner_r, spinner_cy - spinner_r,
@@ -660,15 +660,15 @@ class GameListItem(QFrame):
         if sel > 0.01:
             border_a = int(40 + sel * 80)
             grad = QLinearGradient(0, 0, w, h)
-            grad.setColorAt(0, QColor(0, 242, 254, border_a))
+            grad.setColorAt(0, QColor(139, 92, 246, border_a))
             grad.setColorAt(0.5, QColor(255, 255, 255, int(5 + sel * 15)))
-            grad.setColorAt(1, QColor(0, 242, 254, int(border_a * 0.4)))
+            grad.setColorAt(1, QColor(139, 92, 246, int(border_a * 0.4)))
             p.setPen(QPen(QBrush(grad), 1.5))
         elif hover > 0.01:
             border_a = int(20 + hover * 30)
             grad = QLinearGradient(0, 0, w, h)
-            grad.setColorAt(0, QColor(0, 242, 254, border_a))
-            grad.setColorAt(1, QColor(0, 242, 254, int(border_a * 0.3)))
+            grad.setColorAt(0, QColor(139, 92, 246, border_a))
+            grad.setColorAt(1, QColor(139, 92, 246, int(border_a * 0.3)))
             p.setPen(QPen(QBrush(grad), 1.0))
         else:
             p.setPen(QPen(QColor(T["border"]), 1.0))
@@ -678,8 +678,8 @@ class GameListItem(QFrame):
         # Selection glow.
         if sel > 0.01:
             glow = QLinearGradient(0, 0, 0, h * 0.4)
-            glow.setColorAt(0, QColor(0, 242, 254, int(20 * sel)))
-            glow.setColorAt(1, QColor(0, 242, 254, 0))
+            glow.setColorAt(0, QColor(139, 92, 246, int(20 * sel)))
+            glow.setColorAt(1, QColor(139, 92, 246, 0))
             p.setBrush(QBrush(glow))
             p.setPen(Qt.NoPen)
             p.drawRoundedRect(QRectF(1, 1, w - 2, h * 0.4), r, r)
@@ -760,10 +760,10 @@ class GlassComboBox(QComboBox):
                 font-weight: 600;
             }}
             QComboBox:hover {{
-                border-color: rgba(0, 242, 254, 0.35);
+                border-color: rgba(139, 92, 246, 0.35);
             }}
             QComboBox:focus {{
-                border-color: rgba(0, 242, 254, 0.55);
+                border-color: rgba(139, 92, 246, 0.55);
             }}
             QComboBox::drop-down {{
                 border: none;
@@ -782,7 +782,7 @@ class GlassComboBox(QComboBox):
                 border: 1px solid {T['border']};
                 border-radius: 8px;
                 padding: 4px;
-                selection-background-color: rgba(0, 242, 254, 0.12);
+                selection-background-color: rgba(139, 92, 246, 0.12);
                 selection-color: {T['accent']};
                 outline: none;
             }}
@@ -926,8 +926,8 @@ class ProfilePresetBar(QWidget):
             if k == self._active:
                 btn.setStyleSheet(f"""
                     QPushButton {{
-                        background-color: rgba(0, 242, 254, 0.12);
-                        border: 1px solid rgba(0, 242, 254, 0.55);
+                        background-color: rgba(139, 92, 246, 0.12);
+                        border: 1px solid rgba(139, 92, 246, 0.55);
                         border-radius: 8px;
                         padding: 8px 16px;
                         color: {T['accent']};
@@ -1011,8 +1011,8 @@ class ResolutionPicker(QWidget):
         self._ar_tag = QLabel("16:9 Native")
         self._ar_tag.setStyleSheet(
             f"color: {T['accent']}; font-size: 10px; font-weight: 700;"
-            f"background-color: rgba(0, 242, 254, 0.08);"
-            f"border: 1px solid rgba(0, 242, 254, 0.25);"
+            f"background-color: rgba(139, 92, 246, 0.08);"
+            f"border: 1px solid rgba(139, 92, 246, 0.25);"
             f"border-radius: 6px; padding: 3px 8px;")
         lay.addWidget(self._ar_tag)
 
@@ -1056,8 +1056,8 @@ class SystemInfoBadge(QFrame):
         self.setFixedHeight(36)
         self.setStyleSheet(f"""
             #Card {{
-                background-color: rgba(0, 242, 254, 0.04);
-                border: 1px solid rgba(0, 242, 254, 0.12);
+                background-color: rgba(139, 92, 246, 0.04);
+                border: 1px solid rgba(139, 92, 246, 0.12);
                 border-radius: 8px;
             }}
         """)
@@ -1489,18 +1489,18 @@ class ComingSoonPage(QWidget):
         # Card body.
         pulse_alpha = int(35 + 15 * math.sin(self._pulse * 6.28))
         p.setBrush(QBrush(QColor(18, 23, 32, 200)))
-        p.setPen(QPen(QColor(0, 242, 254, pulse_alpha), 1))
+        p.setPen(QPen(QColor(139, 92, 246, pulse_alpha), 1))
         p.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), 18, 18)
 
         # Lock icon (drawn with paths).
         lock_cx = cx
         lock_cy = card_y + 80 + self._lock_bob
         # Lock body.
-        p.setBrush(QBrush(QColor(0, 242, 254, 140)))
+        p.setBrush(QBrush(QColor(139, 92, 246, 140)))
         p.setPen(Qt.NoPen)
         p.drawRoundedRect(QRectF(lock_cx - 18, lock_cy, 36, 28), 4, 4)
         # Lock shackle.
-        shackle_pen = QPen(QColor(0, 242, 254, 140), 4)
+        shackle_pen = QPen(QColor(139, 92, 246, 140), 4)
         shackle_pen.setCapStyle(Qt.RoundCap)
         p.setPen(shackle_pen)
         p.setBrush(Qt.NoBrush)
@@ -1534,7 +1534,7 @@ class ComingSoonPage(QWidget):
             dot_x = cx - 30 + i * 30
             phase = (self._pulse * 3 + i * 0.3) % 1.0
             alpha = int(80 + 175 * math.sin(phase * 3.14))
-            p.setBrush(QBrush(QColor(0, 242, 254, alpha)))
+            p.setBrush(QBrush(QColor(139, 92, 246, alpha)))
             p.setPen(Qt.NoPen)
             p.drawEllipse(QPointF(dot_x, dot_y), 4, 4)
 
@@ -1722,7 +1722,7 @@ class AssistantComingSoon(QWidget):
         asst_y = card_y + 298
         asst_x = card_x + pad
         p.setPen(QColor(167, 139, 250))
-        p.drawText(QRectF(asst_x, asst_y, bubble_w, 16), Qt.AlignLeft, "REX")
+        p.drawText(QRectF(asst_x, asst_y, bubble_w, 16), Qt.AlignLeft, "MAXIMUM")
         p.setBrush(QBrush(QColor(255, 255, 255, 9)))
         p.setPen(QPen(QColor(139, 92, 246, 150), 1))
         p.drawRoundedRect(QRectF(asst_x, asst_y + 18, bubble_w, bubble_h - 18), 12, 12)

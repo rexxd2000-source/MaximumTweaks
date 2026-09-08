@@ -2,7 +2,7 @@
 
 Handles reading/writing game-specific config files (e.g. Fortnite's
 GameUserSettings.ini) so users can fine-tune resolution, FPS, rendering
-mode, audio, and Reflex settings from within Rex Tweaks.
+mode, audio, and Reflex settings from within Maximum Tweaks.
 """
 from __future__ import annotations
 

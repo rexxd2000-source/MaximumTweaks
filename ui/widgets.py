@@ -40,7 +40,20 @@ from PySide6.QtWidgets import (
 from config.app_config import THEME as T
 from database import BY_ID
 from engine import activity, applier, state as state_mgr
-from ui.categories import affects_for, group_key_for_category
+from ui.categories import affects_for, group_key_for_category, logo_path
+
+
+def qss_rgba(color: str, alpha_byte: int) -> str:
+    """QSS color with alpha.
+
+    Qt Style Sheets parse 8-digit hex as ``#AARRGGBB`` (alpha FIRST), so
+    appending two alpha digits to a ``#RRGGBB`` color (e.g. ``"#8B5CF622"``)
+    silently renders the WRONG hue. Build an explicit ``rgba(...)`` string
+    instead.
+    """
+    c = QColor(color)
+    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha_byte / 255:.3f})"
+
 
 RISK_COLORS = {
     "safe": T["success"],
@@ -98,8 +111,8 @@ def badge(text, color, filled=False):
             "font-weight: 800; letter-spacing: 0.5px;")
     else:
         lbl.setStyleSheet(
-            "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-            "border: 1px solid rgba(0, 242, 254, 0.25);"
+            "color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+            "border: 1px solid rgba(139, 92, 246, 0.25);"
             "border-radius: 8px; padding: 2px 8px; font-size: 12px;"
             "font-weight: 500; letter-spacing: 0.5px;")
     return lbl
@@ -118,8 +131,8 @@ def chip(text, color=None):
             "font-weight: 500; letter-spacing: 0.5px;")
     else:
         lbl.setStyleSheet(
-            "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-            "border: 1px solid rgba(0, 242, 254, 0.25);"
+            "color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+            "border: 1px solid rgba(139, 92, 246, 0.25);"
             "border-radius: 8px; padding: 2px 8px; font-size: 12px;"
             "font-weight: 500; letter-spacing: 0.5px;")
     return lbl
@@ -132,8 +145,8 @@ def pill(text, color, filled=True):
     if filled:
         ss = f"background-color: {color}; color: {T['accent_dark']};"
     else:
-        ss = ("color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-              " border: 1px solid rgba(0, 242, 254, 0.25);")
+        ss = ("color: #8B5CF6; background-color: rgba(139, 92, 246, 0.08);"
+              " border: 1px solid rgba(139, 92, 246, 0.25);")
     lbl.setStyleSheet(
         ss + "border-radius: 9px; padding: 3px 10px; font-size: 12px;"
         "font-weight: 500; letter-spacing: 0.6px;")
@@ -159,6 +172,8 @@ def rec_badge(value):
         return badge("OPTIONAL", T["text_dim"])
     if value == "advanced":
         return badge("ADVANCED", T["accent"])
+    if value == "guide":
+        return badge("GUIDE", T["info"])
     if value == "not_recommended":
         return badge("NOT RECOMMENDED", T["danger"])
     return None
@@ -218,20 +233,46 @@ def initials(name: str) -> str:
 
 
 class IconTile(QLabel):
+    """Rounded icon tile. Shows a tinted logo pixmap when ``logo`` is given,
+    otherwise falls back to the ``char`` glyph (both share the tinted-glass
+    tile background + soft border)."""
+
     def __init__(self, char, color, size=40, font_scale=0.5, radius=None,
-                 bg=None, fg=None, parent=None):
-        super().__init__(char, parent)
+                 bg=None, fg=None, logo=None, parent=None):
+        super().__init__(parent)
+        self._char = char
+        self._color = color
+        self._size = size
+        self._font_scale = font_scale
+        self._radius = radius if radius is not None else size // 2 - 2
+        self._bg = bg or qss_rgba(color, 0x22)
+        self._fg = fg or color
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignCenter)
-        radius = radius if radius is not None else size // 2 - 2
-        bg = bg or f"{color}22"
-        fg = fg or color
-        self.setStyleSheet(
-            f"background-color: {bg}; color: {fg};"
-            f" border-radius: {radius}px;"
-            f"font-size: {max(10, int(size * font_scale))}px; font-weight: 900;"
-            f" border: 1px solid {color}33;")
-        self.setToolTip(char)
+        self.set_logo(logo)
+
+    def set_logo(self, logo=None):
+        """Switch the tile to a tinted logo pixmap (path) or back to the glyph."""
+        self._logo = logo
+        ss = (f"background-color: {self._bg};"
+              f" border-radius: {self._radius}px;"
+              f" border: 1px solid {qss_rgba(self._color, 0x33)};")
+        if logo is not None:
+            pix = QPixmap(str(logo))
+            if not pix.isNull():
+                pad = max(5, int(self._size * 0.3))
+                side = self._size - pad * 2
+                self.setPixmap(pix.scaled(side, side, Qt.KeepAspectRatio,
+                                          Qt.SmoothTransformation))
+                self.setToolTip(self._char)
+                self.setStyleSheet(ss)
+                return
+        self.setText(self._char)
+        ss += (f" color: {self._fg};"
+               f" font-size: {max(10, int(self._size * self._font_scale))}px;"
+               f" font-weight: 900;")
+        self.setStyleSheet(ss)
+        self.setToolTip(self._char)
 
 
 class Avatar(QWidget):
@@ -321,7 +362,7 @@ class ToggleSwitch(QAbstractButton):
     unaffected by the global stylesheet.
     """
 
-    TRACK_ON = QColor("#00F2FE")
+    TRACK_ON = QColor("#8B5CF6")
     TRACK_OFF = QColor("#232A35")
     TRACK_BORDER = QColor("#333B48")
     KNOB = QColor("#F2F5F9")
@@ -563,9 +604,66 @@ class PageHeader(QFrame):
         lay.addWidget(s)
 
 
+class GuideDialog(QDialog):
+    """Step-by-step walkthrough for a guidance-only tweak.
+
+    Shows the guide steps front and center (each guidance action becomes a
+    numbered step) with the description and "why it matters" as context.
+    """
+
+    def __init__(self, tweak: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tweak["name"])
+        self.resize(640, 520)
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        head = QLabel(
+            f"<b style='color:{T['accent']}'>{tweak['id']}</b> &nbsp;|&nbsp; "
+            f"{tweak['category']}")
+        lay.addWidget(head)
+
+        desc = tweak.get("desc") or ""
+        if desc:
+            d = QLabel(desc)
+            d.setObjectName("PageSub")
+            d.setWordWrap(True)
+            lay.addWidget(d)
+
+        lay.addWidget(QLabel("<b>Steps</b>"))
+        steps = QPlainTextEdit()
+        steps.setReadOnly(True)
+        steps.setMinimumHeight(180)
+        n = 0
+        for action in tweak.get("actions", []):
+            if not isinstance(action, (list, tuple)) or not action:
+                continue
+            if action[0] != "guidance":
+                continue
+            n += 1
+            text = action[1] if len(action) > 1 else ""
+            steps.appendPlainText(f"{n}.  {text}")
+        if n == 0:
+            steps.appendPlainText("No manual steps are documented for this "
+                                  "tweak \u2014 see the description above.")
+        lay.addWidget(steps)
+
+        why = tweak.get("why") or ""
+        if why:
+            lay.addWidget(QLabel("<b>Why it matters</b>"))
+            w = QLabel(why)
+            w.setObjectName("PageSub")
+            w.setWordWrap(True)
+            lay.addWidget(w)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        lay.addWidget(buttons)
+
+
 class PreviewDialog(QDialog):
     """Shows the exact actions a tweak performs before applying."""
-
     def __init__(self, tweak, mode="actions", parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Preview \u2014 {tweak['name']}")
@@ -734,6 +832,7 @@ class TweakCard(QFrame):
 
     apply_requested = Signal(str)
     revert_requested = Signal(str)
+    guide_requested = Signal(str)
 
     def __init__(self, ctx, tweak, parent=None, compact=False):
         super().__init__(parent)
@@ -758,8 +857,9 @@ class TweakCard(QFrame):
         head = QHBoxLayout()
         head.setSpacing(10)
         self.icon_tile = IconTile(
-            self.meta["icon"], "#94a3b8", size=40, font_scale=0.5,
-            radius=10, bg="#1A202C")
+            self.meta["icon"], self.meta.get("color", "#94a3b8"), size=40,
+            font_scale=0.5, radius=10, bg="#1A202C",
+            logo=logo_path(group))
         head.addWidget(self.icon_tile)
         title_box = QVBoxLayout()
         title_box.setSpacing(0)
@@ -772,10 +872,19 @@ class TweakCard(QFrame):
         title_box.addWidget(name_lbl)
         title_box.addWidget(id_lbl)
         head.addLayout(title_box, 1)
-        self.toggle = ToggleSwitch()
-        self.toggle.setToolTip("Toggle this tweak on / off")
-        self.toggle.toggled.connect(self._on_toggle_clicked)
-        head.addWidget(self.toggle, alignment=Qt.AlignVCenter)
+        if tweak.get("guidance"):
+            self.toggle = None
+            self.btn_guide = QPushButton("\u2139  Guide")
+            self.btn_guide.setObjectName("Ghost")
+            self.btn_guide.setCursor(Qt.PointingHandCursor)
+            self.btn_guide.setToolTip("Open the step-by-step guide")
+            self.btn_guide.clicked.connect(lambda: self.guide_requested.emit(self.tid))
+            head.addWidget(self.btn_guide, alignment=Qt.AlignVCenter)
+        else:
+            self.toggle = ToggleSwitch()
+            self.toggle.setToolTip("Toggle this tweak on / off")
+            self.toggle.toggled.connect(self._on_toggle_clicked)
+            head.addWidget(self.toggle, alignment=Qt.AlignVCenter)
         outer.addLayout(head)
 
         # ---- Description
@@ -865,7 +974,7 @@ class TweakCard(QFrame):
             ss = (f"background-color: {color}; color: {T['accent_dark']};")
         else:
             ss = (f"color: {color}; border: 1px solid {color};"
-                  f" background-color: {color}1f;")
+                  f" background-color: {qss_rgba(color, 0x1f)};")
         self.state_badge.setStyleSheet(
             ss + "border-radius: 8px; padding: 2px 8px; font-size: 10px;"
             "font-weight: 800; letter-spacing: 0.5px;")
@@ -875,9 +984,9 @@ class TweakCard(QFrame):
     def _style_icon(self, on: bool, dim: bool = False):
         if on:
             self.icon_tile.setStyleSheet(
-                f"background-color: rgba(0, 242, 254, 0.10); color: #00F2FE;"
+                f"background-color: rgba(139, 92, 246, 0.10); color: #8B5CF6;"
                 " border-radius: 10px; font-size: 20px; font-weight: 900;"
-                " border: 1px solid rgba(0, 242, 254, 0.40);")
+                " border: 1px solid rgba(139, 92, 246, 0.40);")
         else:
             self.icon_tile.setStyleSheet(
                 "background-color: #1A202C; color: #94A3B8;"
@@ -887,6 +996,13 @@ class TweakCard(QFrame):
     def _apply_state(self, state, reasons=None):
         self.setProperty("state", state)
         self._state = state
+        if self.toggle is None:
+            # Guidance-only cards have no toggle; just style the frame.
+            self._syncing = True
+            self._hide_glow()
+            self._syncing = False
+            repolish(self)
+            return
 
         self._syncing = True
         if state == "applied":
@@ -1399,7 +1515,7 @@ class DiscordCard(QFrame):
         text.setSpacing(2)
         t = QLabel("Official Discord")
         t.setStyleSheet("font-size: 16px; font-weight: 900; color: #e8eef5;")
-        desc = QLabel("Join the official Rex Tweaks community.")
+        desc = QLabel("Join the official Maximum Tweaks community.")
         desc.setObjectName("Tag")
         badge_row = QHBoxLayout()
         badge_row.setSpacing(8)

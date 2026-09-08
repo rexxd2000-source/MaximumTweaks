@@ -1,4 +1,4 @@
-"""Live updater for Rex Tweaks — checks, downloads and installs updates.
+"""Live updater for Maximum Tweaks — checks, downloads and installs updates.
 
 The release source is either:
 
@@ -12,7 +12,7 @@ two stages:
 
 1. download the new exe to ``data/updates/``,
 2. write a tiny batch stub that waits for this process to exit, replaces
-   ``RexTweaks.exe`` in place and relaunches it, then deletes itself.
+   ``MaximumTweaks.exe`` in place and relaunches it, then deletes itself.
 
 All network/disk work happens off the UI thread (see ui/updater_dialog.py).
 """
@@ -93,7 +93,7 @@ class _HttpError(Exception):
 
 def _get_json(url: str, timeout: float = 15.0) -> dict:
     req = urllib.request.Request(url)
-    req.add_header("User-Agent", "RexTweaks-updater/1.0")
+    req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     req.add_header("Accept", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -136,6 +136,14 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
         tag = str(data.get("tag_name") or "").strip().lstrip("v")
         if not tag:
             raise UpdaterError("The release has no version tag.")
+        version = tag
+        notes = str(data.get("body") or "")
+
+    if not is_newer(version, APP_VERSION):
+        logger.info(f"updater: up to date (latest is v{version})")
+        return None
+
+    if not url:
         asset_url = ""
         for asset in data.get("assets", []):
             if str(asset.get("name")) == UPDATE_EXE_NAME:
@@ -144,13 +152,7 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
         if not asset_url:
             raise UpdaterError(
                 f"No asset named {UPDATE_EXE_NAME!r} on the latest release.")
-        version = tag
-        notes = str(data.get("body") or "")
         url = asset_url
-
-    if not is_newer(version, APP_VERSION):
-        logger.info(f"updater: up to date (latest is v{version})")
-        return None
     logger.info(f"updater: update available: v{version} -> {url}")
     return {"version": version, "notes": notes, "url": url}
 
@@ -163,7 +165,7 @@ def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
     """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(frac)."""
     dest = data_dir() / UPDATE_EXE_NAME
     req = urllib.request.Request(url)
-    req.add_header("User-Agent", "RexTweaks-updater/1.0")
+    req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             total = int(resp.headers.get("Content-Length") or 0)
@@ -191,7 +193,7 @@ def _stub_script(target: Path, new_exe: Path) -> str:
     target = Path(target)
     new_exe = Path(new_exe)
     template = """@echo off
-rem Rex Tweaks self-update stub
+rem Maximum Tweaks self-update stub
 set "STUB_LOG=%~dp0stub.log"
 del /Q "%STUB_LOG%" 2>nul
 echo [%date% %time%] stub start >> "%STUB_LOG%"
@@ -231,7 +233,7 @@ def install_and_restart(new_exe: Path):
     # Stage alongside the real exe so the batch can act on the same drive.
     stub_dir = original.parent / "data" / "updates"
     stub_dir.mkdir(parents=True, exist_ok=True)
-    staged = stub_dir / "RexTweaks.update.exe"
+    staged = stub_dir / "MaximumTweaks.update.exe"
     try:
         if staged.exists():
             staged.unlink()

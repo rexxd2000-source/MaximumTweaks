@@ -177,7 +177,7 @@ class GameInspector(QFrame):
         # Status banner.
         self.status_frame = QFrame()
         self.status_frame.setObjectName("Card")
-        self.status_frame.setStyleSheet(f"background-color: rgba(0, 242, 254, 0.06); border: 1px solid rgba(0, 242, 254, 0.18); border-radius: 10px;")
+        self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.18); border-radius: 10px;")
         sf_lay = QHBoxLayout(self.status_frame)
         sf_lay.setContentsMargins(14, 10, 14, 10)
         self.status_icon = QLabel("\u2713")
@@ -309,17 +309,17 @@ class GameInspector(QFrame):
             self.status_msg.setText(f"Profile active on \u201c{nv_profile}\u201d. Fine-tune and apply again, or reset.")
             self.status_icon.setText("\u2713")
             self.status_icon.setStyleSheet(f"color: {T['success']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(0, 242, 254, 0.06); border: 1px solid rgba(0, 242, 254, 0.18); border-radius: 10px;")
+            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.18); border-radius: 10px;")
         elif installed and can_configure:
             self.status_msg.setText("Ready to configure \u2014 Fine-tune this profile before applying.")
             self.status_icon.setText("\u25cb")
             self.status_icon.setStyleSheet(f"color: {T['accent']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.12); border-radius: 10px;")
+            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.04); border: 1px solid rgba(139, 92, 246, 0.12); border-radius: 10px;")
         elif installed:
             self.status_msg.setText("Game detected \u2014 NVIDIA driver settings available.")
             self.status_icon.setText("\u25cb")
             self.status_icon.setStyleSheet(f"color: {T['accent']}; font-size: 16px; font-weight: 800; background: transparent; border: none;")
-            self.status_frame.setStyleSheet(f"background-color: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.12); border-radius: 10px;")
+            self.status_frame.setStyleSheet(f"background-color: rgba(139, 92, 246, 0.04); border: 1px solid rgba(139, 92, 246, 0.12); border-radius: 10px;")
         else:
             self.status_msg.setText("Game not detected \u2014 install it for full profile support.")
             self.status_icon.setText("\u26a0")

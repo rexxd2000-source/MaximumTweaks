@@ -27,7 +27,7 @@ BALANCED = {
         "game-003",    # Background recording off
         "win-006",     # Visual effects: best performance
         "reg-001",     # Foreground lock timeout
-        "il-001",      # Mouse acceleration off
+        "mouse-001",   # Mouse acceleration off
         "cpu-013",     # MMCSS gaming priority
         "audio-003",   # Audio MMCSS task
         "eth-002",     # TCP ack frequency
@@ -56,8 +56,7 @@ COMPETITIVE = {
         "cpu-002",     # Win32 priority separation (low)
         "reg-002",     # Active window tracking timeout 0
         "reg-003",     # Menu show delay 0
-        "il-002",      # Mouse threshold 0
-        "il-005",      # Game DVR off
+        "win-001",     # Game DVR off
         "kbd-001",     # Key repeat delay zero
         "game-004",    # Fullscreen optimizations off
         "net-010",     # TCP window scaling
@@ -83,7 +82,6 @@ MAXIMUM = {
         "adv-006",     # Processor scheduling to programs
         "adv-012",     # Memory compression off
         "ram-006",     # I/O page lock limit
-        "cpu-003",     # Favor foreground (low)
         "sys-018",     # Spectre/Meltdown mitigations off
         "stor-003",    # Last access timestamps off
         "stor-002",    # 8.3 short names off

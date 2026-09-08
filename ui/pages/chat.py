@@ -7,7 +7,17 @@ engine, not this UI.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, Signal
+import time
+
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -19,8 +29,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import THEME as T
-from engine.chat import ChatAssistant
+from config.app_config import BOT_NAME, THEME as T
+from engine.chat import ChatAssistant, llm_configured
 from ui.widgets import IconTile, clear_layout, toast
 
 SUGGESTIONS = [
@@ -28,9 +38,71 @@ SUGGESTIONS = [
     "What tweaks are applied?",
     "Why is my ping high?",
     "Is my PC good for gaming?",
-    "How do I boost my FPS?",
+    "What's the best budget gaming mouse?",
     "What can you do?",
 ]
+
+MIN_TYPING = 0.85  # seconds the typing dots must stay visible per turn
+
+
+class TypingIndicator(QWidget):
+    """'Maximum is typing' with three staggered bouncing dots."""
+
+    DOT = "\u25cf"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(2, 0, 2, 0)
+        outer.setSpacing(0)
+        self.prefix = QLabel(f"{BOT_NAME} is typing")
+        self.prefix.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 12px;")
+        outer.addWidget(self.prefix)
+        outer.addSpacing(8)
+        self._host = QWidget()
+        self._host.setFixedSize(40, 24)
+        outer.addWidget(self._host)
+        outer.addStretch(1)
+
+        self._dots = []
+        for _ in range(3):
+            dot = QLabel(self.DOT, self._host)
+            dot.setStyleSheet(f"color: {T['accent']}; font-size: 12px;")
+            dot.setFixedSize(10, 10)
+            dot.hide()
+            self._dots.append(dot)
+        self._anims: list[QPropertyAnimation] = []
+
+    def start(self):
+        self.show()
+        for anim in self._anims:
+            anim.stop()
+        self._anims.clear()
+        for i in range(3):
+            QTimer.singleShot(i * 130, lambda i=i: self._bounce(i))
+
+    def _bounce(self, i: int):
+        if i >= len(self._dots):
+            return
+        dot = self._dots[i]
+        dot.move(4 + i * 12, 14)
+        dot.show()
+        anim = QPropertyAnimation(dot, b"pos", self)
+        anim.setDuration(620)
+        anim.setStartValue(QPoint(4 + i * 12, 14))
+        anim.setKeyValueAt(0.5, QPoint(4 + i * 12, 2))
+        anim.setEndValue(QPoint(4 + i * 12, 14))
+        anim.setLoopCount(-1)
+        anim.setEasingCurve(QEasingCurve.InOutSine)
+        anim.start()
+        self._anims.append(anim)
+
+    def stop(self):
+        for anim in self._anims:
+            anim.stop()
+        self._anims.clear()
+        self.hide()
 
 
 class ChatWorker(QThread):
@@ -39,15 +111,18 @@ class ChatWorker(QThread):
     done = Signal(str, list)
     error = Signal(str)
 
-    def __init__(self, question: str, profile: dict, parent=None):
+    def __init__(self, question: str, profile: dict, history: list[dict],
+                 parent=None):
         super().__init__(parent)
         self.question = question
         self.profile = profile
+        self.history = history
         self._assistant = ChatAssistant()
 
     def run(self):
         try:
-            result = self._assistant.respond(self.question, self.profile)
+            result = self._assistant.respond(
+                self.question, self.profile, self.history)
             self.done.emit(result["text"], result["tools"])
         except Exception as exc:  # noqa: BLE001
             self.error.emit(f"{type(exc).__name__}: {exc}")
@@ -59,6 +134,9 @@ class ChatPage(QWidget):
         self.ctx = ctx
         self._worker: ChatWorker | None = None
         self._history: list[dict] = []  # {"role", "text"}
+        self._pending_reply: str | None = None
+        self._turn_id = 0
+        self._typing_started = 0.0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -81,9 +159,7 @@ class ChatPage(QWidget):
         root.addWidget(self.scroll, 1)
 
         # ---- Typing indicator (hidden until a turn is in flight)
-        self.typing = QLabel("Assistant is thinking\u2026")
-        self.typing.setStyleSheet(
-            f"color: {T['text_dim']}; font-size: 12px; padding: 2px 6px;")
+        self.typing = TypingIndicator()
         self.typing.setVisible(False)
         root.addWidget(self.typing)
 
@@ -138,11 +214,14 @@ class ChatPage(QWidget):
         return bar
 
     def _set_engine_label(self):
-        self.engine_lbl.setText(
-            f"<span style='color:{T['warning']}; font-size:12px; font-weight:700;'>"
-            f"\u25cf&nbsp; DEMO ENGINE</span>"
-            f"<span style='color:{T['text_faint']}; font-size:10px;'>&nbsp;&nbsp;"
-            f"connect a model in engine/chat.py</span>")
+        if llm_configured():
+            self.engine_lbl.setText(
+                f"<span style='color:{T['accent']}; font-size:12px; font-weight:700;'>"
+                f"\u25cf&nbsp; {BOT_NAME}</span>")
+        else:
+            self.engine_lbl.setText(
+                f"<span style='color:{T['warning']}; font-size:12px; font-weight:700;'>"
+                f"\u25cf&nbsp; {BOT_NAME} \u00b7 offline mode</span>")
 
     def _build_suggestions(self) -> QWidget:
         wrap = QWidget()
@@ -190,11 +269,9 @@ class ChatPage(QWidget):
     def _greet(self):
         self._add_message(
             "assistant",
-            "Hi! I can read this PC's real hardware and tweak state. "
-            "Try a suggestion above, or ask things like:\n"
-            "\u2022 show my specs\n"
-            "\u2022 explain net-005\n"
-            "\u2022 what tweaks are applied?",
+            f"Hi, I'm {BOT_NAME}! I know this PC's real hardware and tweak "
+            "state \u2014 and I can look up almost anything online and share "
+            "links, like ChatGPT. Try a suggestion above, or ask me anything:",
             highlight=True)
 
     def _add_message(self, role: str, text: str, highlight: bool = False):
@@ -204,7 +281,7 @@ class ChatPage(QWidget):
         lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(3)
 
-        tag = QLabel("YOU" if role == "user" else "REX")
+        tag = QLabel("YOU" if role == "user" else "MAXIMUM")
         tag.setStyleSheet(
             f"color: {T['accent'] if role == 'user' else T['text_dim']}; "
             "font-size: 10px; font-weight: 800; letter-spacing: 1.5px;")
@@ -248,22 +325,39 @@ class ChatPage(QWidget):
             toast("Still thinking\u2026", "info", self)
             return
         self._add_message("user", text)
-        self.typing.setVisible(True)
+        self._turn_id += 1
+        self._pending_reply = None
+        self._typing_started = time.monotonic()
+        self.typing.start()
         self.send_btn.setEnabled(False)
 
-        self._worker = ChatWorker(text, self.ctx.profile, self)
+        self._worker = ChatWorker(text, self.ctx.profile, list(self._history),
+                                  self)
         self._worker.done.connect(self._on_done)
         self._worker.error.connect(self._on_error)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()
 
     def _on_done(self, reply, tools):
-        self._add_message("assistant", reply)
+        self._pending_reply = reply
 
     def _on_error(self, msg):
-        self._add_message("assistant", f"Something went wrong: {msg}")
+        self._pending_reply = f"Something went wrong: {msg}"
 
     def _on_finished(self):
-        self.typing.setVisible(False)
         self.send_btn.setEnabled(True)
         self._worker = None
+        reply, turn = self._pending_reply, self._turn_id
+        self._pending_reply = None
+        remaining = MIN_TYPING - (time.monotonic() - self._typing_started)
+        if remaining > 0:
+            QTimer.singleShot(int(remaining * 1000),
+                              lambda: self._deliver(reply, turn))
+        else:
+            self._deliver(reply, turn)
+
+    def _deliver(self, reply, turn):
+        self.typing.stop()
+        if reply is None or turn != self._turn_id:
+            return
+        self._add_message("assistant", reply)

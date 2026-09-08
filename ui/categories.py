@@ -5,7 +5,15 @@ user-facing sections. Every raw category maps to exactly one group.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from database import TWEAKS
+from config.app_config import DIRS
+
+# Category logo PNGs (real lucide hardware icons + the Fortnite emblem,
+# tinted to each group's neon color) live in assets/icons/.
+def logo_path(key: str) -> Path:
+    return DIRS["assets"] / "icons" / f"{key}.png"
 
 # Raw DB category -> "what it affects" label.
 DB_AFFECTS = {
@@ -54,6 +62,8 @@ DB_AFFECTS = {
     "System Tools": "Tools",
     "Diagnostics": "Diagnostics",
     "Repair": "Repair",
+    "Guides": "Guide",
+    "Laptop": "Laptop",
 }
 
 # Extra "affects" labels refined by tag (deduped against DB_AFFECTS).
@@ -103,7 +113,8 @@ CATEGORY_GROUPS = {
         "key": "cpu",
         "title": "CPU Tweaks",
         "icon": "\u2b22",
-        "color": "#60a5fa",
+        "logo": "cpu",
+        "color": "#8B5CF6",
         "blurb": "Processor scheduling, power management and Windows CPU optimizations.",
         "db": ["CPU", "Scheduling"],
     },
@@ -111,7 +122,8 @@ CATEGORY_GROUPS = {
         "key": "gpu",
         "title": "GPU Tweaks",
         "icon": "\u25c6",
-        "color": "#c084fc",
+        "logo": "gpu",
+        "color": "#C084FC",
         "blurb": "NVIDIA/AMD optimizations, GPU scheduling, graphics settings and rendering.",
         "db": ["GPU", "NVIDIA", "AMD", "Intel", "Windows Graphics", "DirectX", "DirectX 12"],
     },
@@ -119,7 +131,8 @@ CATEGORY_GROUPS = {
         "key": "ram",
         "title": "RAM Tweaks",
         "icon": "\u2588",
-        "color": "#f472b6",
+        "logo": "ram",
+        "color": "#F472B6",
         "blurb": "Memory management, virtual memory and background memory behavior.",
         "db": ["RAM"],
     },
@@ -127,7 +140,8 @@ CATEGORY_GROUPS = {
         "key": "mouse",
         "title": "Mouse Tweaks",
         "icon": "\u21a8",
-        "color": "#fb923c",
+        "logo": "mouse",
+        "color": "#A78BFA",
         "blurb": "Pointer precision, acceleration and polling for sharper response.",
         "db": ["Mouse"],
     },
@@ -135,7 +149,8 @@ CATEGORY_GROUPS = {
         "key": "keyboard",
         "title": "Keyboard Tweaks",
         "icon": "\u2328",
-        "color": "#a3e635",
+        "logo": "keyboard",
+        "color": "#D946EF",
         "blurb": "Repeat delay, filter keys and keyboard input responsiveness.",
         "db": ["Keyboard"],
     },
@@ -143,7 +158,8 @@ CATEGORY_GROUPS = {
         "key": "input",
         "title": "Pointer & Input",
         "icon": "\u2694",
-        "color": "#e879f9",
+        "logo": "input",
+        "color": "#E879F9",
         "blurb": "Input-latency reductions so your clicks, keystrokes and pointer inputs register faster.",
         "db": ["Input Latency", "Aim", "Precision Tweaks"],
     },
@@ -151,7 +167,8 @@ CATEGORY_GROUPS = {
         "key": "network",
         "title": "Network Tweaks",
         "icon": "\u2637",
-        "color": "#22d3ee",
+        "logo": "network",
+        "color": "#6366F1",
         "blurb": "TCP/IP stack, Ethernet and Wi-Fi tuning for lower ping and stable connections.",
         "db": ["Network", "Ethernet", "Wi-Fi"],
     },
@@ -159,7 +176,8 @@ CATEGORY_GROUPS = {
         "key": "storage",
         "title": "Storage / SSD",
         "icon": "\u25b6",
-        "color": "#2dd4bf",
+        "logo": "storage",
+        "color": "#818CF8",
         "blurb": "NTFS, SSD trimming, filesystem and disk behavior optimizations.",
         "db": ["Storage"],
     },
@@ -167,7 +185,8 @@ CATEGORY_GROUPS = {
         "key": "system",
         "title": "Windows / System",
         "icon": "\u2699",
-        "color": "#94a3b8",
+        "logo": "system",
+        "color": "#C484FF",
         "blurb": "Windows shell, services, power plans, privacy, telemetry, audio, USB and more.",
         "db": [
             "Windows", "System", "Registry", "Power Plans", "Power", "Services",
@@ -180,7 +199,8 @@ CATEGORY_GROUPS = {
         "key": "performance",
         "title": "Performance Tweaks",
         "icon": "\u26a1",
-        "color": "#38bdf8",
+        "logo": "performance",
+        "color": "#A855F7",
         "blurb": "FPS boosting and frame-pacing optimizations for smoother, more consistent gameplay.",
         "db": ["FPS", "Frame Time"],
     },
@@ -188,7 +208,8 @@ CATEGORY_GROUPS = {
         "key": "fortnite",
         "title": "Fortnite",
         "icon": "\u25c9",
-        "color": "#818cf8",
+        "logo": "fortnite",
+        "color": "#9333EA",
         "blurb": "Fortnite-only optimizations for FPS, input latency, graphics and network.",
         "db": ["Fortnite"],
     },
@@ -196,7 +217,8 @@ CATEGORY_GROUPS = {
         "key": "games",
         "title": "Game Tweaks",
         "icon": "\u2605",
-        "color": "#fb7185",
+        "logo": "games",
+        "color": "#EC4899",
         "blurb": "Game Mode, DVR, Game Bar and general gaming performance settings.",
         "db": ["Gaming"],
     },
@@ -204,7 +226,8 @@ CATEGORY_GROUPS = {
         "key": "profiles",
         "title": "Game Profiles",
         "icon": "\u2654",
-        "color": "#a78bfa",
+        "logo": "profiles",
+        "color": "#B16CEA",
         "blurb": "One-click per-game performance profiles for popular esports titles.",
         "db": ["Game Profiles"],
     },
@@ -212,22 +235,44 @@ CATEGORY_GROUPS = {
         "key": "tools",
         "title": "System Tools",
         "icon": "\u26cf",
-        "color": "#5eead4",
+        "logo": "tools",
+        "color": "#9D7BFF",
         "blurb": "Diagnostics, repair and quick-access tools for your system.",
         "db": ["System Tools", "Diagnostics", "Repair"],
+    },
+    "guides": {
+        "key": "guides",
+        "title": "Guides",
+        "icon": "\u2139",
+        "logo": "guides",
+        "color": "#60A5FA",
+        "blurb": "Step-by-step walkthroughs for manual settings you do in "
+                "software, the BIOS, or the OS \u2014 informational only.",
+        "db": ["Guides"],
+    },
+    "laptop": {
+        "key": "laptop",
+        "title": "Laptop Tweaks",
+        "icon": "\u25c8",
+        "logo": "laptop",
+        "color": "#34D399",
+        "blurb": "Battery, lid, hybrid-graphics and dedicated-GPU settings "
+                "specific to laptops.",
+        "db": ["Laptop"],
     },
 }
 
 GROUP_ORDER = [
     "cpu", "gpu", "ram", "mouse", "keyboard", "input",
     "network", "storage", "system", "performance", "fortnite", "games",
-    "profiles", "tools",
+    "profiles", "tools", "guides", "laptop",
 ]
 
 # Sidebar "Tweaks" sub-categories (no profiles/tools â€” those are top-level nav).
 TWEAK_ORDER = [
     "cpu", "gpu", "ram", "mouse", "keyboard", "input",
     "network", "storage", "system", "performance", "fortnite", "games",
+    "guides", "laptop",
 ]
 
 # Raw category -> owning group key (every raw category maps to one group).
@@ -236,37 +281,28 @@ for _k in GROUP_ORDER:
     for _c in CATEGORY_GROUPS[_k]["db"]:
         GROUP_BY_CAT.setdefault(_c, _k)
 
-# Tool-like tweaks (reports, guidance, repair/cleanup actions) that live inside
-# other categories but belong in the Tools section. Re-routed by id so the
-# Windows/System section no longer shows them.
+# Tool-like tweaks (reports, repair/cleanup actions) that live inside other
+# categories but belong in the Tools section. Re-routed by id so the
+# Windows/System section no longer shows them. Guide-only tweaks are excluded
+# here - they are re-homed to their own "Guides" category by the DB loader.
 TOOLS_IDS = {
-    # BIOS guidance / reports
-    "bios-001", "bios-002", "bios-003", "bios-004", "bios-005", "bios-006",
-    "bios-007", "bios-008", "bios-009", "bios-010", "bios-011", "bios-012",
-    # Monitor checks / guidance
-    "mon-003", "mon-004", "mon-010", "mon-012", "mon-014",
-    # Display guidance / reset
-    "disp-006", "disp-007", "disp-011",
-    # USB reports / guidance / reset
-    "usb-003", "usb-004", "usb-005", "usb-007", "usb-008", "usb-010", "usb-012",
+    # BIOS reports
+    "bios-001",
+    # Monitor checks / reports
+    "mon-003", "mon-014",
+    # USB reports / reset
+    "usb-003", "usb-004", "usb-012",
     # Power plan tools
-    "pp-001", "pp-006", "pp-007", "pp-010", "pp-012",
-    # Startup reports / guidance / cleanup
-    "start-001", "start-008", "start-011",
+    "pp-001", "pp-006", "pp-007", "pp-010",
+    # Startup reports / cleanup
+    "start-001",
     # System tools
-    "sys-008", "sys-011",
+    "sys-008",
     # Audio report
     "audio-012",
     # Debloat cleanup
     "db-014",
-    # Security guidance
-    "sec-007",
 }
-
-# Monochromatic design: every category icon is the same neutral slate tone.
-NEUTRAL_ICON = "#94a3b8"
-for _g in CATEGORY_GROUPS.values():
-    _g["color"] = NEUTRAL_ICON
 
 # Short pill / chip labels for the 12 browsable tweak groups.
 CATEGORY_LABELS = {
@@ -282,6 +318,8 @@ CATEGORY_LABELS = {
     "performance": "Performance",
     "fortnite": "Fortnite",
     "games": "Games",
+    "guides": "Guides",
+    "laptop": "Laptop",
 }
 
 # All browsable groups in display order (excludes profiles/tools nav sections).
@@ -301,6 +339,8 @@ SIDEBAR_TWEAKS = [
     ("performance", "Performance"),
     ("fortnite", "Fortnite"),
     ("games", "Games"),
+    ("guides", "Guides"),
+    ("laptop", "Laptop"),
 ]
 
 

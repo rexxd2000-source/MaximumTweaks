@@ -1,4 +1,4 @@
-"""Rex Tweaks — GUI app with a CLI fallback.
+"""Maximum Tweaks — GUI app with a CLI fallback.
 
 Usage:
   python main.py                 # launch the GUI
@@ -14,14 +14,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import threading
 
 from database import BY_ID, CATEGORIES, TWEAKS
 from database.executor import apply_tweak
 
 RISK_ORDER = {"safe": 0, "low": 1, "moderate": 2, "advanced": 3}
 IMPACT_ORDER = {"very low": 0, "low": 1, "moderate": 2, "high": 3, "extreme": 4}
-REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, "not_recommended": 4}
+REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, "guide": 4, "not_recommended": 5}
 
 
 def run_gui():
@@ -29,15 +28,10 @@ def run_gui():
     from PySide6.QtWidgets import QApplication
 
     from config.app_config import APP_VERSION
-    from engine import auth_server, discord_auth
-    from ui import discord as discord_ui
+    from engine import license as license_mgr
+    from ui import license as license_ui
     from ui.splash import CinematicSplash
     from ui.styles import build_qss
-
-    # Bring up the auth backend (OAuth/verification server) in the background
-    # so the splash appears instantly. A slow or missing backend must never
-    # block startup — login simply reports the failure if it never comes up.
-    threading.Thread(target=auth_server.start, daemon=True).start()
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
@@ -49,12 +43,9 @@ def run_gui():
     splash.show()
     splash.start()
 
-    # Stop the auth backend when the app closes (only if we started it).
-    app.aboutToQuit.connect(auth_server.stop)
-
-    # Refresh the persisted Discord token in the background so a verified
-    # identity stays valid without popping the browser on every launch.
-    discord_ui.validate_startup()
+    # Refresh the persisted license token in the background so a valid license
+    # stays fresh without forcing the gate to appear on every launch.
+    license_ui.validate_startup()
 
     holder: dict = {"window": None}
 
@@ -143,7 +134,7 @@ def run_gui():
         splash.fade_out(700)
 
         def handoff():
-            if discord_auth.session():
+            if license_mgr.is_authorized():
                 reveal_window()
                 return
             from ui.gate import GateWindow
@@ -151,14 +142,9 @@ def run_gui():
             gate.setGeometry(screen)
             gate.show()
 
-            def unlock(_profile):
+            def unlock(_session):
                 win = reveal_window()
                 gate.fade_out(600)
-                # The gate can be bypassed (owner dev build). If no identity
-                # was actually attached, park on the disconnect landing until
-                # verified.
-                if not discord_auth.session():
-                    win.on_disconnect()
             gate.unlocked.connect(unlock)
 
         QTimer.singleShot(0, handoff)

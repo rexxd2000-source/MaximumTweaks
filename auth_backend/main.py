@@ -1,58 +1,52 @@
-"""Rex Tweaks — Discord OAuth2 authentication backend.
+"""Maximum Tweaks — license authentication backend.
 
-A small standalone FastAPI service that owns the Discord Client Secret and
-validates identities for the REX TWEAKS desktop app.
+A small standalone FastAPI service that owns license validation for the
+MAXIMUM TWEAKS desktop app. The desktop app never holds any secrets; it only
+sends a customer-entered license key plus a hashed device fingerprint and
+receives a short-lived signed session token back.
 
 Flow
 ----
-1. The desktop app opens  GET /auth/discord/login?state=<state>
-2. this service 302-redirects the browser to Discord's authorize endpoint
-   requesting the scopes `identify email guilds.join`.
-3. Discord authenticates the user and redirects to DISCORD_REDIRECT_URI
-   (/auth/discord/callback) carrying a one-time authorization code.
-4. The callback validates the `state`, exchanges the code for an access token
-   (Client Secret used here, on the server, never sent to the client), then:
-     a. fetches /users/@me                       -> identity (id, name, email)
-     b. PUT /guilds/{GUILD}/members/{id}         -> adds the user to the server
-        using the OAuth access token (guilds.join; the bot is already in the
-        server, so the user does NOT need to have joined beforehand).
-     c. GET /guilds/{GUILD}/members/{id}         -> confirms membership (bot)
-     d. PUT .../members/{id}/roles/{ROLE}        -> assigns the Verified role
-        using the bot (bot role is above Verified and has Manage Roles).
-     e. re-reads the member object to confirm the role actually stuck.
-5. Success is reported ONLY when BOTH the server join AND the Verified role
-   assignment have succeeded; otherwise an error result is stored.
-6. The result is stored in a short-lived in-memory session keyed by `state`.
-7. The desktop app polls  GET /auth/discord/status?state=<state>  to learn
-   whether verification succeeded.
+1. Customer launches the app and enters their key (``MAX-XXXX-XXXX-XXXX``).
+2. The app posts  POST /api/license/activate {key, device_id}.
+   The backend binds the key to that device (hardware lock) and returns a
+   signed, short-lived session token.
+3. On later launches the app calls POST /api/license/validate {token,
+   device_id} to refresh the token (revoked/expired keys are caught here).
+4. The app caches the token locally for a short offline grace period only —
+   this is not a permanent bypass, and the backend remains the authority.
+
+Hardware locking
+----------------
+- ``device_id`` is a SHA-256 hash of the machine fingerprint computed by the
+  client; the raw fingerprint is never sent or stored.
+- A key is bound to exactly one device at a time. If a customer changes PC,
+  support runs the ``unbind`` admin action — there is deliberately NO
+  client-side reset (otherwise copying the app would let anyone re-bind).
 
 Security
 --------
-- The Client Secret AND the Bot token are read only from the environment here.
-  They are never exposed to the desktop application and never logged.
-- The OAuth authorization `code` is never logged either.
-- `state` tokens are unguessable, single-use and expire after a few minutes.
-- Access tokens are exchanged and discarded on the server; they are not
-  persisted.
+- LICENSE_SECRET signs session tokens (HMAC-SHA256). It lives only here.
+- ADMIN_TOKEN guards all admin endpoints.
+- Rate limiting: activation attempts are limited per IP and per key.
+- Unknown/invalid keys return a generic INVALID_KEY (no key enumeration).
 
 Run
 ---
     pip install -r requirements.txt
-    copy .env.example .env        # then fill in real values (incl. bot token)
+    copy .env.example .env        # fill in real values
     uvicorn main:app --host 127.0.0.1 --port 8000
 """
 from __future__ import annotations
 
-import json
 import os
-import secrets
-import threading
 import time
-import urllib.parse
+from datetime import datetime, timezone
 
-import httpx
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
 try:
@@ -61,318 +55,353 @@ try:
 except Exception:  # noqa: BLE001
     pass  # env vars may be supplied directly by the shell instead
 
+from db import LicenseDB
+from keys import generate_key, normalize_key, sign_token, verify_token, RateLimiter
+
 # ---------------------------------------------------------------------------
 # Configuration (environment only — never hard-code secrets)
 # ---------------------------------------------------------------------------
 
-DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "").strip()
-DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "").strip()
-DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "").strip()
-DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "").strip()
-DISCORD_ROLE_ID = os.environ.get("DISCORD_ROLE_ID", "").strip()
-# Bot token for the REX TWEAKS bot: required to add members (guilds.join is
-# performed by the bot on the user's behalf) and to assign the Verified role.
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+LICENSE_SECRET = os.environ.get("LICENSE_SECRET", "").strip()
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+SESSION_TTL_HOURS = int(os.environ.get("SESSION_TTL_HOURS", "72"))
+OFFLINE_GRACE_HOURS = int(os.environ.get("OFFLINE_GRACE_HOURS", "24"))
 
-# guilds.join lets the backend add the user to the server without the user
-# needing to join first; email captures the verified-email flag. No other
-# read scopes are required because membership + role checks run through the
-# bot instead of the user's token.
-DISCORD_SCOPES = "identify email guilds.join"
+ACTIVATE_PER_KEY = int(os.environ.get("ACTIVATE_PER_KEY", "10"))
+ACTIVATE_PER_IP = int(os.environ.get("ACTIVATE_PER_IP", "40"))
 
-DISCORD_AUTHORIZE = "https://discord.com/oauth2/authorize"
-DISCORD_TOKEN = "https://discord.com/api/oauth2/token"
-DISCORD_ME = "https://discord.com/api/users/@me"
-DISCORD_GUILD_API = f"https://discord.com/api/guilds/{DISCORD_GUILD_ID}"
+_DB = LicenseDB()
+_OK = {"status": "ok", "service": "maximumtweaks-licenses"}
 
-STATE_TTL_SECONDS = 600  # a pending login expires after 10 minutes
-_OK = {"status": "ok", "service": "rextweaks-auth"}
+app = FastAPI(title="Maximum Tweaks License Server", version="1.0.0")
 
 
 # ---------------------------------------------------------------------------
-# Short-lived in-memory login sessions (keyed by OAuth `state`)
+# Request / response models
 # ---------------------------------------------------------------------------
 
-class AuthResult(BaseModel):
-    authenticated: bool
-    discord_id: str = ""
-    username: str = ""
-    display_name: str = ""
-    avatar: str = ""
-    email: str = ""
-    verified_email: bool = False
-    member: bool = False
-    verified_role: bool = False
-    error: str = ""
+class ActivateRequest(BaseModel):
+    key: str
+    device_id: str
 
 
-_sessions: dict[str, dict] = {}
-_sessions_lock = threading.Lock()
+class ValidateRequest(BaseModel):
+    token: str
+    device_id: str
 
 
-def _purge_expired() -> None:
-    now = time.time()
-    expired = [s for s, rec in _sessions.items()
-               if now - rec["created"] > STATE_TTL_SECONDS]
-    for s in expired:
-        _sessions.pop(s, None)
+class DeactivateRequest(BaseModel):
+    token: str
+    device_id: str
 
 
-app = FastAPI(title="Rex Tweaks Auth", version="1.1.0")
+class GenerateRequest(BaseModel):
+    count: int = 1
+    plan: str = "lifetime"
+    customer: str = ""
+    note: str = ""
+    expires_at: str | None = None  # "YYYY-MM-DD HH:MM:SS" (UTC) or None = lifetime
 
+
+class RevokeRequest(BaseModel):
+    key: str
+    reason: str = ""
+
+
+class KeyRequest(BaseModel):
+    key: str
+
+
+# ---------------------------------------------------------------------------
+# Rate limiters
+# ---------------------------------------------------------------------------
+
+_limiter_key = RateLimiter(ACTIVATE_PER_KEY, 3600)
+_limiter_ip = RateLimiter(ACTIVATE_PER_IP, 3600)
+
+
+def _err(code: str, message: str, status: int = 403) -> HTTPException:
+    """Build an HTTP error whose body is the API error envelope.
+
+    The exception handler below unwraps ``detail`` so the client receives the
+    object directly as the top-level JSON body:
+    ``{"success": false, "valid": false, "error": ..., "message": ...}``
+    """
+    return HTTPException(status_code=status, detail={
+        "success": False, "valid": False, "error": code, "message": message})
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Return error bodies as a flat JSON object (no FastAPI ``detail``
+    wrapper), so every response from this API is a JSON object with the same
+    shape the client expects.
+
+    Registered on the Starlette base class so it also covers unmatched-route
+    404s (which raise the parent type), not just exceptions raised by our own
+    endpoints.
+    """
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict):
+        content = detail
+    else:
+        content = {"success": False, "valid": False,
+                   "error": "server_error",
+                   "message": str(detail) if detail else "Request failed."}
+    return JSONResponse(status_code=exc.status_code, content=content)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content={
+        "success": False, "valid": False,
+        "error": "invalid_request", "message": "The request payload was invalid."})
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _iso_to_ts(value: str) -> float:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S") \
+            .replace(tzinfo=timezone.utc).timestamp()
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _session_payload(rec: dict) -> dict:
+    owner = rec.get("customer") or "Maximum Tweaks License"
+    return {
+        "license": rec["license_key"],
+        "owner": owner,
+        "plan": rec.get("plan") or "lifetime",
+        "customer": rec.get("customer") or "",
+        "activated_at": rec.get("activated_at"),
+        "expires_at": rec.get("expires_at"),
+        "last_validation": rec.get("last_validated"),
+        "device_id": rec.get("device_id"),
+    }
+
+
+def _license_payload(rec: dict) -> dict:
+    """License object returned to the desktop client."""
+    owner = rec.get("customer") or "Maximum Tweaks License"
+    return {
+        "key": rec["license_key"],
+        "status": rec.get("status") or "active",
+        "plan": rec.get("plan") or "lifetime",
+        "owner": owner,
+        "customer": rec.get("customer") or "",
+        "activated_at": rec.get("activated_at"),
+        "expires_at": rec.get("expires_at"),
+        "last_validation": rec.get("last_validated"),
+        "device_id": rec.get("device_id"),
+    }
+
+
+def _success(message: str, rec: dict | None = None, token: str | None = None,
+             token_exp: float | None = None) -> dict:
+    """Uniform success envelope: ``{"success": true, "valid": true, ...}``."""
+    body = {"success": True, "valid": True, "message": message}
+    if rec is not None:
+        body["license"] = _license_payload(rec)
+    if token is not None:
+        body["session_token"] = token
+        body["token_exp"] = token_exp or _now_ts() + SESSION_TTL_HOURS * 3600
+    return body
+
+
+def _require_admin(authorization: str | None):
+    if not ADMIN_TOKEN:
+        raise _err("admin_disabled", "Admin access is not configured.", 403)
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise _err("unauthorized", "Admin bearer token required.", 401)
+    token = authorization[7:].strip()
+    if token != ADMIN_TOKEN:
+        raise _err("unauthorized", "Invalid admin token.", 401)
+
+
+def _check_expiry(rec: dict) -> dict | None:
+    """If the license's expires_at has passed, mark it expired and return None.
+
+    Returns the record unchanged when still valid.
+    """
+    exp = rec.get("expires_at")
+    if exp and _iso_to_ts(exp) <= _now_ts():
+        _DB.mark_expired(rec["license_key"])
+        rec["status"] = "expired"
+    return rec
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
     return _OK
 
 
-@app.get("/auth/discord/login")
-def discord_login(state: str = Query(...)):
-    """Register the login attempt and bounce the browser to Discord."""
-    if not (DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET and DISCORD_REDIRECT_URI):
-        return HTMLResponse("Auth backend is not configured.", status_code=500)
-    if not _valid_state(state):
-        return HTMLResponse("Invalid state parameter.", status_code=400)
+@app.post("/api/license/activate")
+def activate(payload: ActivateRequest, request: Request):
+    """Bind a license key to a device and issue a short-lived session token."""
+    ip = (request.client.host if request.client else "unknown")
+    if not _limiter_ip.hit(ip):
+        raise _err("rate_limited", "Too many activation attempts. Please wait.",
+                   429)
+    key = normalize_key(payload.key)
+    if not key:
+        raise _err("invalid_license",
+                   "That doesn't look like a valid license key (expected "
+                   "MAX-XXXX-XXXX-XXXX).")
+    if not _limiter_key.hit(key):
+        raise _err("rate_limited", "Too many attempts for this key. Please wait.",
+                   429)
+    device_id = (payload.device_id or "").strip()
+    if len(device_id) < 16:
+        raise _err("invalid_device", "Device fingerprint is missing or invalid.")
 
-    _purge_expired()
-    with _sessions_lock:
-        # A previously-completed/consumed state must not be reused.
-        if state in _sessions:
-            return HTMLResponse("State already in use.", status_code=400)
-        _sessions[state] = {
-            "status": "pending",
-            "result": None,
-            "created": time.time(),
-        }
-
-    params = urllib.parse.urlencode({
-        "client_id": DISCORD_CLIENT_ID,
-        "redirect_uri": DISCORD_REDIRECT_URI,
-        "response_type": "code",
-        "scope": DISCORD_SCOPES,
-        "state": state,
-    })
-    return RedirectResponse(f"{DISCORD_AUTHORIZE}?{params}", status_code=302)
-
-
-@app.get("/auth/discord/callback")
-def discord_callback(code: str = Query(None),
-                     state: str = Query(None),
-                     error: str = Query(None),
-                     error_description: str = Query(None)):
-    """Handle Discord's redirect, join the server and assign the Verified role."""
-    with _sessions_lock:
-        rec = _sessions.get(state) if state else None
-
-    # Single-use: a state that already produced a result must not be
-    # processed again (otherwise the record would be overwritten before the
-    # desktop app polls /auth/discord/status).
-    if rec is not None and rec["status"] != "pending":
-        return HTMLResponse("Login state was already consumed.", status_code=400)
-
-    if error:
-        _record(state, rec, "error", AuthResult(
-            authenticated=False,
-            error=f"Discord authorization was not granted: "
-                  f"{error_description or error}"))
-        return _result_page(success=False, member=False, role=False,
-                            error="Authorization not granted.")
-
-    if state is None or rec is None:
-        return HTMLResponse("Unknown or expired login state.", status_code=400)
-    if not code:
-        return HTMLResponse("Missing authorization code.", status_code=400)
-
-    try:
-        token_payload = _exchange_code(code)
-        access_token = token_payload["access_token"]
-
-        # a) identity (id, username, email, avatar)
-        user = _fetch_current_user(access_token)
-        uid = str(user.get("id") or "")
-        if not uid:
-            raise ValueError("Discord returned an invalid profile.")
-
-        # b) add the user to the guild with their OAuth token (guilds.join).
-        _join_guild(uid, access_token)
-
-        # c) confirm they are now a guild member (bot).
-        member = _bot_get_member(uid)
-
-        # d) assign the Verified role (bot).
-        _assign_verified_role(uid)
-
-        # e) confirm the role actually stuck.
-        verified = _member_has_role(_bot_get_member(uid))
-
-        result = AuthResult(
-            authenticated=True,
-            discord_id=uid,
-            username=str(user.get("username") or ""),
-            display_name=str(user.get("global_name") or user.get("username") or ""),
-            avatar=str(user.get("avatar") or ""),
-            email=str(user.get("email") or ""),
-            verified_email=bool(user.get("verified")),
-            member=True,
-            verified_role=verified,
-        )
-        if not verified:
-            raise ValueError("The Verified role could not be granted.")
-        _record(state, rec, "success", result)
-        return _result_page(success=True, member=True, role=True)
-    except Exception as exc:  # noqa: BLE001
-        # Message is a safe, user-facing summary — never a code or secret.
-        _record(state, rec, "error", AuthResult(
-            authenticated=False,
-            error=str(exc) or "Discord verification failed."))
-        return _result_page(success=False, member=False, role=False,
-                            error=str(exc) or "Verification failed. Try again.")
-
-
-@app.get("/auth/discord/status")
-def discord_status(state: str = Query(...)):
-    """Polling endpoint used by the desktop app to pick up the result."""
-    _purge_expired()
-    with _sessions_lock:
-        rec = _sessions.get(state)
+    rec = _DB.get(key)
     if rec is None:
-        return {"status": "pending", "result": None}
-    return {"status": rec["status"], "result": rec["result"]}
+        raise _err("invalid_license",
+                   "That license key was not recognized. Double-check it and "
+                   "try again, or contact support.")
+    _check_expiry(rec)
+
+    if rec["status"] == "revoked":
+        raise _err("license_revoked",
+                   "This license key has been revoked. Contact support for help.")
+    if rec["status"] == "expired":
+        raise _err("license_expired", "This license key has expired.")
+
+    if rec["status"] == "active":
+        if rec["device_id"] != device_id:
+            raise _err(
+                "device_mismatch",
+                "This license is already activated on another PC. If you "
+                "changed computers, contact support to unlock it — never copy "
+                "the app folder to bypass the hardware lock.")
+        # Same device re-activating: refresh the token (idempotent).
+    elif rec["status"] == "unused":
+        _DB.activate(key, device_id)
+    else:  # pragma: no cover
+        raise _err("invalid_license", "This license key cannot be activated.")
+
+    rec = _DB.get(key)
+    token = sign_token(key, device_id, LICENSE_SECRET, SESSION_TTL_HOURS * 3600)
+    return _success("License activated successfully", rec, token,
+                    _now_ts() + SESSION_TTL_HOURS * 3600)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _valid_state(state: str) -> bool:
-    return bool(state) and len(state) >= 16 and len(state) <= 128
-
-
-def _record(state: str, rec: dict | None, status: str, result: AuthResult):
+@app.post("/api/license/validate")
+def validate(payload: ValidateRequest):
+    """Verify a session token and refresh it. Catches revoked/expired keys."""
+    if not LICENSE_SECRET:
+        raise _err("server_error", "License server is not configured.", 500)
+    claims = verify_token(payload.token, LICENSE_SECRET)
+    if claims is None:
+        raise _err("invalid_token", "Your session is no longer valid — "
+                                    "please activate again.", 401)
+    rec = _DB.get(claims.get("lic", ""))
     if rec is None:
-        return
-    with _sessions_lock:
-        rec["status"] = status
-        rec["result"] = result.model_dump()
+        raise _err("invalid_token", "Your session is no longer valid.", 401)
+    _check_expiry(rec)
+
+    if rec["status"] == "revoked":
+        raise _err("license_revoked", "This license key has been revoked.", 403)
+    if rec["status"] == "expired":
+        raise _err("license_expired", "This license key has expired.", 403)
+    if rec["device_id"] and rec["device_id"] != payload.device_id:
+        raise _err("device_mismatch",
+                   "This license is bound to a different PC.", 403)
+
+    _DB.touch_validation(rec["license_key"])
+    token = sign_token(rec["license_key"], payload.device_id, LICENSE_SECRET,
+                       SESSION_TTL_HOURS * 3600)
+    return _success("License validated successfully", rec, token,
+                    _now_ts() + SESSION_TTL_HOURS * 3600)
 
 
-def _http_json(client: httpx.Client, method: str, url: str,
-               headers: dict | None = None):
-    resp = client.request(method, url, headers=headers)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Discord API returned HTTP {resp.status_code}")
-    return resp.json()
+@app.post("/api/license/deactivate")
+def deactivate(payload: DeactivateRequest):
+    """Acknowledge a client-side deactivation (removes the local session).
 
-
-def _bot_headers() -> dict:
-    return {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"}
-
-
-def _exchange_code(code: str) -> dict:
-    """Exchange the authorization code for an access token (server-side)."""
-    payload = {
-        "client_id": DISCORD_CLIENT_ID,
-        "client_secret": DISCORD_CLIENT_SECRET,
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": DISCORD_REDIRECT_URI,
-    }
-    with httpx.Client(timeout=20.0) as client:
-        resp = client.post(DISCORD_TOKEN, data=payload)
-        if resp.status_code != 200:
-            raise ValueError("Discord rejected the authorization code.")
-        data = resp.json()
-    if not data.get("access_token"):
-        raise ValueError("Discord returned no access token.")
-    return data
-
-
-def _fetch_current_user(access_token: str) -> dict:
-    headers = {"Authorization": f"Bearer {access_token}"}
-    with httpx.Client(timeout=20.0) as client:
-        user = _http_json(client, "GET", DISCORD_ME, headers=headers)
-    return user
-
-
-def _join_guild(uid: str, access_token: str) -> None:
-    """Add ``uid`` to the guild using their OAuth token (guilds.join scope).
-
-    The bot performs the add on behalf of the user. 201 = newly joined,
-    204 = already a member (both fine). Requires the bot to be in the guild.
+    This deliberately does NOT unbind the key — hardware binding is only ever
+    released through the admin ``unbind`` action so a stolen copy cannot free
+    itself and be re-sold.
     """
-    with httpx.Client(timeout=20.0) as client:
-        resp = client.put(
-            f"{DISCORD_GUILD_API}/members/{uid}",
-            json={"access_token": access_token},
-            headers=_bot_headers(),
-        )
-    if resp.status_code not in (201, 204):
-        try:
-            detail = resp.json()
-        except Exception:  # noqa: BLE001
-            detail = resp.text[:200]
-        raise ValueError("Could not add you to the REX TWEAKS server "
-                         f"(Discord HTTP {resp.status_code} {detail}).")
+    if verify_token(payload.token, LICENSE_SECRET) is None:
+        raise _err("invalid_token", "Session is not valid.", 401)
+    return _success("License deactivated on this device")
 
 
-def _bot_get_member(uid: str) -> dict:
-    """Fetch the member object via the bot; confirms guild membership."""
-    with httpx.Client(timeout=20.0) as client:
-        resp = client.get(
-            f"{DISCORD_GUILD_API}/members/{uid}",
-            headers=_bot_headers(),
-        )
-    if resp.status_code != 200:
-        raise ValueError("Could not confirm your REX TWEAKS server membership "
-                         f"(Discord HTTP {resp.status_code}).")
-    return resp.json()
+# ---------------------------------------------------------------------------
+# Admin API (Bearer ADMIN_TOKEN)
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/licenses")
+def admin_list(status: str | None = None,
+               authorization: str | None = Header(None)):
+    _require_admin(authorization)
+    return {"ok": True, "licenses": _DB.list_all(status)}
 
 
-def _assign_verified_role(uid: str) -> None:
-    """Assign the Verified role to ``uid`` using the bot."""
-    with httpx.Client(timeout=20.0) as client:
-        resp = client.put(
-            f"{DISCORD_GUILD_API}/members/{uid}/roles/{DISCORD_ROLE_ID}",
-            headers=_bot_headers(),
-        )
-    if resp.status_code != 204:
-        raise ValueError("Could not grant you the Verified role "
-                         f"(Discord HTTP {resp.status_code}).")
+@app.get("/admin/stats")
+def admin_stats(authorization: str | None = Header(None)):
+    _require_admin(authorization)
+    return {"ok": True, "stats": _DB.stats()}
 
 
-def _member_has_role(member: dict) -> bool:
-    """True if the member object lists the configured Verified role."""
-    try:
-        roles = member.get("roles") or []
-        return str(DISCORD_ROLE_ID) in {str(r) for r in roles}
-    except Exception:  # noqa: BLE001
-        return False
+@app.get("/admin/search")
+def admin_search(q: str = "", authorization: str | None = Header(None)):
+    """Search licenses by key / customer / note (substring, case-insensitive)."""
+    _require_admin(authorization)
+    query = (q or "").strip()
+    if len(query) < 3:
+        raise _err("invalid_query", "Search query must be at least 3 chars.",
+                   400)
+    return {"ok": True, "licenses": _DB.search(query)}
 
 
-def _result_page(success: bool, member: bool, role: bool, error: str = "") -> HTMLResponse:
-    """The tab the browser lands on after the OAuth round-trip."""
-    if success:
-        lines = [
-            "<li>Authentication succeeded</li>",
-            "<li>You were added to the REX TWEAKS server</li>",
-            "<li>Verified role assigned</li>",
-            "<li>You may close this tab and return to REX TWEAKS.</li>",
-        ]
-    else:
-        lines = [
-            "<li>Authentication failed.</li>",
-            f"<li>{error}</li>",
-            "<li>Close this tab and try again in REX TWEAKS.</li>",
-        ]
-    body = "\n".join(lines)
-    return HTMLResponse(f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>REX TWEAKS</title></head>
-<body style="background:#05070A;color:#EEF4F8;font-family:Segoe UI,sans-serif;
-text-align:center;padding:90px 20px;">
-<div style="max-width:420px;margin:0 auto;">
-  <div style="color:#00F2FE;font-size:22px;font-weight:900;letter-spacing:4px;
-  margin-bottom:18px;">REX TWEAKS</div>
-  <div style="font-size:15px;">Discord verification</div>
-  <ul style="list-style:none;padding:0;margin-top:22px;font-size:13px;
-  color:#D6E4EC;">{body}</ul>
-</div></body></html>""")
+@app.post("/admin/generate")
+def admin_generate(payload: GenerateRequest,
+                   authorization: str | None = Header(None)):
+    _require_admin(authorization)
+    count = max(1, min(int(payload.count), 500))
+    keys = [generate_key() for _ in range(count)]
+    for key in keys:
+        _DB.create(key, plan=payload.plan, customer=payload.customer,
+                   note=payload.note, expires_at=payload.expires_at)
+    return {"ok": True, "keys": keys}
+
+
+@app.post("/admin/revoke")
+def admin_revoke(payload: RevokeRequest,
+                 authorization: str | None = Header(None)):
+    _require_admin(authorization)
+    rec = _DB.revoke(payload.key, payload.reason)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}
+
+
+@app.post("/admin/unrevoke")
+def admin_unrevoke(payload: KeyRequest,
+                   authorization: str | None = Header(None)):
+    _require_admin(authorization)
+    rec = _DB.unrevoke(payload.key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}
+
+
+@app.post("/admin/unbind")
+def admin_unbind(payload: KeyRequest,
+                 authorization: str | None = Header(None)):
+    """Support-only PC-change action: frees the key for a new device."""
+    _require_admin(authorization)
+    rec = _DB.unbind(payload.key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}

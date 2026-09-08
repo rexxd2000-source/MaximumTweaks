@@ -1,9 +1,9 @@
-"""Rex Tweaks QSS — one consistent monochromatic + single-accent design system.
+"""Maximum Tweaks QSS — one consistent deep-space + neon-violet design system.
 
-Tokens live in config.app_config.THEME. Surfaces are built from neutrals
-(deep obsidian -> translucent cards -> muted text). Color is used ONLY as the
-single electric-cyan accent (#00F2FE) or as a small semantic signal:
-  cyan = applied / enabled / active      red = incompatible / reverted
+Tokens live in config.app_config.THEME. Surfaces are built from dark
+indigo-obsidian neutrals (translucent cards, muted text) with the neon
+violet/magenta AI-page palette (#8B5CF6 / #C484FF) as the single accent:
+  violet = applied / enabled / active      red = incompatible / reverted
   amber = warning / restart required
 """
 from config.app_config import THEME
@@ -191,6 +191,19 @@ QPushButton#Secondary {{
 QPushButton#Secondary:hover:enabled {{
     background-color: {T["card_alt"]};
 }}
+QPushButton#Ghost {{
+    background: transparent;
+    color: {T["text_dim"]};
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 6px 14px;
+    font-weight: 600;
+}}
+QPushButton#Ghost:hover:enabled {{
+    color: {T["text"]};
+    background-color: {accent_08};
+    border-color: {accent_45};
+}}
 QWidget#PageBar {{
     background-color: transparent;
     border-top: 1px solid {T["border"]};
@@ -249,7 +262,7 @@ QProgressBar::chunk {{
 }}
 
 /* ---------------- Panels / cards ---------------- */
-#Card, #Hero, #ProfileCard, #PerfCard, #ActionCard, #DiscordCard {{
+#Card, #Hero, #ProfileCard, #PerfCard, #ActionCard, #DiscordCard, #LicenseAccountCard {{
     background-color: {T["card"]};
     border: 1px solid {T["border"]};
     border-radius: 14px;
@@ -262,6 +275,15 @@ QProgressBar::chunk {{
         stop:0 {accent_07}, stop:0.45 {T["card"]}, stop:1 {T["card"]});
 }}
 #DiscordCard:hover {{
+    border-color: {accent_55};
+}}
+/* Dashboard license account card: same accent treatment as the old Discord card. */
+#LicenseAccountCard {{
+    border: 1px solid {accent_45};
+    background-color: qlineargradient(x1:0, y1:0, x2:0.6, y2:1,
+        stop:0 {accent_07}, stop:0.45 {T["card"]}, stop:1 {T["card"]});
+}}
+#LicenseAccountCard:hover {{
     border-color: {accent_55};
 }}
 #SysBar {{
@@ -345,7 +367,7 @@ QProgressBar::chunk {{
 #GlassCard:hover {{
     border-color: #2E3742;
 }}
-#SidebarDiscordCard {{
+#SidebarLicenseCard {{
     background-color: {T["card"]};
     border: 1px solid {accent_45};
     border-radius: 14px;
@@ -454,9 +476,9 @@ QLabel#Badge {{
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.5px;
-    color: #00F2FE;
-    background-color: rgba(0, 242, 254, 0.08);
-    border: 1px solid rgba(0, 242, 254, 0.25);
+    color: #8B5CF6;
+    background-color: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.25);
 }}
 QLabel#StatusPill {{
     padding: 3px 10px;
@@ -464,18 +486,18 @@ QLabel#StatusPill {{
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.6px;
-    color: #00F2FE;
-    background-color: rgba(0, 242, 254, 0.08);
-    border: 1px solid rgba(0, 242, 254, 0.25);
+    color: #8B5CF6;
+    background-color: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.25);
 }}
 QLabel#StatChip {{
     padding: 6px 12px;
     border-radius: 9px;
     font-size: 12px;
     font-weight: 500;
-    color: #00F2FE;
-    background-color: rgba(0, 242, 254, 0.08);
-    border: 1px solid rgba(0, 242, 254, 0.25);
+    color: #8B5CF6;
+    background-color: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.25);
 }}
 
 /* ---------------- Pagination ---------------- */

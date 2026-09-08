@@ -1,4 +1,4 @@
-"""Cinematic boot splash for Rex Tweaks.
+"""Cinematic boot splash for Maximum Tweaks.
 
 A restrained, premium boot sequence at 60 fps: a near-black stage with slow
 drifting aurora glows, a thin self-drawing emblem ring, a clean two-tone
@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (
 
 from config.app_config import APP_VERSION
 
-ACCENT = QColor("#00F2FE")
+ACCENT = QColor("#8B5CF6")
 TEXT = QColor(238, 244, 248)
 DIM = QColor(124, 147, 166)
 FAINT = QColor(64, 80, 96)
@@ -77,7 +77,7 @@ HOLD_PCT = 78  # progress plateau while the update check is unresolved
 TOAST_DEFS = [
     ("[+]", "Detecting GPU", "gpu"),
     ("[+]", "Detecting System Memory & CPU", "cpu"),
-    ("[+]", "Verifying Discord Session", "discord"),
+    ("[+]", "Verifying License", "license"),
     ("[+]", "Loading Tweaks & System Hooks", "tweaks"),
 ]
 
@@ -108,7 +108,7 @@ _UPDATE_QSS = """
     border-radius: 14px;
 }
 #UpdTitle {
-    color: #00F2FE;
+    color: #8B5CF6;
     font-size: 13px;
     font-weight: 900;
     letter-spacing: 2px;
@@ -130,12 +130,12 @@ _UPDATE_QSS = """
 }
 #UpdBar::chunk {
     background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
-                                      stop: 0 #00BEEB, stop: 1 #00F2FE);
+                                      stop: 0 #7C3AED, stop: 1 #8B5CF6);
     border-radius: 3px;
 }
 #UpdPrimary {
-    background-color: #00C2EE;
-    color: #041018;
+    background-color: #8B5CF6;
+    color: #F2F5F9;
     border: none;
     border-radius: 8px;
     padding: 8px 20px;
@@ -143,10 +143,10 @@ _UPDATE_QSS = """
     font-weight: 800;
 }
 #UpdPrimary:hover {
-    background-color: #2FD7FF;
+    background-color: #A78BFA;
 }
 #UpdPrimary:disabled {
-    background-color: #17303C;
+    background-color: #1E1B2E;
     color: #4C6B7A;
 }
 #UpdGhost {
@@ -234,7 +234,7 @@ class _UpdatePanel(QWidget):
     def show_info(self, current: str, new: str, notes: str = ""):
         self._mode = "info"
         self._title.setText("UPDATE AVAILABLE")
-        text = f"Rex Tweaks v{current} \u2192 v{new}"
+        text = f"Maximum Tweaks v{current} \u2192 v{new}"
         if notes:
             text += f"\n\n{notes[:320].strip()}"
         self._msg.setText(text)
@@ -325,16 +325,14 @@ class _ProbeThread(QThread):
         except Exception:  # noqa: BLE001
             values["gpu"] = "GPU"
         try:
-            from engine import discord_auth
-            prof = discord_auth.session()
-            if prof:
-                name = discord_auth.display_name(prof) or "Verified"
-                values["discord"] = f"OK \u00b7 {name}" if prof.get("verified") \
-                    else f"OK \u00b7 {name}"
+            from engine import license as license_mgr
+            sess = license_mgr.session()
+            if sess and license_mgr.is_authorized():
+                values["license"] = f"OK \u00b7 {license_mgr.owner_name(sess)}"
             else:
-                values["discord"] = "None"
+                values["license"] = "None"
         except Exception:  # noqa: BLE001
-            values["discord"] = "..."
+            values["license"] = "..."
         values["tweaks"] = ""
         self.result.emit(values)
 
@@ -622,9 +620,9 @@ class CinematicSplash(QWidget):
         # one very faint horizontal band drifting down — texture, not drama
         sy = ((t * 0.05) % (h + 140)) - 70
         line = QLinearGradient(0, sy - 26, 0, sy + 26)
-        line.setColorAt(0.0, QColor(0, 242, 254, 0))
-        line.setColorAt(0.5, QColor(0, 242, 254, 14))
-        line.setColorAt(1.0, QColor(0, 242, 254, 0))
+        line.setColorAt(0.0, QColor(139, 92, 246, 0))
+        line.setColorAt(0.5, QColor(139, 92, 246, 14))
+        line.setColorAt(1.0, QColor(139, 92, 246, 0))
         p.setBrush(line)
         p.setPen(Qt.NoPen)
         p.drawRect(0, sy - 26, w, 52)
@@ -635,7 +633,7 @@ class CinematicSplash(QWidget):
             return
         inset = 26
         length = 30
-        pen = QPen(QColor(0, 242, 254, int(70 * a)), 1)
+        pen = QPen(QColor(139, 92, 246, int(70 * a)), 1)
         p.setPen(pen)
         p.setBrush(Qt.NoBrush)
         for x, y, sx, syx in ((inset, inset, 1, 1), (w - inset, inset, -1, 1),
@@ -653,7 +651,7 @@ class CinematicSplash(QWidget):
 
         # soft halo behind the mark
         halo = QRadialGradient(cx, cy, 96)
-        halo.setColorAt(0.0, QColor(0, 242, 254, int(46 * a)))
+        halo.setColorAt(0.0, QColor(139, 92, 246, int(46 * a)))
         halo.setColorAt(1.0, QColor(0, 0, 0, 0))
         p.setPen(Qt.NoPen)
         p.setBrush(halo)
@@ -664,11 +662,11 @@ class CinematicSplash(QWidget):
         size = 52 * scale
         rect = QRectF(cx - size / 2, cy - size / 2, size, size)
         p.setBrush(QColor(9, 18, 26, int(232 * a)))
-        p.setPen(QPen(QColor(0, 242, 254, int(150 * a)), 1))
+        p.setPen(QPen(QColor(139, 92, 246, int(150 * a)), 1))
         p.drawRoundedRect(rect, size * 0.26, size * 0.26)
 
         s = size * 0.34
-        bolt = QColor(0, 242, 254, int(255 * a))
+        bolt = QColor(139, 92, 246, int(255 * a))
         p.setBrush(bolt)
         p.setPen(Qt.NoPen)
         p.drawPolygon(QPolygonF([
@@ -696,7 +694,7 @@ class CinematicSplash(QWidget):
         f1.setLetterSpacing(QFont.AbsoluteSpacing, spread)
         p.setFont(f1)
         m1 = p.fontMetrics()
-        w1 = m1.horizontalAdvance("REX")
+        w1 = m1.horizontalAdvance("MAXIMUM")
 
         f2 = QFont(self.font())
         f2.setPixelSize(40)
@@ -714,7 +712,7 @@ class CinematicSplash(QWidget):
         c1.setAlpha(alpha)
         p.setPen(c1)
         p.setFont(f1)
-        p.drawText(QRectF(x1, cy - 24, w1, 40), Qt.AlignCenter, "REX")
+        p.drawText(QRectF(x1, cy - 24, w1, 40), Qt.AlignCenter, "MAXIMUM")
 
         c2 = QColor(ACCENT)
         c2.setAlpha(alpha)
@@ -728,9 +726,9 @@ class CinematicSplash(QWidget):
             he = _ease_in_out(hk)
             half = 110 * he
             grad = QLinearGradient(x1 - half, 0, x1 + half, 0)
-            grad.setColorAt(0.0, QColor(0, 242, 254, 0))
-            grad.setColorAt(0.5, QColor(0, 242, 254, int(120 * hk)))
-            grad.setColorAt(1.0, QColor(0, 242, 254, 0))
+            grad.setColorAt(0.0, QColor(139, 92, 246, 0))
+            grad.setColorAt(0.5, QColor(139, 92, 246, int(120 * hk)))
+            grad.setColorAt(1.0, QColor(139, 92, 246, 0))
             p.setBrush(grad)
             p.setPen(Qt.NoPen)
             p.drawRect(x1 - half, cy + 34, half * 2, 1)
@@ -787,11 +785,11 @@ class CinematicSplash(QWidget):
                               rect.height())
 
             pop = QColor(10, 15, 21, int(225 * a))
-            p.setPen(QPen(QColor(0, 242, 254, int(90 * a)), 1))
+            p.setPen(QPen(QColor(139, 92, 246, int(90 * a)), 1))
             p.setBrush(pop)
             p.drawRoundedRect(rect, 14, 14)
 
-            glyph = QColor(0, 242, 254, int(255 * a))
+            glyph = QColor(139, 92, 246, int(255 * a))
             p.setPen(glyph)
             p.drawText(rect.adjusted(pad, 0, 0, 0),
                        Qt.AlignLeft | Qt.AlignVCenter, text)
@@ -812,10 +810,10 @@ class CinematicSplash(QWidget):
         if self._panel.isVisible():
             return
         if self._update_state == "checking":
-            p.setPen(QPen(QColor(0, 242, 254, 36), 2))
+            p.setPen(QPen(QColor(139, 92, 246, 36), 2))
             p.setBrush(Qt.NoBrush)
             p.drawEllipse(QPointF(cx, cy), r, r)
-            pen = QPen(QColor(0, 242, 254, 220), 4)
+            pen = QPen(QColor(139, 92, 246, 220), 4)
             pen.setCapStyle(Qt.RoundCap)
             p.setPen(pen)
             start_angle = int((-t / 700.0) * 360 * 16)
@@ -823,7 +821,7 @@ class CinematicSplash(QWidget):
             heading = "CHECKING FOR UPDATES"
             sub = "Verifying the latest build\u2026"
         else:  # "ok"
-            pen = QPen(QColor(0, 242, 254, 230), 4)
+            pen = QPen(QColor(139, 92, 246, 230), 4)
             pen.setCapStyle(Qt.RoundCap)
             p.setPen(pen)
             p.setBrush(Qt.NoBrush)
@@ -839,7 +837,7 @@ class CinematicSplash(QWidget):
         p.setFont(f)
         fm = p.fontMetrics()
         tw = fm.horizontalAdvance(heading)
-        col = QColor(0, 242, 254) if self._update_state == "ok" \
+        col = QColor(139, 92, 246) if self._update_state == "ok" \
             else QColor(230, 238, 244)
         col.setAlpha(235)
         p.setPen(col)
@@ -874,13 +872,13 @@ class CinematicSplash(QWidget):
 
         fill_w = bar_w * pct / 100.0
         gr = QLinearGradient(x0, 0, x0 + bar_w, 0)
-        gr.setColorAt(0.0, QColor(0, 190, 235))
+        gr.setColorAt(0.0, QColor(124, 58, 237))
         gr.setColorAt(1.0, ACCENT)
         p.setBrush(gr)
         if fill_w > 2:
             p.drawRoundedRect(QRectF(x0, y, fill_w, 2), 1, 1)
             glow = QRadialGradient(x0 + fill_w, y + 1, 9)
-            glow.setColorAt(0.0, QColor(0, 242, 254, 150))
+            glow.setColorAt(0.0, QColor(139, 92, 246, 150))
             glow.setColorAt(1.0, QColor(0, 0, 0, 0))
             p.setBrush(glow)
             p.drawEllipse(QPointF(x0 + fill_w, y + 1), 9, 9)
@@ -889,7 +887,7 @@ class CinematicSplash(QWidget):
         f = QFont(self.font())
         f.setPixelSize(11)
         p.setFont(f)
-        p.setPen(QColor(0, 242, 254, 200))
+        p.setPen(QColor(139, 92, 246, 200))
         p.drawText(QRectF(cx + bar_w / 2 + 14, y - 10, 42, 20),
                    Qt.AlignLeft | Qt.AlignVCenter, f"{pct}%")
 
@@ -918,7 +916,7 @@ class CinematicSplash(QWidget):
             elif st == "checking":
                 col = QColor(130, 155, 172)
             else:
-                col = QColor(0, 242, 254)
+                col = QColor(139, 92, 246)
             col.setAlpha(235)
             tw = fm.horizontalAdvance(shown)
             p.setPen(col)
@@ -934,7 +932,7 @@ class CinematicSplash(QWidget):
         stage = ((t - 1450) / hold) % 1.0
         fad = 0.35 + 0.65 * _clamp01(stage)
         if idx == len(STATUS_SEQ) - 1:
-            col = QColor(0, 242, 254)
+            col = QColor(139, 92, 246)
         else:
             col = QColor(130, 155, 172)
         col.setAlpha(int(235 * fad))
@@ -949,6 +947,6 @@ class CinematicSplash(QWidget):
         p.setFont(f)
         p.setPen(FAINT)
         p.drawText(QRectF(40, h - 36, 300, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                   f"REX ENGINE \u00b7 v{APP_VERSION}")
+                   f"MAXIMUM ENGINE \u00b7 v{APP_VERSION}")
         p.drawText(QRectF(w - 340, h - 36, 300, 16),
                    Qt.AlignRight | Qt.AlignVCenter, "SECURE BOOT \u00b7 LOW LATENCY")

@@ -1,4 +1,4 @@
-"""Rex Tweaks logging system.
+"""Maximum Tweaks logging system.
 
 Writes a rotating log file to Logs/rextweaks.log and optionally mirrors
 to the console. Logs application events, hardware detection, applied and

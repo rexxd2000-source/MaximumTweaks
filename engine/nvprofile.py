@@ -461,7 +461,7 @@ class DrsSession:
         code = fn(self._handle)
         if code != NVAPI_OK:
             raise NvapiError(f"SaveSettings failed ({self._f.error_text(code)}). "
-                             "Run Rex Tweaks as administrator.",
+                             "Run Maximum Tweaks as administrator.",
                              code)
 
 

@@ -96,6 +96,36 @@ def unmark_disabled(tweak_id: str) -> None:
     logger.info(f"state: removed disabled mark {tweak_id}")
 
 
+# --- Registry value backups (exact revert) --------------------------------
+# Recorded *before* a tweak writes each registry value, so Revert can restore
+# the true previous value (or delete a value that did not exist before) instead
+# of blindly writing a hardcoded "default".  Per tweak:
+#   {target_key: {"hive","path","name","existed", "vtype","data"}}
+# ``existed`` False means the value was absent before the tweak ran -> revert
+# must delete it.  ``vtype``/``data`` are the raw REG_* type and data string.
+
+def get_reg_backups(tweak_id: str) -> dict | None:
+    return _load().get("reg_backups", {}).get(tweak_id)
+
+
+def save_reg_backups(tweak_id: str, entries: dict) -> None:
+    state = _load()
+    state.setdefault("reg_backups", {})[tweak_id] = entries
+    _save(state)
+    logger.info(f"state: recorded {len(entries)} reg backups for {tweak_id}")
+
+
+def clear_reg_backups(tweak_id: str) -> None:
+    state = _load()
+    state.get("reg_backups", {}).pop(tweak_id, None)
+    _save(state)
+    logger.info(f"state: cleared reg backups for {tweak_id}")
+
+
+def reg_backup_ids() -> set[str]:
+    return set(_load().get("reg_backups", {}))
+
+
 # --- Active game profile -------------------------------------------------
 
 def get_active_profile() -> str | None:
@@ -162,7 +192,7 @@ def clear_restart_required() -> None:
     logger.info("state: restart_required cleared")
 
 
-# --- Rex Ultra Mode (dashboard quick-toggle) -------------------------------
+# --- Ultra Mode (dashboard quick-toggle) -------------------------------
 
 def get_ultra_mode() -> bool:
     return bool(_load().get("ultra_mode"))
@@ -178,9 +208,6 @@ def set_ultra_mode(on: bool) -> None:
 # --- User profile picture (PFP) --------------------------------------------
 
 PFP_FILE = os.path.join(STATE_DIR, "pfp.png")
-# Discord avatar is cached SEPARATELY from the user PFP so linking a Discord
-# account never overwrites the user's own profile picture.
-DISCORD_AVATAR_FILE = os.path.join(STATE_DIR, "discord_avatar.png")
 
 
 def _normalize_and_save(img, path: str = PFP_FILE, label: str = "pfp") -> str | None:
@@ -250,33 +277,6 @@ def pfp_path() -> str | None:
     return PFP_FILE if os.path.exists(PFP_FILE) else None
 
 
-def set_discord_avatar_from_bytes(data: bytes) -> str | None:
-    """Cache the Discord avatar SEPARATELY from the user PFP (never overrides it)."""
-    try:
-        from PySide6.QtGui import QImage
-        img = QImage.fromData(data)
-        if img.isNull():
-            logger.warn("discord-avatar: decoded image bytes were invalid")
-            return None
-        return _normalize_and_save(img, DISCORD_AVATAR_FILE, "discord-avatar")
-    except Exception as exc:  # noqa: BLE001
-        logger.warn(f"discord-avatar: failed to save avatar: {exc}")
-        return None
-
-
-def discord_avatar_path() -> str | None:
-    return DISCORD_AVATAR_FILE if os.path.exists(DISCORD_AVATAR_FILE) else None
-
-
-def clear_discord_avatar() -> None:
-    try:
-        if os.path.exists(DISCORD_AVATAR_FILE):
-            os.remove(DISCORD_AVATAR_FILE)
-            logger.info("discord-avatar: removed cached avatar")
-    except Exception as exc:  # noqa: BLE001
-        logger.warn(f"discord-avatar: failed to remove avatar: {exc}")
-
-
 # --- Display name / handle --------------------------------------------------
 
 def get_handle() -> str:
@@ -290,18 +290,18 @@ def set_handle(name: str) -> None:
     logger.info(f"state: handle set to {name!r}")
 
 
-# --- Discord verification session ------------------------------------------
+# --- License session --------------------------------------------------------
 
-def discord_session() -> dict | None:
-    """Persisted Discord identity snapshot, or None when not verified."""
-    return _load().get("discord")
+def license_session() -> dict | None:
+    """Persisted license session snapshot (token, owner, device), or None."""
+    return _load().get("license")
 
 
-def set_discord_session(data: dict | None) -> None:
+def set_license_session(data: dict | None) -> None:
     state = _load()
     if data is None:
-        state.pop("discord", None)
+        state.pop("license", None)
     else:
-        state["discord"] = data
+        state["license"] = data
     _save(state)
-    logger.info("state: discord session updated")
+    logger.info("state: license session updated")
