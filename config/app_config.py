@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -242,6 +242,7 @@ LICENSE_API_URL = "https://maximumtweaks.onrender.com"
 # Offline grace after the session token expires (hours): lets an activated PC
 # keep running without internet for a while before the gate reappears.
 OFFLINE_GRACE_HOURS = 24
+
 
 
 
