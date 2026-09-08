@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Rex Tweaks"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Rex Engine"
 
