@@ -11,6 +11,7 @@ from __future__ import annotations
 
 # tag -> (kind, value, driver_dependent)
 #   kind "gpu":          value = vendor or ("any_of", (vendors,)) 
+#   kind "gpu_type":     value = "dedicated" | "integrated"
 #   kind "cpu":          value = vendor
 #   kind "media":        value = "wifi" | "ethernet"
 #   kind "storage":      value = "ssd" | "nvme" | "hdd"
@@ -24,6 +25,8 @@ TAG_REQ = {
     "nvidia":   ("gpu", "nvidia", False),
     "amd":      ("gpu", "amd", False),
     "intel_gpu": ("gpu", "intel", False),
+    "dedicated_gpu": ("gpu_type", "dedicated", False),
+    "integrated_gpu": ("gpu_type", "integrated", False),
     "intel_cpu": ("cpu", "intel", False),
     "amd_cpu":  ("cpu", "amd", False),
     "wifi":     ("media", "wifi", False),
@@ -49,8 +52,16 @@ def check_applicability(tweak: dict, data: dict, profile: dict):
     if not gpu_vendors:
         gpu_vendors = data.get("vendors") or ["unknown"]
 
+    gpu_types = profile.get("gpu_types") or [p.get("type") for p in
+                                              (data.get("gpus") or []) if p.get("type")]
+    if not gpu_types:
+        gpu_types = []
+
     def _vendor_present(vendor):
         return vendor in gpu_vendors
+
+    def _gpu_type_present(gpu_type):
+        return gpu_type in gpu_types
 
     for tag in (tweak.get("tags") or []):
         req = TAG_REQ.get(tag)
@@ -70,6 +81,9 @@ def check_applicability(tweak: dict, data: dict, profile: dict):
                 driver_dependent = True
                 note = (note or "") + (f"Requires {need} GPU with driver support. "
                                        if not note else "")
+        elif kind == "gpu_type":
+            if not _gpu_type_present(value):
+                return False, f"Requires a {value} GPU.", False
         elif kind == "cpu":
             if profile.get("cpu_vendor") != value:
                 return False, f"Requires an {_VENDOR_NAMES.get(value, value)} CPU.", False

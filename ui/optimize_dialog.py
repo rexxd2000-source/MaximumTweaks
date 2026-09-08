@@ -51,7 +51,7 @@ EVIDENCE_LABEL = {"HIGH": "High evidence", "MEDIUM": "Medium evidence",
 
 
 class OptimizeWorker(QThread):
-    """Runs every optimizer in a category group off the UI thread."""
+    """Run category optimizers in a background thread."""
 
     done = Signal(object)
     error = Signal(str)
@@ -64,16 +64,24 @@ class OptimizeWorker(QThread):
         self.ctx = ctx
         self.title = title
         self.subtitle = subtitle
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
 
     def run(self):
         reports, failures = [], []
         for opt in self.optimizers:
+            if self._cancelled:
+                return
             self.phase.emit(f"Scanning {BUTTON_LABELS.get(opt.key, opt.title)} \u2026")
             try:
                 reports.append(opt.run(self.ctx, refresh=True))
             except Exception as exc:  # noqa: BLE001
                 logger.warn(f"optimize {opt.key}: {type(exc).__name__}: {exc}")
                 failures.append(opt.key)
+        if self._cancelled:
+            return
         if not reports:
             self.error.emit(
                 "no optimizer produced results: " + ", ".join(failures))
@@ -502,6 +510,7 @@ class OptimizeDialog(QDialog):
     def closeEvent(self, event):
         for w in (self._worker, self._apply_worker):
             if w is not None and w.isRunning():
-                w.terminate()
-                w.wait(2000)
+                if hasattr(w, "cancel"):
+                    w.cancel()
+                w.wait(5000)
         super().closeEvent(event)

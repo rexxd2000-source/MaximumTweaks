@@ -7,14 +7,7 @@ T = make_T("System", win_default="7,8,10,11")
 CATEGORY = "System"
 
 TWEAKS = validate_module("system", [
-    T("sys-001", "Keep Kernel in Memory",
-      "Prevents the executive from paging to disk.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "DisablePagingExecutive", 1, "DWORD")],
-      revert=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "DisablePagingExecutive", 0, "DWORD")],
-      why="Keeps kernel and driver code resident so games never stall on a page fault to disk.",
-      changes="Sets DisablePagingExecutive to 1.",
-      risk="low", impact="low", recommended="optional", admin=True,
-      tags=["memory", "paging", "kernel"]),
+
     T("sys-002", "Do Not Clear Pagefile at Shutdown",
       "Skips clearing the pagefile during shutdown.",
       actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "ClearPageFileAtShutdown", 0, "DWORD")],
@@ -23,14 +16,7 @@ TWEAKS = validate_module("system", [
       changes="Disables pagefile clearing at shutdown.",
       risk="safe", impact="low", recommended="recommended", admin=True,
       tags=["pagefile", "shutdown", "ssd"]),
-    T("sys-003", "Disable Large System Cache",
-      "Keeps the system from treating file cache as the default memory consumer.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "LargeSystemCache", 0, "DWORD")],
-      revert=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "LargeSystemCache", 1, "DWORD")],
-      why="LargeSystemCache favours file cache over applications; for games the default balanced setting is better.",
-      changes="Sets LargeSystemCache to 0.",
-      risk="safe", impact="low", recommended="recommended", admin=True,
-      tags=["cache", "memory", "file"]),
+
     T("sys-004", "Disable Windows Error Reporting",
       "Turns off WER popups and background report submission.",
       actions=[
@@ -45,14 +31,7 @@ TWEAKS = validate_module("system", [
       changes="Disables Windows Error Reporting.",
       risk="safe", impact="low", recommended="recommended", admin=True,
       tags=["wer", "crash", "reporting"]),
-    T("sys-005", "Disable Crash Dump Writing",
-      "Stops the kernel from writing memory dumps on crash.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\CrashControl", "CrashDumpEnabled", 0, "DWORD")],
-      revert=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\CrashControl", "CrashDumpEnabled", 1, "DWORD")],
-      why="Writing a full dump on a game crash spikes disk usage; disabling reduces recovery time.",
-      changes="Disables crash dump creation.",
-      risk="low", impact="low", recommended="optional", admin=True,
-      tags=["crash", "dump", "bsod"]),
+
     T("sys-006", "Disable Auto Reboot on Crash",
       "Prevents automatic restart after a system failure.",
       actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\CrashControl", "AutoReboot", 0, "DWORD")],
@@ -155,15 +134,7 @@ TWEAKS = validate_module("system", [
       changes="Disables the notification center.",
       risk="safe", impact="low", recommended="recommended",
       tags=["notifications", "toast", "center"]),
-    T("sys-018", "Disable Spectre/Meltdown Mitigations",
-      "Turns off CPU speculative-execution mitigations for maximum throughput.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "FeatureSettingsOverride", 3, "DWORD")],
-      revert=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "FeatureSettingsOverride", 0, "DWORD")],
-      why="Mitigation work costs measurable CPU cycles in high-IPC workloads; disabling trades security for FPS.",
-      changes="Sets FeatureSettingsOverride to 3 (mitigations off) and the mask to 3.",
-      risk="advanced", impact="high", recommended="not_recommended", admin=True, confirm=True,
-      tags=["spectre", "meltdown", "cpu", "mitigations"],
-      when={"cpu_vendor": ["intel"]}),
+
     T("sys-019", "Disable 'Start Full-Screen Optimizations' Help",
       "Turns off the fullscreen optimization compatibility help overlay.",
       actions=[("reg", "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableOverlays", 0, "DWORD")],
@@ -172,4 +143,28 @@ TWEAKS = validate_module("system", [
       changes="Disables overlay content for fullscreen apps.",
       risk="safe", impact="low", recommended="recommended",
       tags=["overlay", "fullscreen", "latency"]),
+
+    T("sys-021", "Reduce Hung App Timeout",
+      "Lowers the threshold before Windows considers an app hung.",
+      actions=[("reg", "HKCU", r"Control Panel\Desktop", "HungAppTimeout", "1000", "STRING")],
+      revert=[("reg", "HKCU", r"Control Panel\Desktop", "HungAppTimeout", "5000", "STRING")],
+      why="Windows detects and prompts to close hung apps sooner, reducing stalls.",
+      changes="Sets HungAppTimeout to 1000 ms.",
+      risk="low", impact="low", recommended="optional",
+      tags=["hung", "timeout", "responsiveness"]),
+    T("sys-023", "Optimize Active Hours",
+      "Sets Windows Update active hours to reduce background disruption.",
+      actions=[
+          ("reg", "HKLM", r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings", "ActiveHoursStart", 8, "DWORD"),
+          ("reg", "HKLM", r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings", "ActiveHoursEnd", 20, "DWORD"),
+      ],
+      revert=[
+          ("reg", "HKLM", r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings", "ActiveHoursStart", 7, "DWORD"),
+          ("reg", "HKLM", r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings", "ActiveHoursEnd", 17, "DWORD"),
+      ],
+      why="Prevents Windows Update from restarting or installing during typical gaming hours.",
+      changes="Sets active hours to 08:00 - 20:00.",
+      risk="safe", impact="low", recommended="recommended", admin=True,
+      tags=["update", "activehours", "restart"]),
+
 ])

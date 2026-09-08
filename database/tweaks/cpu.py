@@ -1,4 +1,20 @@
-"""Category: CPU — processor scheduling, boost, power and mitigation settings."""
+"""Category: CPU — safe, hardware-aware processor optimizations.
+
+Every tweak in this module is designed to work WITH the CPU's own dynamic
+power management, not against it.  Modern AMD Precision Boost and Intel
+Speed Shift already handle clock scaling, idle states, and boost behavior
+far better than any static registry tweak.
+
+These optimizations focus on:
+  - Configuring Windows to get out of the CPU's way
+  - Reducing background CPU overhead (services, telemetry)
+  - Optimizing MMCSS scheduling for games
+  - Appropriate power-plan settings per form factor (desktop/laptop)
+  - Proper AC vs battery behavior
+
+Nothing here forces a permanent clock speed, disables C-states, or fights
+the CPU's own boost algorithm.
+"""
 from __future__ import annotations
 
 from ._base import make_T, validate_module
@@ -7,339 +23,405 @@ T = make_T("CPU", win_default="7,8,10,11")
 
 CATEGORY = "CPU"
 
-# Shown (via the confirm gate) whenever the user turns on a boost/clock
-# control tweak: these push clocks higher or adjust power management, which
-# is a standard Windows behaviour the system is designed to handle.
-_RISKY_CPU_WARN = (
-    "This tweak adjusts how your CPU boosts clocks and manages power. These "
-    "are ordinary Windows settings, and most systems handle them fine. If you "
-    "ever notice anything off, you can simply turn the tweak back off in the "
-    "app at any time."
+# ── Shared warnings ──────────────────────────────────────────────────
+_CPU_SAFE_WARN = (
+    "This tweak adjusts standard Windows power-management settings.  "
+    "It does not override your CPU's own boost or idle behavior — it "
+    "simply configures how Windows interacts with the processor.  "
+    "All changes are reversible."
 )
 
+# ── Universal tweaks (all CPUs, desktop + laptop) ────────────────────
+
 TWEAKS = validate_module("cpu", [
+
+    # ── Power State (AC) ────────────────────────────────────────────
+
     T(
-        "cpu-010", "Disable HPET Device",
-        "Disables the High Precision Event Timer device in Device Manager.",
-        actions=[("cmd", "bcdedit /set useplatformclock false")],
-        revert=[("cmd", "bcdedit /deletevalue useplatformclock")],
-        why="A faulty HPET can introduce timer latency; letting the CPU use its own TSC-based timers is usually faster.",
-        changes="Disables the platform clock so the OS uses TSC-derived time.",
-        risk="moderate", impact="high", recommended="optional", admin=True, confirm=True,
-        win="7,8,10,11", tags=["hpet", "timer", "latency"],
-    ),
-    T(
-        "cpu-011", "Disabled Dynamic Tick",
-        "Disables the Windows dynamic tick which lets the timer be stopped in idle.",
-        actions=[("cmd", "bcdedit /set disabledynamictick yes")],
-        revert=[("cmd", "bcdedit /set disabledynamictick no")],
-        why="With dynamic tick, timer interrupts fire irregularly. Disabling it can improve frame pacing.",
-        changes="Sets the dynamic tick boot option to disabled.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
-        tags=["tick", "timer", "interrupt"],
-    ),
-    T(
-        "cpu-012", "Reduced Timer Slack",
-        "Removes the default 50 ms timer slack added by Windows to batch timer callbacks.",
-        actions=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel", "TimerSlack", 0, "DWORD")],
-        revert=[("regdel", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel", "TimerSlack")],
-        why="Less timer slack means Windows wakes more promptly, tightening frame pacing.",
-        changes="Sets kernel TimerSlack to 0.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
-        tags=["timer", "slack", "latency"],
-    ),
-    T(
-        "cpu-013", "MMCSS Gaming Priority",
-        "Configures the Multimedia Class Scheduler Gaming priority for pro audio/game classes.",
-        actions=[
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "SystemResponsiveness", 0, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "NetworkThrottlingIndex", 0xffffffff, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "GPU Priority", 8, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Priority", 6, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Scheduling Category", "High", "STRING"),
-        ],
-        revert=[
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "SystemResponsiveness", 20, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile", "NetworkThrottlingIndex", 10, "DWORD"),
-            ("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "GPU Priority"),
-            ("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Priority"),
-            ("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "Scheduling Category"),
-        ],
-        why="Reserves less CPU time for system responsiveness and boosts the Games MMCSS class priority for lower input latency.",
-        changes="Adjusts Multimedia Class Scheduler settings for the Games class.",
-        risk="low", impact="high", recommended="recommended", admin=True,
-        tags=["mmcss", "priority", "latency", "scheduler"],
-    ),
-    T(
-        "cpu-014", "Processor Performance Increase Threshold",
-        "Sets the processor performance increase threshold to a low value so boosts engage quickly.",
-        actions=[("power", "perf_increase_threshold", 10)],
-        revert=[("power", "perf_increase_threshold", 90)],
-        why="A lower threshold makes the CPU boost sooner, reducing on-demand stall under sudden game load.",
-        changes="Lowers the AC performance increase threshold to 10%.",
-        risk="safe", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
-        tags=["boost", "threshold", "responsiveness"],
-    ),
-    T(
-        "cpu-016", "Win32 Priority Separation 26",
-        "Lowers Windows' default 2-second foreground boost factor to reduce priority instability.",
-        actions=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation", 26, "DWORD")],
-        revert=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation", 2, "DWORD")],
-        why="Priority separation 26 keeps foreground boost short so game threads keep consistent priority.",
-        changes="Sets Win32PrioritySeparation to 26 (short boost, variable quantum).",
-        risk="moderate", impact="moderate", recommended="optional", admin=True,
-        tags=["priority", "foreground", "quantum"],
+        "cpu-001", "Processor Minimum State 5% (AC)",
+        "Set the minimum processor performance state to 5% on AC power.",
+        actions=[("power", "processor_min", 5, "AC")],
+        revert=[("power", "processor_min", 100, "AC")],
+        why="A low minimum state lets the CPU idle at deep C-states when "
+            "not under load, reducing heat and power draw.  The OS boosts "
+            "to higher P-states on demand anyway, so there is no performance "
+            "loss during gaming.",
+        changes="Sets minimum processor state to 5% on AC.",
+        risk="safe", impact="low", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["power", "idle", "ac", "processor"],
     ),
 
     T(
-        "cpu-026", "Aggressive Idle Time Check",
-        "Shortens the processor idle time check so the CPU resumes full performance faster after an idle period.",
-        actions=[("power", "time_check", 10)],
-        revert=[("power", "time_check", 20)],
-        why="A shorter idle time check means the OS re-evaluates load sooner, reducing the delay before clocks ramp back up.",
-        changes="Sets the AC processor idle time check to 10.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        when={"laptop": False},
-        tags=["power", "idle", "responsiveness", "clockspeed"],
+        "cpu-002", "Processor Maximum State 100% (AC)",
+        "Allow the CPU to reach its full boost frequency on AC power.",
+        actions=[("power", "processor_max", 100, "AC")],
+        revert=[("power", "processor_max", 100, "AC")],
+        why="Ensures the CPU is not artificially capped below its maximum "
+            "boost clock during gaming.  The default is often already 100%, "
+            "but some OEM power plans lower this.",
+        changes="Sets maximum processor state to 100% on AC.",
+        risk="safe", impact="moderate", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["power", "boost", "ac", "processor"],
     ),
+
     T(
-        "cpu-029", "Faster Performance Increase Time",
-        "Lowers the processor performance increase time so the CPU ramps clocks almost immediately under load.",
-        actions=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFINCTIME 1")],
-        revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFINCTIME 3")],
-        why="The default 3 ms increase time adds a small ramp delay; 1 ms makes boost feel instant in CPU-bound moments.",
-        changes="Sets the AC performance increase time to 1 ms.",
-        risk="safe", impact="moderate", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
-        when={"laptop": False},
-        tags=["powercfg", "ramp", "boost", "clockspeed"],
-    ),
-    T(
-        "cpu-030", "Longer Performance Decrease Time",
-        "Raises the processor performance decrease time so clocks stay elevated longer before throttling back.",
-        actions=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFDECTIME 10")],
-        revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFDECTIME 3")],
-        why="Holding high clocks a little longer avoids the clock-drop bounce between frames in uneven workloads.",
-        changes="Sets the AC performance decrease time to 10 ms.",
-        risk="safe", impact="low", recommended="recommended", admin=True, confirm=True, warn=_RISKY_CPU_WARN,
-        tags=["powercfg", "clockspeed", "ramp", "stability"],
-    ),
-    T(
-        "cpu-031", "Delayed Idle Promote Hysteresis",
-        "Raises the idle promote hysteresis so cores stay in shallow idle states instead of sinking into deep C-states.",
-        actions=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR IDLEPROMOTE 100")],
-        revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR IDLEPROMOTE 60")],
-        why="A higher promote threshold keeps wake costs low when the workload is bursty, reducing C-state wake latency.",
-        changes="Sets the AC idle promote hysteresis to 100.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        when={"laptop": False},
-        tags=["powercfg", "cstate", "idle", "latency"],
-    ),
-    T(
-        "cpu-032", "Immediate Idle Demote",
-        "Lowers the idle demote hysteresis so cores leave deep idle states at the first sign of load.",
-        actions=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR IDLEDEMOTE 0")],
-        revert=[("cmd", "powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR IDLEDEMOTE 60")],
-        why="A demote threshold of 0 wakes parked or sleeping cores faster, cutting the stall when work suddenly arrives.",
-        changes="Sets the AC idle demote hysteresis to 0.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        when={"laptop": False},
-        tags=["powercfg", "idle", "wake", "latency"],
-    ),
-    T(
-        "cpu-035", "Disable Telemetry Service",
-        "Disables and stops the Connected User Experiences and Telemetry (DiagTrack) service to cut background CPU use.",
-        actions=[("svc", "DiagTrack", "disabled"), ("svcstop", "DiagTrack")],
-        revert=[("svc", "DiagTrack", "auto"), ("svcstart", "DiagTrack")],
-        why="DiagTrack periodically uploads telemetry in the background; disabling it frees CPU cycles and reduces disk activity.",
-        changes="Disables and stops DiagTrack.",
-        risk="safe", impact="low", recommended="optional", admin=True,
-        win="10,11", tags=["service", "telemetry", "background", "cpu"],
-    ),
-    T(
-        "cpu-036", "Disable Windows Search Indexer",
-        "Disables and stops the Windows Search service to stop background indexer CPU and disk churn.",
-        actions=[("svc", "WSearch", "disabled"), ("svcstop", "WSearch")],
-        revert=[("svc", "WSearch", "delayed"), ("svcstart", "WSearch")],
-        why="The indexer periodically rescans files; disabling it keeps CPU and I/O available for active work (search results lose live indexing).",
-        changes="Disables and stops WSearch.",
-        risk="safe", impact="low", recommended="optional", admin=True,
-        tags=["service", "search", "indexer", "cpu"],
-    ),
-    T(
-        "cpu-037", "Disable Program Compatibility Assistant",
-        "Disables and stops the Program Compatibility Assistant service so it no longer watches applications in the background.",
-        actions=[("svc", "PcaSvc", "disabled"), ("svcstop", "PcaSvc")],
-        revert=[("svc", "PcaSvc", "auto"), ("svcstart", "PcaSvc")],
-        why="PcaSvc hooks process starts to detect compatibility issues; disabling it removes that constant CPU overhead.",
-        changes="Disables and stops PcaSvc.",
-        risk="low", impact="low", recommended="optional", admin=True,
-        tags=["service", "compatibility", "background", "cpu"],
-    ),
-    T(
-        "cpu-038", "Disable Error Reporting Service",
-        "Disables and stops the Windows Error Reporting service so crash dumps and reports are not processed in the background.",
-        actions=[("svc", "WerSvc", "disabled"), ("svcstop", "WerSvc")],
-        revert=[("svc", "WerSvc", "manual"), ("svcstart", "WerSvc")],
-        why="WerSvc spins up to capture and upload crash data; disabling it removes that burst of CPU and disk work.",
-        changes="Disables and stops WerSvc.",
-        risk="safe", impact="low", recommended="optional", admin=True,
-        tags=["service", "error", "reporting", "cpu"],
-    ),
-    T(
-        "cpu-039", "Disable WAP Push Service",
-        "Disables and stops the Device Management WAP Push service, a background mobile-messaging worker.",
-        actions=[("svc", "dmwappushservice", "disabled"), ("svcstop", "dmwappushservice")],
-        revert=[("svc", "dmwappushservice", "auto"), ("svcstart", "dmwappushservice")],
-        why="dmwappushservice listens for WAP push notifications on every boot; disabling it trims an idle background worker.",
-        changes="Disables and stops dmwappushservice.",
-        risk="safe", impact="low", recommended="optional", admin=True,
-        win="10,11", tags=["service", "wap", "background", "cpu"],
-    ),
-    T(
-        "cpu-040", "Enable x2APIC",
-        "Enables the x2APIC boot option so modern CPUs use the extended interrupt controller mode.",
-        actions=[("cmd", "bcdedit /set x2apicpolicy enable")],
-        revert=[("cmd", "bcdedit /deletevalue x2apicpolicy")],
-        why="x2APIC scales interrupt handling across many logical processors, cutting APIC contention on multicore systems.",
-        changes="Sets the x2apicpolicy boot option to enable.",
-        risk="moderate", impact="moderate", recommended="optional", admin=True, confirm=True,
-        tags=["bcdedit", "apic", "interrupt", "multicore"],
-    ),
-    T(
-        "cpu-041", "Force Platform Tick Timer",
-        "Forces Windows to use the platform clock for its tick timer instead of the variable TSC.",
-        actions=[("cmd", "bcdedit /set useplatformtick yes")],
-        revert=[("cmd", "bcdedit /deletevalue useplatformtick")],
-        why="On systems with unstable TSCs, a fixed platform tick keeps timer intervals even and frame pacing consistent.",
-        changes="Sets the useplatformtick boot option to yes.",
-        risk="moderate", impact="moderate", recommended="optional", admin=True, confirm=True,
-        tags=["bcdedit", "timer", "tick", "latency"],
-    ),
-    T(
-        "cpu-042", "Enhanced TSC Synchronization",
-        "Selects the enhanced TSC synchronization policy for better cross-core time consistency on multi-socket systems.",
-        actions=[("cmd", "bcdedit /set tscsyncpolicy enhanced")],
-        revert=[("cmd", "bcdedit /deletevalue tscsyncpolicy")],
-        why="Enhanced TSC sync aligns the timestamp counters across logical processors, which keeps perf counters and timing accurate.",
-        changes="Sets the tscsyncpolicy boot option to enhanced.",
-        risk="moderate", impact="moderate", recommended="optional", admin=True, confirm=True,
-        tags=["bcdedit", "tsc", "timer", "multicore"],
-    ),
-    T(
-        "cpu-043", "Reserve Low Memory for Drivers",
-        "Adds the avoidlowmemory boot option so kernel drivers load above 2 GB, avoiding driver allocation churn.",
-        actions=[("cmd", "bcdedit /set avoidlowmemory 0x8000000")],
-        revert=[("cmd", "bcdedit /deletevalue avoidlowmemory")],
-        why="Keeping driver allocations out of the low 2 GB region reduces memory-map pressure on heavily loaded systems.",
-        changes="Sets avoidlowmemory to 0x8000000 (2 GB).",
-        risk="moderate", impact="low", recommended="optional", admin=True, confirm=True,
-        win="7,8,10", tags=["bcdedit", "memory", "driver", "kernel"],
-    ),
-    T(
-        "cpu-044", "Disable Emergency Management Services",
-        "Disables the Emergency Management Services serial-redirect boot feature to reduce boot-time overhead.",
-        actions=[("cmd", "bcdedit /set ems no")],
-        revert=[("cmd", "bcdedit /deletevalue ems")],
-        why="EMS listens on serial ports during boot; disabling it removes that component for a faster, cleaner bootstrap.",
-        changes="Sets the ems boot option to no.",
-        risk="safe", impact="low", recommended="optional", admin=True, confirm=True,
-        tags=["bcdedit", "ems", "boot", "serial"],
-    ),
-    T(
-        "cpu-045", "Disable Windows Power Throttling",
-        "Turns off Windows Power Throttling globally so background processes are not duty-cycled to save energy.",
-        actions=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling", "PowerThrottlingOff", 1, "DWORD")],
-        revert=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling", "PowerThrottlingOff", 0, "DWORD")],
-        why="Power Throttling duty-cycles background threads to conserve battery; disabling it keeps work finishing promptly on AC.",
-        changes="Sets PowerThrottlingOff=1 in the PowerThrottling control key.",
-        risk="low", impact="moderate", recommended="recommended", admin=True, confirm=True,
-        win="10,11", when={"laptop": False},
-        tags=["registry", "throttling", "background", "cpu"],
-    ),
-    T(
-        "cpu-046", "MMCSS Latency Class Boost",
-        "Raises the Multimedia Class Scheduler Latency class priority so latency-sensitive tasks are scheduled ahead of background work.",
+        "cpu-003", "Active Cooling Policy (AC)",
+        "Ramp up the fan before the CPU throttles on AC power.",
         actions=[
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Latency", "Priority", 6, "DWORD"),
-            ("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Latency", "Scheduling Category", "High", "STRING"),
+            ("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 1"),
+            ("cmd", "powercfg /setactive SCHEME_CURRENT"),
         ],
         revert=[
-            ("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Latency", "Priority"),
-            ("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Latency", "Scheduling Category"),
+            ("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 0"),
+            ("cmd", "powercfg /setactive SCHEME_CURRENT"),
         ],
-        why="The MMCSS Latency class is used by low-latency audio and input apps; a High scheduling category keeps their deadlines met.",
-        changes="Boosts the MMCSS Latency class priority and scheduling category.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        tags=["mmcss", "latency", "priority", "scheduler"],
+        why="Active cooling increases fan speed under load instead of "
+            "letting the CPU down-clock first.  This keeps boost clocks "
+            "active longer during sustained gaming.",
+        changes="Sets cooling policy to Active on AC.",
+        risk="safe", impact="moderate", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["cooling", "fan", "thermal", "ac"],
     ),
+
+    # ── Power State (Battery) ───────────────────────────────────────
+
     T(
-        "cpu-047", "MMCSS Games I/O Priority",
-        "Raises the Games MMCSS class SuperFetch I/O priority so game reads are served ahead of background I/O.",
-        actions=[("reg", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "SFIO Priority", 7, "DWORD")],
-        revert=[("regdel", "HKLM", "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games", "SFIO Priority")],
-        why="A higher SFIO Priority lets game file reads bypass the disk scheduler's background queue, smoothing level loads and streaming.",
-        changes="Sets the Games MMCSS class SFIO Priority to 7.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
-        tags=["mmcss", "games", "io", "priority"],
+        "cpu-004", "Processor Maximum State 80% (Battery)",
+        "Cap the CPU at 80% on battery to extend play time.",
+        actions=[("power", "processor_max", 80, "DC")],
+        revert=[("power", "processor_max", 100, "DC")],
+        why="On battery, capping the CPU slightly below maximum extends "
+            "session time with minimal gaming impact.  Most games are "
+            "GPU-bound, not CPU-bound.",
+        changes="Sets maximum processor state to 80% on battery.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        when={"laptop": True},
+        tags=["power", "battery", "processor"],
     ),
+
     T(
-        "cpu-048", "Set Device Idle Policy to Performance",
-        "Configures the device idle policy to favor performance over power saving.",
-        actions=[("reg", "HKLM", "SOFTWARE\\Policies\\Microsoft\\Windows\\Power\\DeviceIdlePolicy", "Performance", 1, "DWORD")],
-        revert=[("reg", "HKLM", "SOFTWARE\\Policies\\Microsoft\\Windows\\Power\\DeviceIdlePolicy", "Performance", 0, "DWORD")],
-        why="Device idle throttling slows I/O responses; a performance policy keeps peripherals and storage responsive during gameplay.",
-        changes="Sets DeviceIdlePolicy\\Performance to 1.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        tags=["idle", "policy", "power", "device"],
+        "cpu-005", "Passive Cooling Policy (Battery)",
+        "Throttle the CPU before spinning the fan on battery.",
+        actions=[
+            ("cmd", "powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 0"),
+            ("cmd", "powercfg /setactive SCHEME_CURRENT"),
+        ],
+        revert=[
+            ("cmd", "powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 1"),
+            ("cmd", "powercfg /setactive SCHEME_CURRENT"),
+        ],
+        why="Passive cooling saves battery and reduces noise when unplugged "
+             "by throttling the CPU before ramping the fan.",
+        changes="Sets cooling policy to Passive on battery.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        when={"laptop": True},
+        tags=["cooling", "fan", "thermal", "battery"],
     ),
+
+    # ── Power Throttling ────────────────────────────────────────────
+
     T(
-        "cpu-049", "Disable Away Mode",
-        "Turns off Windows Away Mode so the system does not enter a simulated sleep state.",
-        actions=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power", "AwayModeEnabled", 0, "DWORD")],
-        revert=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power", "AwayModeEnabled", 1, "DWORD")],
-        why="Away Mode dims the display and throttles background work even when the PC is actively in use, causing unexpected performance dips.",
-        changes="Sets AwayModeEnabled to 0.",
-        risk="safe", impact="low", recommended="recommended", admin=True,
-        tags=["away", "power", "sleep", "background"],
+        "cpu-006", "Disable Windows Power Throttling",
+        "Prevent Windows from duty-cycling background threads to save energy.",
+        actions=[
+            ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
+             "PowerThrottlingOff", 1, "DWORD"),
+        ],
+        revert=[
+            ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
+             "PowerThrottlingOff", 0, "DWORD"),
+        ],
+        why="Power Throttling can duty-cycle game-related background threads "
+            "(Discord, streaming software, overlays) causing micro-stutters. "
+            "Disabling it on AC keeps all foreground work at full speed.",
+        changes="Sets PowerThrottlingOff=1.",
+        risk="low", impact="moderate", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        when={"laptop": False},
+        tags=["throttling", "background", "power"],
     ),
+
+    # ── MMCSS Scheduling ────────────────────────────────────────────
+
     T(
-        "cpu-050", "Set System Cooling Policy Active",
-        "Sets the system cooling policy to active so the fan ramps up before the CPU throttles.",
-        actions=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 1")],
-        revert=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR COOLINGPOLICY 0")],
-        why="Active cooling increases fan speed under load instead of letting the CPU down-clock first, keeping boost clocks active longer.",
-        changes="Sets the AC system cooling policy to active.",
-        risk="low", impact="moderate", recommended="recommended", admin=True,
-        tags=["cooling", "fan", "thermal", "throttle"],
+        "cpu-007", "MMCSS Gaming Class Optimization",
+        "Configure the Multimedia Class Scheduler for optimal game thread scheduling.",
+        actions=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+             "SystemResponsiveness", 10, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+             "NetworkThrottlingIndex", 0xffffffff, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "GPU Priority", 8, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "Priority", 6, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "Scheduling Category", "High", "STRING"),
+        ],
+        revert=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+             "SystemResponsiveness", 20, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+             "NetworkThrottlingIndex", 10, "DWORD"),
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "GPU Priority"),
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "Priority"),
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "Scheduling Category"),
+        ],
+        why="MMCSS reserves CPU time for multimedia threads.  The default "
+            "SystemResponsiveness of 20% reserves too much for background "
+            "tasks.  Lowering it to 10% and boosting the Games class gives "
+            "game threads higher scheduling priority.",
+        changes="Sets SystemResponsiveness=10, Games class to High priority.",
+        risk="low", impact="high", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["mmcss", "scheduler", "games", "priority"],
     ),
+
     T(
-        "cpu-051", "Enable Logical Processors",
-        "Enables all logical processors in the device class so Windows can schedule work across every available thread.",
-        actions=[("regall", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Class\\{50127dc3-0fb3-11d2-b28a-00c04fb92618}", "EnableLogicalProcessors", 1, "DWORD")],
-        revert=[("regall", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Class\\{50127dc3-0fb3-11d2-b28a-00c04fb92618}", "EnableLogicalProcessors", 0, "DWORD")],
-        why="Some OEM configurations disable logical processors; enabling them exposes the full thread count to the scheduler.",
-        changes="Sets EnableLogicalProcessors=1 on all processor device class entries.",
-        risk="moderate", impact="moderate", recommended="optional", admin=True,
-        tags=["logical", "processor", "threads", "scheduler"],
+        "cpu-008", "MMCSS Latency Class Optimization",
+        "Boost the Latency class for lower input latency.",
+        actions=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Latency",
+             "Priority", 6, "DWORD"),
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Latency",
+             "Scheduling Category", "High", "STRING"),
+        ],
+        revert=[
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Latency",
+             "Priority"),
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Latency",
+             "Scheduling Category"),
+        ],
+        why="The MMCSS Latency class is used by audio engines and input "
+            "devices.  Boosting its priority ensures low-latency audio and "
+            "input processing during gaming.",
+        changes="Sets Latency class to High priority.",
+        risk="low", impact="moderate", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["mmcss", "latency", "input", "priority"],
     ),
+
     T(
-        "cpu-052", "Optimize Time Check Interval",
-        "Sets the processor idle time check to 5 to reduce the delay before the CPU re-evaluates load.",
-        actions=[("power", "PROCTHROTTLEMIN", 5, "SCHEME_CURRENT")],
-        revert=[("power", "PROCTHROTTLEMIN", 20, "SCHEME_CURRENT")],
-        why="A shorter time check interval makes the CPU resume full performance faster after idle, reducing stutter on bursty workloads.",
-        changes="Sets the AC processor time check to 5.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        tags=["idle", "time", "check", "latency"],
+        "cpu-009", "MMCSS Games I/O Priority",
+        "Boost game file-read priority to reduce streaming stutter.",
+        actions=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "SFIO Priority", "High", "STRING"),
+        ],
+        revert=[
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games",
+             "SFIO Priority"),
+        ],
+        why="A higher SFIO Priority lets game file reads bypass the disk "
+            "scheduler's background queue, smoothing level loads and asset "
+            "streaming in open-world games.",
+        changes="Sets Games SFIO Priority to High.",
+        risk="low", impact="moderate", recommended="recommended",
+        admin=True, confirm=True, warn=_CPU_SAFE_WARN,
+        tags=["mmcss", "games", "io", "disk"],
     ),
+
+    # ── Background Services ─────────────────────────────────────────
+
     T(
-        "cpu-053", "Disable Intel SpeedStep",
-        "Configures the processor to let the OS manage speed transitions instead of using Intel SpeedStep firmware control.",
-        actions=[("reg", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Processor\\Power", "DisableIntelSpeedStep", 0, "DWORD")],
-        revert=[("regdel", "HKLM", "SYSTEM\\CurrentControlSet\\Control\\Processor\\Power", "DisableIntelSpeedStep")],
-        why="Setting DisableIntelSpeedStep to 0 hands frequency scaling back to Windows, which can make boost transitions faster under gaming loads.",
-        changes="Sets DisableIntelSpeedStep to 0 under Processor Power.",
-        risk="low", impact="moderate", recommended="optional", admin=True,
-        tags=["speedstep", "intel", "frequency", "power"],
+        "cpu-010", "Disable Telemetry Service",
+        "Disable the Connected User Experiences and Telemetry service.",
+        actions=[("svc", "DiagTrack", "disabled"), ("svcstop", "DiagTrack")],
+        revert=[("svc", "DiagTrack", "auto"), ("svcstart", "DiagTrack")],
+        why="DiagTrack periodically uploads telemetry data in the background, "
+            "consuming CPU cycles and disk I/O.  Disabling it frees resources "
+            "for active applications.",
+        changes="Disables and stops DiagTrack.",
+        risk="safe", impact="low", recommended="recommended",
+        admin=True,
+        win="10,11",
+        tags=["service", "telemetry", "background"],
+    ),
+
+    T(
+        "cpu-011", "Disable Windows Search Indexer",
+        "Disable the Windows Search indexing service.",
+        actions=[("svc", "WSearch", "disabled"), ("svcstop", "WSearch")],
+        revert=[("svc", "WSearch", "delayed"), ("svcstart", "WSearch")],
+        why="The indexer periodically rescans files, consuming CPU and disk "
+            "bandwidth.  Disabling it keeps resources available for gaming. "
+            "Note: Windows search results will no longer be indexed.",
+        changes="Disables and stops WSearch.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True,
+        tags=["service", "search", "indexer", "background"],
+    ),
+
+    T(
+        "cpu-012", "Disable Program Compatibility Assistant",
+        "Disable the PCA service that monitors application launches.",
+        actions=[("svc", "PcaSvc", "disabled"), ("svcstop", "PcaSvc")],
+        revert=[("svc", "PcaSvc", "auto"), ("svcstart", "PcaSvc")],
+        why="PcaSvc hooks process starts to detect compatibility issues. "
+            "On a gaming system this is unnecessary overhead.",
+        changes="Disables and stops PcaSvc.",
+        risk="low", impact="low", recommended="optional",
+        admin=True,
+        tags=["service", "compatibility", "background"],
+    ),
+
+    T(
+        "cpu-013", "Disable Error Reporting Service",
+        "Disable Windows Error Reporting to stop background crash processing.",
+        actions=[("svc", "WerSvc", "disabled"), ("svcstop", "WerSvc")],
+        revert=[("svc", "WerSvc", "manual"), ("svcstart", "WerSvc")],
+        why="WerSvc spins up to capture and upload crash data, causing "
+            "bursts of CPU and disk activity.  Disabling it removes that "
+            "overhead.",
+        changes="Disables and stops WerSvc.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True,
+        tags=["service", "error", "reporting", "background"],
+    ),
+
+    T(
+        "cpu-014", "Disable WAP Push Service",
+        "Disable the Device Management WAP Push background worker.",
+        actions=[("svc", "dmwappushservice", "disabled"), ("svcstop", "dmwappushservice")],
+        revert=[("svc", "dmwappushservice", "auto"), ("svcstart", "dmwappushservice")],
+        why="dmwappushservice listens for WAP push notifications on every "
+            "boot.  On a desktop gaming system this is unnecessary.",
+        changes="Disables and stops dmwappushservice.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True,
+        win="10,11",
+        tags=["service", "wap", "background"],
+    ),
+
+    # ── System Policies ─────────────────────────────────────────────
+
+    T(
+        "cpu-015", "Device Idle Policy: Performance",
+        "Favor performance over power saving for device idle throttling.",
+        actions=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Policies\Microsoft\Windows\Power\DeviceIdlePolicy",
+             "Performance", 1, "DWORD"),
+        ],
+        revert=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Policies\Microsoft\Windows\Power\DeviceIdlePolicy",
+             "Performance", 0, "DWORD"),
+        ],
+        why="Device idle throttling can slow I/O responses for storage and "
+            "peripherals.  A performance policy keeps devices responsive.",
+        changes="Sets DeviceIdlePolicy Performance=1.",
+        risk="low", impact="moderate", recommended="optional",
+        admin=True,
+        tags=["idle", "device", "power"],
+    ),
+
+    T(
+        "cpu-016", "Disable Away Mode",
+        "Turn off Windows Away Mode to prevent unexpected throttling.",
+        actions=[
+            ("reg", "HKLM",
+             r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
+             "AwayModeEnabled", 0, "DWORD"),
+        ],
+        revert=[
+            ("reg", "HKLM",
+             r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
+             "AwayModeEnabled", 1, "DWORD"),
+        ],
+        why="Away Mode can dim the display and throttle background work "
+            "even when the PC is actively in use, causing performance dips.",
+        changes="Sets AwayModeEnabled=0.",
+        risk="safe", impact="low", recommended="recommended",
+        admin=True,
+        tags=["away", "power", "background"],
+    ),
+
+    # ── Guidance (no changes, just advice) ──────────────────────────
+
+    T(
+        "cpu-017", "CPU Boost Behavior: Let Windows Decide",
+        "Guidance on processor boost behavior.",
+        actions=[
+            ("guidance",
+             "Modern CPUs (AMD Precision Boost, Intel Turbo Boost / Speed "
+             "Shift) dynamically manage their own clock speeds based on "
+             "thermal headroom, power limits, and workload.  Letting "
+             "Windows manage boost (default Balanced plan) gives the best "
+             "balance of performance and thermals.  Forcing maximum boost "
+             "permanently causes thermal throttling and WORSE sustained "
+             "performance.  Keep boost enabled and let the CPU manage it."),
+        ],
+        revert=[("guidance", "No change to revert.")],
+        why="CPU boost is managed by hardware-level algorithms that respond "
+            "in microseconds.  No Windows setting can improve on this.",
+        changes="Shows boost behavior guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["boost", "guidance", "power"],
+    ),
+
+    T(
+        "cpu-018", "CPU Idle States: Leave Them Alone",
+        "Guidance on C-states and idle behavior.",
+        actions=[
+            ("guidance",
+             "C-states (idle states) let the CPU save power and reduce heat "
+             "when not under load.  Disabling C-states forces the CPU to "
+             "run at full power even when idle, generating excess heat that "
+             "causes thermal throttling during gaming.  The CPU wakes from "
+             "C-states in microseconds — too fast to affect FPS.  Leave "
+             "C-states enabled and let the CPU manage them."),
+        ],
+        revert=[("guidance", "No change to revert.")],
+        why="Disabling C-states is one of the most common causes of FPS "
+            "drops in optimization tools.  The CPU needs idle time to cool "
+            "between boost bursts.",
+        changes="Shows C-state guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["cstate", "idle", "guidance", "power"],
+    ),
+
+    T(
+        "cpu-019", "CPU Clock Speed: Don't Force It",
+        "Guidance on processor frequency management.",
+        actions=[
+            ("guidance",
+             "Locking the CPU to a fixed frequency prevents it from boosting "
+             "higher when needed and idling lower when not.  This wastes "
+             "power, generates heat, and reduces peak performance.  Modern "
+             "CPUs boost well above their base clock — let them.  The "
+             "only safe frequency setting is ensuring the maximum state "
+             "is 100% on AC power."),
+        ],
+        revert=[("guidance", "No change to revert.")],
+        why="Forced clock speeds fight the CPU's own power management and "
+            "cause more harm than good.",
+        changes="Shows clock speed guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["clock", "frequency", "guidance"],
     ),
 ])

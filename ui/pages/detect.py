@@ -170,10 +170,31 @@ class DetectPage(QWidget):
             disk.append("SSD")
         if p.get("hdd"):
             disk.append("HDD")
+        gpu_names = p.get("gpu_names", [])
+        gpu_parts = []
+        if gpu_names:
+            dedicated = p.get("gpu_dedicated", [])
+            integrated = p.get("gpu_integrated", [])
+            if dedicated:
+                gpu_parts.append(f"Dedicated: {' / '.join(dedicated)}")
+            if integrated:
+                gpu_parts.append(f"Integrated: {' / '.join(integrated)}")
+            if not gpu_parts:
+                gpu_parts = [" / ".join(gpu_names)]
+        gpu_vendors = p.get("gpu_vendors", p.get("gpu", []))
+        vendor_str = ", ".join(
+            {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}.get(v, v)
+            for v in gpu_vendors if v != "unknown")
+        vram = p.get("gpu_vram_gb", 0)
+        gpu_display = " | ".join(gpu_parts) if gpu_parts else "-"
+        if vendor_str:
+            gpu_display += f" [{vendor_str}]"
+        if vram > 0:
+            gpu_display += f" · {vram} GB VRAM"
         return [
             ("CPU", f"{p.get('cpu_name','-')}"),
             ("Cores", f"{p.get('cpu_cores',0)} cores / {p.get('cpu_threads',0)} threads @ {p.get('cpu_ghz',0)} GHz"),
-            ("GPU", " / ".join(p.get("gpu_names", []))),
+            ("GPU", gpu_display),
             ("RAM", f"{p.get('ram_gb',0)} GB · {p.get('ram_mtps',0)} MT/s · {p.get('ram_channels',0)} module(s)"),
             ("Storage", ", ".join(disk) if disk else "-"),
             ("Network", f"{p.get('adapter',{}).get('name','-')} · {p.get('adapter',{}).get('speed','-')}"),

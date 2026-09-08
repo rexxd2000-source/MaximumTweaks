@@ -5,6 +5,7 @@ from ._base import make_T, validate_module
 
 T = make_T("DirectX 12", win_default="10,11")
 CATEGORY = "DirectX 12"
+_ALL_GPU = {"gpu": ["nvidia", "amd", "intel"]}
 
 TWEAKS = validate_module("dx12", [
     T("dx12-002", "DirectStorage Enable",
@@ -14,6 +15,7 @@ TWEAKS = validate_module("dx12", [
       why="GPU decompression cuts loading and texture streaming stalls.",
       changes="Shows DirectStorage guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["directstorage", "nvme", "streaming"]),
     T("dx12-003", "Reduce CPU Overhead",
       "Guidance on lowering DX12 CPU cost.",
@@ -22,6 +24,7 @@ TWEAKS = validate_module("dx12", [
       why="DX12 scales with cores; a busy desktop starves its worker threads.",
       changes="Shows DX12 CPU guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["cpu", "overhead", "threads"]),
     T("dx12-004", "Shader Caching for DX12",
       "Guidance for per-game DX12 shader caches.",
@@ -30,6 +33,7 @@ TWEAKS = validate_module("dx12", [
       why="A warm DX12 shader cache is the difference between smooth and stuttery runs.",
       changes="Shows shader-cache guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["shaders", "cache", "stutter"]),
     T("dx12-005", "Work Graphs Note",
       "Guidance on DX12 Work Graphs technology.",
@@ -38,6 +42,7 @@ TWEAKS = validate_module("dx12", [
       why="New scheduling features need current drivers to engage.",
       changes="Shows Work Graphs guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["workgraphs", "gpu", "dx12"]),
     T("dx12-006", "Resource Binding Tier Check",
       "Guidance on checking the GPU's resource binding tier.",
@@ -46,6 +51,7 @@ TWEAKS = validate_module("dx12", [
       why="Binding tier determines which DX12 effects a GPU can run.",
       changes="Shows binding-tier guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["binding", "descriptors", "tier"]),
     T("dx12-007", "DXR Ray Tracing Tuning",
       "Guidance to balance DXR quality and frame times.",
@@ -54,6 +60,7 @@ TWEAKS = validate_module("dx12", [
       why="RT effects compound in cost when stacked.",
       changes="Shows DXR tuning guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["dxr", "raytracing", "tuning"]),
     T("dx12-008", "Sampler Feedback Note",
       "Guidance on sampler feedback features.",
@@ -62,6 +69,7 @@ TWEAKS = validate_module("dx12", [
       why="Sampler feedback reduces memory traffic on supported titles.",
       changes="Shows sampler-feedback guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["sampler", "feedback", "memory"]),
     T("dx12-009", "Force DX12 in Supported Games",
       "Guidance to run games on their DX12 renderer.",
@@ -70,6 +78,7 @@ TWEAKS = validate_module("dx12", [
       why="DX12's parallel command lists lower CPU-bound frame times on modern CPUs.",
       changes="Shows renderer-selection guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["dx11", "dx12", "renderer"]),
     T("dx12-010", "Keep DX12 Memory Headroom",
       "Guidance to avoid DX12 VRAM pressure.",
@@ -78,5 +87,6 @@ TWEAKS = validate_module("dx12", [
       why="VRAM spills cause massive stutter in DX12 games.",
       changes="Shows VRAM guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["vram", "memory", "stutter"]),
 ])

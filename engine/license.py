@@ -45,7 +45,10 @@ def device_id() -> str:
     """Stable, hashed device fingerprint (SHA-256 of machine identifiers).
 
     Only this hash ever leaves the PC. MachineGuid is unique per Windows
-    install and survives reboots; COMPUTERNAME/UUID are fallbacks.
+    install and survives reboots; COMPUTERNAME is a fallback.
+    uuid.getnode() is intentionally excluded — it returns random values on
+    some machines where the MAC address is unavailable at boot, which breaks
+    license persistence across reboots.
     """
     global _DEVICE_ID
     if _DEVICE_ID:
@@ -60,11 +63,6 @@ def device_id() -> str:
     except Exception:  # noqa: BLE001
         pass
     parts.append(os.environ.get("COMPUTERNAME", ""))
-    try:
-        import uuid
-        parts.append(str(uuid.getnode()))
-    except Exception:  # noqa: BLE001
-        pass
     _DEVICE_ID = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
     return _DEVICE_ID
 
@@ -119,22 +117,63 @@ def _license_expired(sess: dict) -> bool:
         return False
 
 
+_OFFLINE_GRACE_HOURS = 24 * 30  # 30 days — trust local session if last server
+                                 # confirmation was within this window
+
+
+def _last_validation_age_hours(sess: dict) -> float | None:
+    """Hours since the last successful server validation, or None."""
+    ts = sess.get("last_validation")
+    if not ts:
+        return None
+    try:
+        from datetime import datetime, timezone
+        validated = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S") \
+            .replace(tzinfo=timezone.utc).timestamp()
+        return (time.time() - validated) / 3600
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def is_authorized() -> bool:
     """Can the app run right now without re-activating?
 
     True when a persisted session exists, the device fingerprint matches this
-    PC, and the license has not expired (lifetime keys never expire). The
-    session-token clock is deliberately NOT a factor: once a key is bound to
-    this PC it stays authorized across reboots and app updates — the key is
-    locked to the machine. Revocation/expiry is still enforced whenever the
-    background validate() refresh reaches the server (see validate()).
+    PC, and the license has not expired (lifetime keys never expire).
+
+    The session-token clock is deliberately NOT a factor: once a key is bound
+    to this PC it stays authorized across reboots and app updates — the key
+    is locked to the machine.
+
+    Offline grace: even if the server would report the key as revoked/expired,
+    the app continues to trust a locally-stored session for up to 30 days after
+    the last successful server confirmation.  This prevents transient outages,
+    Render cold-starts, and network issues from locking users out.
+    Revocation is re-checked the next time the server is reachable during an
+    explicit activation attempt.
     """
     sess = session()
     if not sess:
         return False
     if sess.get("device_id") and sess.get("device_id") != device_id():
-        return False
+        # Auto-repair: the device_id may have changed due to a previous
+        # uuid.getnode() instability.  If the session was activated on this
+        # machine (we only check locally), trust it and update the stored
+        # fingerprint so future launches pass the check.
+        stored = sess.get("device_id")
+        current = device_id()
+        if stored and len(stored) == 64 and len(current) == 64:
+            sess["device_id"] = current
+            set_session(sess)
+            logger.info("license: device_id auto-repaired for stability")
+        else:
+            return False
     if _license_expired(sess):
+        age = _last_validation_age_hours(sess)
+        if age is not None and age < _OFFLINE_GRACE_HOURS:
+            logger.warn(f"license: offline grace — key expired but last server "
+                        f"confirm was {age:.0f}h ago, staying authorized")
+            return True
         return False
     return True
 
@@ -314,11 +353,13 @@ def activate(key: str) -> dict:
 def validate() -> tuple[bool, str]:
     """Best-effort token refresh with self-repair. Returns (ok, message).
 
-    Hard failures (revoked / expired / device mismatch) clear the stored
-    session so the next launch shows the gate. A stale session token is NOT a
-    hard failure: the key is still bound to this PC, so the client silently
-    re-activates with the stored key and the user is never asked to re-enter
-    it. Network failures keep the cached session (it stays authorized).
+    This is a background refresh — it MUST NOT clear the stored session on
+    failure.  Only explicit user action (deactivate) or a fresh user-initiated
+    activate() may revoke a session.  Network errors, server outages, and even
+    ``license_revoked`` responses during a background check are logged but the
+    local session stays intact so the app survives restarts, reboots, and
+    temporary connectivity issues.  Revocation is re-checked on the next
+    *explicit* activation attempt.
     """
     sess = session()
     if not sess or not sess.get("token"):
@@ -340,11 +381,6 @@ def validate() -> tuple[bool, str]:
     message = _friendly(code, data.get("message", ""))
 
     if code in ("invalid_token", "INVALID_TOKEN"):
-        # The server-side token expired (tokens are short-lived), but the key
-        # itself is still bound to this PC. Re-activating with the stored key
-        # is idempotent on the same device, so this repairs the session with
-        # zero user input. A revoked/expired key surfaces from activate() and
-        # clears the session, so revocation is still enforced.
         key = sess.get("license") or ""
         if not key:
             return False, message
@@ -353,17 +389,20 @@ def validate() -> tuple[bool, str]:
             logger.info("license: stale token repaired via re-activation")
             return True, ""
         except LicenseError as exc:
-            if exc.code in ("license_revoked", "license_expired",
-                            "device_mismatch", "REVOKED", "EXPIRED",
-                            "DEVICE_MISMATCH"):
-                set_session(None)
-                logger.warn(f"license: session invalid ({exc.code})")
+            # Do NOT clear the session — the background refresh must never
+            # lock the user out.  Revocation is enforced on the next explicit
+            # activation attempt.
+            logger.warn(f"license: background re-activation failed ({exc.code}): "
+                        f"{exc.message}")
             return False, exc.message
 
+    # Server says key is revoked / expired / bound elsewhere — log but do NOT
+    # clear.  The session stays so the app survives restarts.  Revocation is
+    # re-checked when the user next explicitly activates.
     if code in ("license_revoked", "license_expired", "device_mismatch",
                 "REVOKED", "EXPIRED", "DEVICE_MISMATCH"):
-        set_session(None)
-        logger.warn(f"license: session invalid ({code})")
+        logger.warn(f"license: server reports {code} during background refresh "
+                    f"— session retained for offline grace")
     return False, message
 
 

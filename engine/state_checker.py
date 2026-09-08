@@ -48,8 +48,14 @@ _ALIAS_GUIDS = {
     "scheme_min": "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",       # High performance
     "scheme_max": "a1841308-3541-4fab-bc81-f71556f20b4a",       # Power saver
     "scheme_balanced": "381b4222-f694-41f0-9685-ff5bb260df2e",  # Balanced
+    # "Ultimate Performance" ships with a machine-specific GUID on some
+    # OEM/VM builds, so "ultimate" is resolved by friendly name via
+    # `_scheme_named` rather than trusting a hardcoded GUID.
     "ultimate": "e9a42b02-d5df-448d-aa00-03f14749eb61",
 }
+# Friendly name (exact, case-insensitive) for scheme aliases that are not
+# guaranteed to carry a fixed GUID across machines.
+_ALIAS_NAMES = {"ultimate": "ultimate performance"}
 
 # Named power settings used by ("power", ...) actions -> (subgroup, setting).
 POWER_NAMES = {
@@ -62,7 +68,7 @@ POWER_NAMES = {
     "perf_increase_threshold": ("54533251-82be-4824-96c1-47b60b740d00",
                                 "06cadf0e-64ed-448a-8927-ce7bf90eb35d"),
     "perf_decrease_threshold": ("54533251-82be-4824-96c1-47b60b740d00",
-                                "12a0ab44-fe28-4fa9-b3fb-4b64a26f8725"),
+                                "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6"),
     "idle_disable": ("54533251-82be-4824-96c1-47b60b740d00",
                      "5d76a2ca-e8c0-402f-a133-2158312c3406"),
     "time_check": ("54533251-82be-4824-96c1-47b60b740d00",
@@ -71,20 +77,26 @@ POWER_NAMES = {
                     "0cc5b647-c1df-4637-891a-dec35c318583"),
     "parking_max": ("54533251-82be-4824-96c1-47b60b740d00",
                     "ea062031-0e34-4ff1-9b6d-eb1059334028"),
-    "perf_increase_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+    "perf_increase_policy": ("54533251-82be-4824-96c1-47b60b740d00",
                              "465e1f50-b610-473a-ab58-00d1077dc418"),
-    "perf_decrease_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+    "perf_decrease_policy": ("54533251-82be-4824-96c1-47b60b740d00",
                              "8baa4a8a-14c6-4451-8e8b-14bdbd197537"),
-    "boost_policy": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+    "boost_policy": ("54533251-82be-4824-96c1-47b60b740d00",
                      "45bcc044-d885-43a2-8605-ee0ec6e96b59"),
-    "epp": ("36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
+    "epp": ("54533251-82be-4824-96c1-47b60b740d00",
             "36687f9e-e3a5-4dbf-b1dc-15eb381c6863"),
-    "display_timeout": ("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",
+    "display_timeout": ("7516b95f-f776-4464-8c53-06167f40cc99",
                         "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"),
     "adaptive_brightness": ("7516b95f-f776-4464-8c53-06167f40cc99",
                             "fbd9aa66-9553-4097-ba44-ed6e9d65eab8"),
     "hdd_timeout": ("0012ee47-9041-4b5d-9b77-535fba8b1442",
                     "6738e2c4-e8a5-4a42-b16a-e040e769756e"),
+    "sleep_timeout": ("238c9fa8-0aad-41ed-83f4-97be242c8f20",
+                      "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"),
+    "hibernate_timeout": ("238c9fa8-0aad-41ed-83f4-97be242c8f20",
+                          "9d7815a6-7ee4-497e-8888-515a05f02364"),
+    "lid_action": ("4f971e89-eebd-4455-a8de-9e59040e7347",
+                   "5ca83367-6e45-459f-a27b-476b1d01c936"),
     "usb_selective": ("2a737441-1930-4402-8d77-b2bebba308a3",
                       "48e6b7a6-50f5-4782-a5d4-53bb8f07e226"),
 }
@@ -93,7 +105,7 @@ POWER_NAMES = {
 CHANGE_SETTINGS = {
     "standby-timeout": ("238c9fa8-0aad-41ed-83f4-97be242c8f20",
                         "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"),
-    "monitor-timeout": ("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",
+    "monitor-timeout": ("7516b95f-f776-4464-8c53-06167f40cc99",
                         "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"),
     "disk-timeout": ("0012ee47-9041-4b5d-9b77-535fba8b1442",
                      "6738e2c4-e8a5-4a42-b16a-e040e769756e"),
@@ -348,6 +360,28 @@ def _scheme_list() -> set[str]:
     return guids
 
 
+def _scheme_named(name: str) -> str | None:
+    """GUID of the power scheme whose friendly name matches (or None)."""
+    target = (name or "").strip().lower()
+    if not target:
+        return None
+    cached = _cache_get(("scheme_named", target))
+    if cached is not _MISS:
+        return cached
+    gen = _current_gen()
+    guid: str | None = None
+    ok, out = _run("powercfg /list")
+    if ok:
+        for line in out.splitlines():
+            m = re.search(
+                r"Power Scheme GUID:\s*([0-9a-fA-F-]+)\s*\(([^)]*)\)", line)
+            if m and m.group(2).strip().lower() == target:
+                guid = m.group(1).lower()
+                break
+    _cache_set(("scheme_named", target), guid, gen)
+    return guid
+
+
 def _sched_status(task: str) -> str | None:
     key = ("sched", task.upper())
     cached = _cache_get(key)
@@ -586,8 +620,10 @@ def _check_cmd(cmd: str) -> bool | None:
     if m:
         guid = m.group(1).lower()
         active_guid, active_name = _active_scheme()
+        ultimate = _scheme_named("ultimate performance")
         return (active_guid == guid
                 or active_guid == _ALIAS_GUIDS["ultimate"]
+                or (ultimate is not None and active_guid == ultimate)
                 or "ultimate" in active_name.lower()
                 or guid in _scheme_list())
 
@@ -636,12 +672,50 @@ def _scheme_active(target: str) -> bool:
     if not target.startswith("scheme_"):
         guid = _GUID_RE.search(target)
         active_guid, _name = _active_scheme()
-        return bool(guid) and active_guid == guid.group(0).lower()
+        if guid:
+            return active_guid == guid.group(0).lower()
+        # Non-GUID token (e.g. "ultimate"): resolve via the name lookup so the
+        # check still passes on machines where the plan's GUID differs.
+        name = _ALIAS_NAMES.get(target)
+        resolved = _scheme_named(name) if name else None
+        return bool(resolved) and active_guid == resolved
     wanted = _ALIAS_GUIDS.get(target)
     if wanted is None:
         return False
     active_guid, _active_name = _active_scheme()
-    return active_guid == wanted
+    if active_guid == wanted:
+        return True
+    name = _ALIAS_NAMES.get(target)
+    resolved = _scheme_named(name) if name else None
+    return bool(resolved) and active_guid == resolved
+
+
+def _check_powerscheme(action) -> bool | None:
+    """Live-state check for a ``powerscheme`` action."""
+    op = action[1]
+    if op == "setactive":
+        return _scheme_active(action[2])
+    if op in ("create", "duplicate"):
+        if len(action) >= 4:
+            # Named creation: the derived plan must exist under that exact
+            # name; "create" additionally requires it to be the active plan.
+            guid = _scheme_named(action[3])
+            if guid is None:
+                return False
+            if op == "duplicate":
+                return True
+            active_guid, active_name = _active_scheme()
+            return active_guid == guid or active_name.strip().lower() == action[3].strip().lower()
+        guid = action[2].lower()
+        active_guid, active_name = _active_scheme()
+        return (active_guid == guid
+                or "ultimate" in active_name.lower()
+                or guid in _scheme_list())
+    if op == "delete":
+        guid = action[2].lower()
+        active_guid, _active_name = _active_scheme()
+        return guid not in _scheme_list() and active_guid != guid
+    return None
 
 
 def _int_of(text: str) -> int:
@@ -699,16 +773,7 @@ def _check_action(action) -> bool | None:
             val = _power_ac(*spec)
             return None if val is None else val == int(action[2])
         if kind == "powerscheme":
-            op = action[1]
-            if op == "setactive":
-                return _scheme_active(action[2])
-            if op == "duplicate":
-                guid = action[2].lower()
-                active_guid, active_name = _active_scheme()
-                return (active_guid == guid
-                        or "ultimate" in active_name.lower()
-                        or guid in _scheme_list())
-            return None
+            return _check_powerscheme(action)
         if kind == "sched":
             task = _extract_task(action[2])
             status = _sched_status(task) if task else None

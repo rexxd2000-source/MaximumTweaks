@@ -36,9 +36,9 @@ for _t in TWEAKS:
         _t["guidance"] = True
         _t["recommended"] = "guide"
 
-# Laptop-only tweaks and guides get their own top-level categories so hardware
-# categories never mix in informational/manual-only content. Laptop wins over
-# guide (a laptop-specific guide lives under Laptop, not Guides).
+# Laptop-only tweaks get their own top-level category so hardware categories
+# never mix in laptop-specific content.  Guidance tweaks keep their original
+# module category so they appear alongside the actionable tweaks they relate to.
 _LAPTOP_EXTRA_IDS = {"start-013"}  # dGPU preload tweak (hybrid-graphics only)
 
 
@@ -54,11 +54,8 @@ def _is_laptop(_t) -> bool:
 for _t in TWEAKS:
     if _is_laptop(_t):
         _t["category"] = "Laptop"
-    elif _t.get("guidance"):
-        _t["category"] = "Guides"
 
 TWEAKS.sort(key=lambda t: t["category"])
-CATEGORIES["Guides"] = "guides"
 CATEGORIES["Laptop"] = "laptop"
 
 # Merge per-tweak validation metadata (status/evidence/target/verdict),

@@ -197,6 +197,8 @@ class MainWindow(QWidget):
         nav_lay.addWidget(btn)
         self.nav_buttons["dashboard"] = btn
 
+        nav_lay.addWidget(btn)
+
         # ---- TWEAKS (collapsible section with sub-categories)
         tweak_header = QPushButton("TWEAKS  \u25be")
         tweak_header.setObjectName("NavSectionBtn")

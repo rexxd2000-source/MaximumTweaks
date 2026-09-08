@@ -24,7 +24,7 @@ import winreg
 
 from rexlog import logger
 
-from .detector import _csv_rows, _ps, _gpu_vendor, _chassis_is_laptop
+from .detector import _csv_rows, _ps, _gpu_vendor, _gpu_is_integrated, _chassis_is_laptop
 
 # Probe results are cached briefly so repeated scans (page open, scan button,
 # optimize dialog) do not re-spawn several PowerShell processes each time.
@@ -179,15 +179,16 @@ def _probe_gpu():
     rows = _csv_rows(
         "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM,PNPDeviceID,VideoModeDescription")
     gpus, vendors = [], []
+    integrated, dedicated = [], []
     reg_gpus = _gpu_vram_registry()
+    total_vram = 0
     for row in rows:
         name = (row.get("Name") or "Unknown Video Controller").strip()
         vendor = _gpu_vendor(name)
+        is_integrated = _gpu_is_integrated(name)
         if vendor not in vendors:
             vendors.append(vendor)
         vram = 0
-        # Prefer the accurate 64-bit registry size; fall back to AdapterRAM
-        # (which clamps to ~4 GB) only when the registry has no match.
         pnp = (row.get("PNPDeviceID") or "").strip().upper()
         vram_bytes = 0
         for rg in reg_gpus:
@@ -202,26 +203,36 @@ def _probe_gpu():
                 vram = round(int(float(row.get("AdapterRAM") or 0)) / (1024 ** 3), 1)
             except (TypeError, ValueError):
                 pass
+        total_vram = max(total_vram, vram)
+        gpu_type = "integrated" if is_integrated else "dedicated"
+        if is_integrated:
+            integrated.append(name)
+        else:
+            dedicated.append(name)
         gpus.append({
             "name": name,
             "driver": (row.get("DriverVersion") or "Unknown").strip(),
             "vram_gb": vram,
             "vendor": vendor,
+            "type": gpu_type,
             "mode": (row.get("VideoModeDescription") or "").strip(),
             "pnp": pnp,
         })
     if not gpus:
         gpus = [{"name": "Unknown GPU", "driver": "Unknown", "vram_gb": 0,
-                 "vendor": "unknown", "mode": "", "pnp": ""}]
+                 "vendor": "unknown", "type": "unknown", "mode": "", "pnp": ""}]
         vendors = ["unknown"]
     facts = []
     for g in gpus:
-        res = (f" \u00b7 {g['mode']}" if g.get("mode") else "")
-        vram = f" \u00b7 {g['vram_gb']} GB VRAM" if g.get("vram_gb") else ""
-        facts.append(("GPU", f"{g['name']}{vram}{res}"))
+        res = (f" · {g['mode']}" if g.get("mode") else "")
+        vram = f" · {g['vram_gb']} GB VRAM" if g.get("vram_gb") else ""
+        gpu_type = f" ({g['type']})" if g.get("type") != "unknown" else ""
+        facts.append(("GPU", f"{g['name']}{gpu_type}{vram}{res}"))
         facts.append(("Driver", g["driver"]))
     return {"label": "GPU", "ok": True, "facts": facts,
-            "data": {"gpus": gpus, "vendors": vendors}}
+            "data": {"gpus": gpus, "vendors": vendors,
+                     "integrated": integrated, "dedicated": dedicated,
+                     "total_vram_gb": total_vram}}
 
 
 # --------------------------------------------------------------------------

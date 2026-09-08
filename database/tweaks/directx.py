@@ -5,6 +5,7 @@ from ._base import make_T, validate_module
 
 T = make_T("DirectX", win_default="7,8,10,11")
 CATEGORY = "DirectX"
+_ALL_GPU = {"gpu": ["nvidia", "amd", "intel"]}
 
 TWEAKS = validate_module("directx", [
     T("dx-001", "Run DirectX Diagnostic",
@@ -14,6 +15,7 @@ TWEAKS = validate_module("directx", [
       why="A dxdiag report shows driver, display and DirectX feature level details useful before tuning.",
       changes="Opens the DirectX Diagnostic Tool.",
       risk="safe", impact="very low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["dxdiag", "diagnostics", "gpu"]),
     T("dx-002", "Update DirectX Runtime",
       "Guidance for the DirectX end-user runtime.",
@@ -22,6 +24,7 @@ TWEAKS = validate_module("directx", [
       why="The redistributable closes gaps in legacy DX9-11 DLL coverage.",
       changes="Shows DirectX runtime guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["runtime", "redistributable", "dx9"]),
     T("dx-003", "Check DirectX 12 Support",
       "Reports whether the GPU supports feature level 12.",
@@ -30,6 +33,7 @@ TWEAKS = validate_module("directx", [
       why="Feature level 12.x gates modern effects in DX12 games.",
       changes="Writes a dxdiag report to the temp folder.",
       risk="safe", impact="very low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["dx12", "featurelevel", "gpu"]),
     T("dx-004", "Verify Feature Level in Games",
       "Guidance to check per-game feature-level requirements.",
@@ -38,6 +42,7 @@ TWEAKS = validate_module("directx", [
       why="Avoids chasing settings on a GPU that lacks the required features.",
       changes="Shows feature-level guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["featurelevel", "dx12", "compat"]),
     T("dx-005", "Shader Compilation Guidance",
       "Guidance on DX12 shader compilation hitches.",
@@ -46,6 +51,7 @@ TWEAKS = validate_module("directx", [
       why="DX12 shifts shader compilation to the CPU at runtime unless cached.",
       changes="Shows shader-compilation guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["shaders", "stutter", "compile"]),
     T("dx-006", "Async Compute Note",
       "Guidance on async compute behaviour in DX12.",
@@ -54,6 +60,7 @@ TWEAKS = validate_module("directx", [
       why="Async compute should be game-managed, not globally forced.",
       changes="Shows async-compute guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["asynccompute", "gpu", "dx12"]),
     T("dx-007", "Ray Tracing Overhead Note",
       "Guidance for ray-tracing cost in DX12 titles.",
@@ -62,6 +69,7 @@ TWEAKS = validate_module("directx", [
       why="Unbounded RT budget causes severe 1% low frame times.",
       changes="Shows ray-tracing guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["raytracing", "dxr", "performance"]),
     T("dx-008", "Mesh Shader Note",
       "Guidance on mesh shader workloads in DX12.",
@@ -70,6 +78,7 @@ TWEAKS = validate_module("directx", [
       why="Mesh shaders replace the old vertex pipeline on supported hardware.",
       changes="Shows mesh-shader guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["meshshaders", "geometry", "dx12"]),
     T("dx-009", "D3D9 Windowed Optimizations",
       "Guidance for legacy DX9 games in windowed mode.",
@@ -78,6 +87,7 @@ TWEAKS = validate_module("directx", [
       why="Legacy presentation paths are slowest in windowed mode.",
       changes="Shows DX9 windowed guidance.",
       risk="safe", impact="low", recommended="recommended",
+      when=_ALL_GPU,
       tags=["dx9", "legacy", "windowed"]),
     T("dx-010", "Update GPU Drivers for DX12",
       "Guidance to keep DX12 drivers current.",
@@ -86,5 +96,6 @@ TWEAKS = validate_module("directx", [
       why="New DX12 titles frequently rely on the latest driver fixes.",
       changes="Shows driver-update guidance.",
       risk="safe", impact="moderate", recommended="recommended",
+      when=_ALL_GPU,
       tags=["driver", "dx12", "update"]),
 ])

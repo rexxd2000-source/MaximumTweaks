@@ -24,7 +24,9 @@ Action tuples (first element selects executor implementation):
                                           (e.g. a game's GameUserSettings.ini)
   ("power", setting, value, scheme)       powercfg value, scheme default SCHEME_CURRENT
   ("powerscheme", "setactive", guid)      Activate a power scheme
-  ("powerscheme", "duplicate", base_guid, name)  Create new scheme
+  ("powerscheme", "duplicate", base_guid, name)  Clone base_guid, rename the copy
+  ("powerscheme", "create", base_guid, name)    Clone + rename + activate
+  ("powerscheme", "delete", guid)         Delete a power scheme
   ("sched", "disable", "/TN \\"task\\"") / ("sched", "enable", ...)
   ("appx", "remove", package)             Remove a per-user Appx package
   ("appx", "register", package)           Re-register a package (revert)
@@ -109,7 +111,7 @@ def _validate_action(action, tweak_id):
         if len(action) < 3:
             raise ValueError(f"Tweak {tweak_id}: power needs setting+value")
     elif kind == "powerscheme":
-        if len(action) < 2 or action[1] not in ("setactive", "duplicate", "change"):
+        if len(action) < 2 or action[1] not in ("setactive", "duplicate", "create", "delete", "change"):
             raise ValueError(f"Tweak {tweak_id}: bad powerscheme action {action!r}")
     elif kind in ("sched", "appx", "restart", "mkdir"):
         if len(action) < 2:
@@ -124,7 +126,7 @@ def _validate_action(action, tweak_id):
 def _normalize_when(when):
     out = {}
     for key, req in (when or {}).items():
-        if key in ("gpu", "cpu_vendor", "ntfs", "win_versions"):
+        if key in ("gpu", "gpu_type", "cpu_vendor", "ntfs", "win_versions"):
             out[key] = list(req) if isinstance(req, (list, tuple)) else [req]
         elif isinstance(req, dict) and req.keys() <= {">=", "<=", "==", ">", "<"}:
             out[key] = {k: _norm_int(v, f"{key}.{k}") for k, v in req.items()}
@@ -199,3 +201,16 @@ def validate_module(module_name, tweaks):
 
 # Compact regex guard used by loader to confirm ids are filesystem-safe.
 SAFE_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$")
+
+
+def plan_guid(name: str) -> str:
+    """Deterministic, stable power-scheme GUID derived from a plan name.
+
+    The same name always maps to the same GUID, so named plan creation is
+    idempotent (re-applying re-activates instead of erroring) and revert can
+    delete the exact plan an apply created.  uuid5 keeps the result a valid
+    RFC-4122 GUID that powercfg accepts.
+    """
+    import uuid
+
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, name)).lower()

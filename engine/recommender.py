@@ -11,8 +11,9 @@ WARNING = "warning"           # risky for the detected hardware
 UNKNOWN = "unknown"           # hardware not detected yet — cannot confirm compatibility
 
 #: ``when`` condition keys the recommender actually evaluates against a profile.
-HARDWARE_KEYS = ("gpu", "cpu_vendor", "intel_cpu", "cpu_cores", "ram_gb",
-                 "ram_channels", "ssd", "hdd", "nvme", "laptop")
+HARDWARE_KEYS = ("gpu", "gpu_type", "cpu_vendor", "intel_cpu", "cpu_cores",
+                 "ram_gb", "ram_channels", "ssd", "hdd", "nvme", "laptop",
+                 "audio_realtek", "audio_usb", "audio_bluetooth", "audio_hdmi")
 
 
 def windows_versions(tweak: dict) -> set[str]:
@@ -102,6 +103,16 @@ def evaluate(tweak: dict, profile: dict) -> dict:
             need = "/".join(names.get(v, v) for v in when["gpu"])
             reasons.append(f"Requires a {need} GPU")
 
+    if when.get("gpu_type"):
+        gpu_types = profile.get("gpu_types") or []
+        if isinstance(when["gpu_type"], (list, tuple)):
+            needed = set(when["gpu_type"])
+        else:
+            needed = {when["gpu_type"]}
+        if not needed & set(gpu_types):
+            need = "/".join(when["gpu_type"])
+            reasons.append(f"Requires a {need} GPU")
+
     if when.get("cpu_vendor") and not _in(when["cpu_vendor"], "cpu_vendor", profile):
         reasons.append(f"Requires {'/'.join(when['cpu_vendor'])} CPU")
 
@@ -128,6 +139,16 @@ def evaluate(tweak: dict, profile: dict) -> dict:
         reasons.append("Requires a laptop")
     if when.get("laptop") is False and profile.get("laptop"):
         reasons.append("Not compatible with laptops — causes excessive battery drain or breaks hybrid graphics")
+
+    # Audio hardware gating
+    if when.get("audio_realtek") and not profile.get("has_audio_realtek"):
+        reasons.append("Requires Realtek or compatible onboard audio")
+    if when.get("audio_usb") and not profile.get("has_audio_usb"):
+        reasons.append("Requires a USB audio device")
+    if when.get("audio_bluetooth") and not profile.get("has_audio_bluetooth"):
+        reasons.append("Requires a Bluetooth audio device")
+    if when.get("audio_hdmi") and not profile.get("has_audio_hdmi"):
+        reasons.append("Requires an HDMI or DisplayPort audio device")
 
     # Windows version gating: the ``win`` field is the per-tweak support list
     # (e.g. "10" or "11"), and ``when.win_versions`` is the same as a condition.

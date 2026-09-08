@@ -34,6 +34,8 @@ from engine import state as state_mgr
 from ui.categories import (
     ALL_TWEAK_KEYS,
     CATEGORY_GROUPS,
+    cpu_filter_tweaks,
+    gpu_filter_tweaks,
     group_tweaks,
     logo_path,
     recommended_count,
@@ -82,8 +84,8 @@ HEADER_TITLES = {
     "performance": "Performance Tweaks",
     "fortnite": "Fortnite Tweaks",
     "games": "Game Tweaks",
-    "guides": "Guides",
     "laptop": "Laptop Tweaks",
+    "power": "Power Tweaks",
 }
 
 HEADER_ICONS = {
@@ -99,8 +101,8 @@ HEADER_ICONS = {
     "performance": "\u26a1",
     "fortnite": "\u25c9",
     "games": "\u2605",
-    "guides": "\u2139",
     "laptop": "\u25c8",
+    "power": "\u26a1",
 }
 
 
@@ -126,6 +128,7 @@ class TweaksPage(QWidget):
         self._in_flight: set[str] = set()
         self._batch_ids: list[str] = []
         self._batch_mode = "apply"
+        self._gpu_selected_vendor: str | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -160,6 +163,10 @@ class TweaksPage(QWidget):
             root.addSpacing(10)
             self.opt_host = self._build_optimizer_bar()
             root.addWidget(self.opt_host)
+            self.ram_selector = self._build_ram_selector()
+            root.addWidget(self.ram_selector)
+            self.gpu_selector = self._build_gpu_selector()
+            root.addWidget(self.gpu_selector)
 
         # ---- Card grid (expands to fill the viewport so no raw page
         # background ever shows around the cards; the last row stretches)
@@ -322,12 +329,159 @@ class TweaksPage(QWidget):
         self._scan_worker = None
         return host
 
+    def _build_ram_selector(self):
+        from ui.pages.ram_selector import RAM_TIERS, RamTierCard
+        host = QWidget()
+        host.setObjectName("ram-selector-bar")
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        title = QLabel("RAM Optimizer \u2014 Select your installed RAM size")
+        title.setStyleSheet("font-size: 15px; font-weight: 800;")
+        lay.addWidget(title)
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        self._ram_cards = {}
+        for i, (key, tier) in enumerate(RAM_TIERS.items()):
+            card = RamTierCard(key, tier, self.ctx)
+            card._on_click = self._on_ram_tier_clicked
+            grid.addWidget(card, i // 3, i % 3)
+            self._ram_cards[key] = card
+        lay.addLayout(grid)
+        self._ram_status = QLabel("Select your RAM size above, then the recommended "
+                                  "memory tweaks will be pre-checked automatically.")
+        self._ram_status.setObjectName("PageSub")
+        self._ram_status.setWordWrap(True)
+        lay.addWidget(self._ram_status)
+        self._ram_selected_tier = None
+        host.setVisible(False)
+        return host
+
+    def _on_ram_tier_clicked(self, key):
+        from ui.pages.ram_selector import RAM_TIERS
+        from config.app_config import THEME as T
+        self._ram_selected_tier = key
+        for k, card in self._ram_cards.items():
+            card.setStyleSheet(
+                card.styleSheet().replace(f"border: 2px solid {T['accent']}", "")
+                if k != key else card.styleSheet()
+            )
+        card = self._ram_cards[key]
+        card.setStyleSheet(
+            f"QFrame#Card {{ border: 2px solid {T['accent']}; border-radius: 12px; "
+            f"background: {T['card']}; }}"
+        )
+        tier = RAM_TIERS[key]
+        self._ram_status.setText(
+            f"<b>{tier['label']} ({tier['desc']})</b> \u2014 "
+            f"Pre-checking {len(tier['tweaks'])} memory optimizations. "
+            f"Click Apply All below to apply them.")
+        for tid in tier["tweaks"]:
+            if tid in self._cards:
+                self._cards[tid].toggle.setChecked(True)
+
+    def _build_gpu_selector(self):
+        from config.app_config import THEME as T
+        host = QWidget()
+        host.setObjectName("gpu-selector-bar")
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(12)
+
+        prompt = QLabel("\u25c6  Select Your GPU  \u25c6")
+        prompt.setStyleSheet("font-size: 18px; font-weight: 900;")
+        prompt.setAlignment(Qt.AlignCenter)
+        lay.addWidget(prompt)
+
+        sub = QLabel("Choose your GPU vendor to see only the optimizations "
+                     "that apply to your hardware.")
+        sub.setObjectName("PageSub")
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+        lay.addSpacing(4)
+
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        self._gpu_cards = {}
+        gpu_vendors = [
+            ("nvidia", "NVIDIA", "GeForce RTX / GTX", "Reflex, Low Latency Mode, PowerMizer, persistence, telemetry", "#76B900"),
+            ("amd", "AMD", "Radeon RX", "Anti-Lag, FreeSync, SAM, shader cache, tessellation", "#ED1C24"),
+            ("integrated", "Integrated", "Intel UHD / Arc", "ReBAR, XeSS, VSync, Speed Shift, Turbo Boost", "#0071C5"),
+        ]
+        for i, (key, label, sublabel, features, color) in enumerate(gpu_vendors):
+            card = QFrame()
+            card.setObjectName("GpuVendorCard")
+            card.setCursor(Qt.PointingHandCursor)
+            card.setFixedHeight(100)
+            card.setStyleSheet(
+                f"QFrame#GpuVendorCard {{ border: 2px solid {T['border']}; "
+                f"border-radius: 14px; background: {T['card']}; padding: 4px; }}"
+                f"QFrame#GpuVendorCard:hover {{ border: 2px solid {color}; }}")
+            card_lay = QVBoxLayout(card)
+            card_lay.setContentsMargins(18, 14, 18, 14)
+            card_lay.setSpacing(4)
+            top = QHBoxLayout()
+            lbl = QLabel(label)
+            lbl.setStyleSheet(f"font-size: 20px; font-weight: 900; color: {color};")
+            top.addWidget(lbl)
+            top.addStretch()
+            card_lay.addLayout(top)
+            sub_lbl = QLabel(sublabel)
+            sub_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 12px; font-weight: 600;")
+            card_lay.addWidget(sub_lbl)
+            feat_lbl = QLabel(features)
+            feat_lbl.setStyleSheet(f"color: {T['text']}; font-size: 11px;")
+            card_lay.addWidget(feat_lbl)
+            card.mousePressEvent = lambda _, k=key: self._on_gpu_vendor_clicked(k)
+            grid.addWidget(card, 0, i)
+            self._gpu_cards[key] = card
+        lay.addLayout(grid)
+
+        self._gpu_status = QLabel()
+        self._gpu_status.setObjectName("PageSub")
+        self._gpu_status.setAlignment(Qt.AlignCenter)
+        self._gpu_status.setWordWrap(True)
+        self._gpu_status.setText(
+            "\u2191 Click a GPU vendor above to filter optimizations \u2191")
+        self._gpu_status.setStyleSheet(
+            f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
+        lay.addWidget(self._gpu_status)
+
+        self._gpu_selected_vendor = state_mgr.get_gpu_selection()
+        host.setVisible(False)
+        return host
+
+    def _on_gpu_vendor_clicked(self, vendor):
+        from config.app_config import THEME as T
+        self._gpu_selected_vendor = vendor
+        state_mgr.set_gpu_selection(vendor)
+        for k, card in self._gpu_cards.items():
+            if k == vendor:
+                card.setStyleSheet(
+                    f"QFrame#GpuVendorCard {{ border: 2px solid {T['accent']}; "
+                    f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+            else:
+                card.setStyleSheet(
+                    f"QFrame#GpuVendorCard {{ border: 2px solid {T['border']}; "
+                    f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+        labels = {"nvidia": "NVIDIA", "amd": "AMD", "integrated": "Integrated"}
+        self._gpu_status.setText(
+            f"\u2713  Showing {labels[vendor]} GPU optimizations")
+        self._gpu_status.setStyleSheet(
+            f"color: #10B981; font-size: 13px; font-weight: 700;")
+        self.page = 1
+        self.refresh()
+
     def _update_optimizer_bar(self):
         if self.fixed_group or not hasattr(self, "opt_host"):
             return
         from engine.optimizer import BUTTON_LABELS, GROUP_OPTIMIZERS
         clear_layout(self.opt_lay)
         if not self.key or self.key == ALL_KEY:
+            self.opt_host.setVisible(False)
+            return
+        if self.key == "gpu" and not self._gpu_selected_vendor:
             self.opt_host.setVisible(False)
             return
         keys = GROUP_OPTIMIZERS.get(self.key)
@@ -398,12 +552,16 @@ class TweaksPage(QWidget):
     def _open_optimizer_group(self, group):
         from engine.optimizer import GROUP_OPTIMIZERS, OPTIMIZERS
         from ui.optimize_dialog import OptimizeDialog
+        # Prevent double-click: ignore if a dialog is already open.
+        if hasattr(self, "_opt_dialog") and self._opt_dialog is not None:
+            return
         keys = GROUP_OPTIMIZERS.get(group)
         if not keys:
             return
         opts = [OPTIMIZERS[k] for k in keys]
-        dlg = OptimizeDialog(self.ctx, opts, parent=self)
-        dlg.exec()
+        self._opt_dialog = OptimizeDialog(self.ctx, opts, parent=self)
+        self._opt_dialog.finished.connect(lambda: setattr(self, "_opt_dialog", None))
+        self._opt_dialog.exec()
 
     # ---------------- Public API ----------------
 
@@ -415,6 +573,29 @@ class TweaksPage(QWidget):
         if changed:
             self.page = 1
             self.search.clear()
+        if hasattr(self, "ram_selector"):
+            self.ram_selector.setVisible(key == "ram")
+        if hasattr(self, "gpu_selector"):
+            is_gpu = key == "gpu"
+            self.gpu_selector.setVisible(is_gpu)
+            if is_gpu:
+                from config.app_config import THEME as T
+                labels = {"nvidia": "NVIDIA", "amd": "AMD", "integrated": "Integrated"}
+                if self._gpu_selected_vendor:
+                    self._gpu_status.setText(
+                        f"\u2713  Showing {labels.get(self._gpu_selected_vendor, self._gpu_selected_vendor)} GPU optimizations")
+                    self._gpu_status.setStyleSheet(
+                        f"color: #10B981; font-size: 13px; font-weight: 700;")
+                    card = self._gpu_cards.get(self._gpu_selected_vendor)
+                    if card:
+                        card.setStyleSheet(
+                            f"QFrame#GpuVendorCard {{ border: 2px solid {T['accent']}; "
+                            f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+                else:
+                    self._gpu_status.setText(
+                        "\u2191 Click a GPU vendor above to filter optimizations \u2191")
+                    self._gpu_status.setStyleSheet(
+                        f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
         self.refresh()
 
     def refresh(self, audit=True):
@@ -539,8 +720,9 @@ class TweaksPage(QWidget):
         self._set_toolbar()
         # Clean up any previous worker.
         if self._worker and self._worker.isRunning():
-            self._worker.terminate()
-            self._worker.wait(2000)
+            if hasattr(self._worker, "cancel"):
+                self._worker.cancel()
+            self._worker.wait(5000)
         self._worker = BatchWorker(ids, mode, self, profile=self.ctx.profile)
         self._worker.batch_done.connect(self._on_batch_done)
         self._worker.batch_error.connect(self._on_batch_error)
@@ -616,6 +798,17 @@ class TweaksPage(QWidget):
             for k in ALL_TWEAK_KEYS:
                 out.extend(group_tweaks(k))
             return out
+        if self.key == "gpu" and self._gpu_selected_vendor:
+            return gpu_filter_tweaks("gpu", self._gpu_selected_vendor)
+        if self.key == "gpu" and not self._gpu_selected_vendor:
+            return []
+        if self.key == "cpu":
+            profile = self.ctx.profile or {}
+            return cpu_filter_tweaks(
+                "cpu",
+                cpu_vendor=profile.get("cpu_vendor"),
+                is_laptop=profile.get("laptop"),
+            )
         return group_tweaks(self.key)
 
     def _visible_tweaks(self) -> list[dict]:
@@ -699,6 +892,8 @@ class TweaksPage(QWidget):
         self._relayout()
 
     def _relayout(self):
+        if self._busy:
+            return
         cols, rows = self._geometry()
         per_page = cols * rows
         total = len(self._filtered)

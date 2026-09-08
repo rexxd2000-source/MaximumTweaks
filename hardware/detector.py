@@ -58,9 +58,20 @@ def _gpu_vendor(name):
         return "nvidia"
     if any(k in n for k in ("radeon", "amd", "ati", "firepro", "rx ")):
         return "amd"
-    if any(k in n for k in ("intel", "arc", "iris", "uhd", "hd graphics")):
+    if any(k in n for k in ("intel arc", "arc a", "arc b")):
+        return "intel"
+    if any(k in n for k in ("intel", "iris", "uhd", "hd graphics")):
         return "intel"
     return "unknown"
+
+
+def _gpu_is_integrated(name):
+    n = name.lower()
+    return any(k in n for k in (
+        "iris", "uhd", "hd graphics", "igp", "integrated",
+        # Intel iGPU families (non-Arc)
+        "iris xe", "iris plus", "iris xeon",
+    ))
 
 
 def _chassis_is_laptop():
@@ -87,6 +98,10 @@ def detect() -> dict:
         "cpu_ghz": 0.0,
         "gpu": [],
         "gpu_names": [],
+        "gpu_vendors": [],
+        "gpu_dedicated": [],
+        "gpu_integrated": [],
+        "gpu_vram_gb": 0,
         "ram_gb": round(psutil.virtual_memory().total / (1024 ** 3), 1),
         "ram_channels": 0,
         "ram_mtps": 0,
@@ -98,6 +113,11 @@ def detect() -> dict:
         "win_build": 0,
         "monitor_refresh": 0,
         "adapter": {"name": "-", "type": "unknown", "speed": ""},
+        "has_audio_realtek": False,
+        "has_audio_usb": False,
+        "has_audio_bluetooth": False,
+        "has_audio_hdmi": False,
+        "audio_devices": [],
     }
     _detect_cpu(profile)
     _detect_gpu(profile)
@@ -108,6 +128,7 @@ def detect() -> dict:
     _detect_network(profile)
     profile["laptop"] = _chassis_is_laptop()
     profile["ram_channels"] = max(1, profile["ram_channels"])
+    _detect_audio(profile)
     logger.info("Detection complete: " + ", ".join(
         f"{k}={v}" for k, v in profile.items() if isinstance(v, (str, int, float, bool))))
     return profile
@@ -137,13 +158,25 @@ def _detect_cpu(p):
 
 def _detect_gpu(p):
     rows = _csv_rows(
-        "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion")
+        "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM")
     for row in rows:
         name = (row.get("Name") or "Unknown Video Controller").strip()
         vendor = _gpu_vendor(name)
+        integrated = _gpu_is_integrated(name)
         p["gpu_names"].append(name)
         if vendor not in p["gpu"]:
             p["gpu"].append(vendor)
+        if vendor not in p["gpu_vendors"]:
+            p["gpu_vendors"].append(vendor)
+        if integrated:
+            p["gpu_integrated"].append(name)
+        else:
+            p["gpu_dedicated"].append(name)
+        try:
+            vram = round(int(float(row.get("AdapterRAM") or 0)) / (1024 ** 3), 1)
+            p["gpu_vram_gb"] = max(p["gpu_vram_gb"], vram)
+        except (TypeError, ValueError):
+            pass
     if not p["gpu"]:
         p["gpu"] = ["unknown"]
 
@@ -225,3 +258,36 @@ def _detect_network(p):
             elif p["adapter"]["type"] == "unknown":
                 p["adapter"]["type"] = "ethernet"
             p["adapter"]["speed"] = row.get("LinkSpeed") or p["adapter"]["speed"]
+
+
+def _detect_audio(p):
+    """Detect audio hardware: Realtek, USB, Bluetooth, HDMI/DP devices."""
+    rows = _csv_rows(
+        "Get-CimInstance Win32_SoundDevice | "
+        "Select-Object Name,Manufacturer,Status,PNPDeviceID")
+    for row in rows:
+        name = (row.get("Name") or "").strip()
+        mfr = (row.get("Manufacturer") or "").strip()
+        pnp = (row.get("PNPDeviceID") or "").strip().lower()
+        dev = {"name": name, "manufacturer": mfr,
+               "status": (row.get("Status") or "Unknown").strip()}
+        p["audio_devices"].append(dev)
+        nl = name.lower() + " " + mfr.lower()
+        if any(k in nl for k in ("realtek", "alc", "conexant")):
+            p["has_audio_realtek"] = True
+        if pnp.startswith("usb"):
+            p["has_audio_usb"] = True
+        if any(k in nl for k in ("bluetooth", "bt", "a2dp")) or "bth" in pnp:
+            p["has_audio_bluetooth"] = True
+        if any(k in nl for k in ("hdmi", "displayport", "nvidia high definition",
+                                  "amd high definition", "intel display")):
+            p["has_audio_hdmi"] = True
+    # Fallback: check for Bluetooth audio services
+    if not p["has_audio_bluetooth"]:
+        bt_rows = _csv_rows(
+            "Get-Service -Name 'BthHFEnum','BthA2dp' -ErrorAction SilentlyContinue | "
+            "Select-Object Name,Status")
+        for bt in bt_rows:
+            if (bt.get("Status") or "").lower() == "running":
+                p["has_audio_bluetooth"] = True
+                break

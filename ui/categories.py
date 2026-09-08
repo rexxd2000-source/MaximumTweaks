@@ -1,4 +1,4 @@
-﻿"""Category groups for the redesigned UI.
+"""Category groups for the redesigned UI.
 
 The database stores ~45 raw categories; the UI groups them into 12 clear,
 user-facing sections. Every raw category maps to exactly one group.
@@ -42,7 +42,7 @@ DB_AFFECTS = {
     "Security & Performance": "Security",
     "Display": "Display",
     "Monitor": "Monitor",
-    "BIOS": "BIOS / UEFI",
+    "BIOS": "Firmware",
     "Advanced": "Advanced",
     "Experimental": "Experimental",
     "Network": "Network",
@@ -64,6 +64,8 @@ DB_AFFECTS = {
     "Repair": "Repair",
     "Guides": "Guide",
     "Laptop": "Laptop",
+    "Performance": "Performance",
+    "FPS Boost": "FPS Boost",
 }
 
 # Extra "affects" labels refined by tag (deduped against DB_AFFECTS).
@@ -105,6 +107,22 @@ TAG_AFFECTS = {
     "timer": "Timers",
     "affinity": "CPU Affinity",
     "core": "CPU",
+    "lid": "Lid Action",
+    "battery": "Battery",
+    "modern_standby": "Modern Standby",
+    "thermal": "Thermal",
+    "hibernate": "Hibernation",
+    "sound": "Audio",
+    "audio": "Audio",
+    "ducking": "Audio Ducking",
+    "exclusive": "Audio Exclusive",
+    "spatial": "Spatial Audio",
+    "enhancements": "Audio DSP",
+    "apo": "Audio Processing",
+    "microphone": "Microphone",
+    "bluetooth": "Bluetooth Audio",
+    "headset": "Headset",
+    "dac": "Audio Interface",
 }
 
 # Requested sections: key -> metadata + the raw DB categories they include.
@@ -124,8 +142,8 @@ CATEGORY_GROUPS = {
         "icon": "\u25c6",
         "logo": "gpu",
         "color": "#C084FC",
-        "blurb": "NVIDIA/AMD optimizations, GPU scheduling, graphics settings and rendering.",
-        "db": ["GPU", "NVIDIA", "AMD", "Intel", "Windows Graphics", "DirectX", "DirectX 12"],
+        "blurb": "NVIDIA/AMD/Intel GPU optimizations, scheduling, and vendor-specific driver settings.",
+        "db": ["GPU", "NVIDIA", "AMD", "Intel"],
     },
     "ram": {
         "key": "ram",
@@ -181,19 +199,38 @@ CATEGORY_GROUPS = {
         "blurb": "NTFS, SSD trimming, filesystem and disk behavior optimizations.",
         "db": ["Storage"],
     },
+    "audio": {
+        "key": "audio",
+        "title": "Audio Tweaks",
+        "icon": "\U0001f50a",
+        "logo": "audio",
+        "color": "#06B6D4",
+        "blurb": "Deep Windows audio engine, WASAPI, MMCSS scheduling, USB/Bluetooth audio, microphones, and gaming audio optimizations.",
+        "db": ["Audio"],
+    },
     "system": {
         "key": "system",
         "title": "Windows / System",
         "icon": "\u2699",
         "logo": "system",
         "color": "#C484FF",
-        "blurb": "Windows shell, services, power plans, privacy, telemetry, audio, USB and more.",
+        "blurb": "Windows shell, services, privacy, telemetry, DirectX, graphics stack and more.",
         "db": [
-            "Windows", "System", "Registry", "Power Plans", "Power", "Services",
-            "Debloat", "Startup", "Background", "Privacy", "Telemetry", "Audio",
+            "Windows", "System", "Registry", "Services",
+            "Debloat", "Startup", "Background", "Privacy", "Telemetry",
             "USB", "Security & Performance", "Display", "Monitor", "BIOS",
             "Advanced", "Experimental", "Windows Explorer",
+            "Windows Graphics", "DirectX", "DirectX 12",
         ],
+    },
+    "power": {
+        "key": "power",
+        "title": "Power Tweaks",
+        "icon": "\u26a1",
+        "logo": "power",
+        "color": "#F59E0B",
+        "blurb": "Power plans, CPU power states, sleep/hibernate and energy settings. Includes the MAXimum Premium Power Plan.",
+        "db": ["Power Plans", "Power"],
     },
     "performance": {
         "key": "performance",
@@ -202,7 +239,7 @@ CATEGORY_GROUPS = {
         "logo": "performance",
         "color": "#A855F7",
         "blurb": "FPS boosting and frame-pacing optimizations for smoother, more consistent gameplay.",
-        "db": ["FPS", "Frame Time"],
+        "db": ["Performance", "FPS", "Frame Time"],
     },
     "fortnite": {
         "key": "fortnite",
@@ -240,16 +277,6 @@ CATEGORY_GROUPS = {
         "blurb": "Diagnostics, repair and quick-access tools for your system.",
         "db": ["System Tools", "Diagnostics", "Repair"],
     },
-    "guides": {
-        "key": "guides",
-        "title": "Guides",
-        "icon": "\u2139",
-        "logo": "guides",
-        "color": "#60A5FA",
-        "blurb": "Step-by-step walkthroughs for manual settings you do in "
-                "software, the BIOS, or the OS \u2014 informational only.",
-        "db": ["Guides"],
-    },
     "laptop": {
         "key": "laptop",
         "title": "Laptop Tweaks",
@@ -260,19 +287,29 @@ CATEGORY_GROUPS = {
                 "specific to laptops.",
         "db": ["Laptop"],
     },
+    "fpsboost": {
+        "key": "fpsboost",
+        "title": "FPS Boost",
+        "icon": "\u26a1",
+        "logo": "fpsboost",
+        "color": "#EF4444",
+        "blurb": "Proven system-level tweaks to maximize FPS — VBS, ReBAR, "
+                "core parking, GPU power management and more.",
+        "db": ["FPS Boost"],
+    },
 }
 
 GROUP_ORDER = [
-    "cpu", "gpu", "ram", "mouse", "keyboard", "input",
-    "network", "storage", "system", "performance", "fortnite", "games",
-    "profiles", "tools", "guides", "laptop",
+    "cpu", "gpu", "ram", "power", "mouse", "keyboard", "input",
+    "network", "storage", "audio", "system", "performance", "fortnite",
+    "games", "profiles", "tools", "laptop", "fpsboost",
 ]
 
 # Sidebar "Tweaks" sub-categories (no profiles/tools â€” those are top-level nav).
 TWEAK_ORDER = [
-    "cpu", "gpu", "ram", "mouse", "keyboard", "input",
-    "network", "storage", "system", "performance", "fortnite", "games",
-    "guides", "laptop",
+    "cpu", "gpu", "ram", "power", "mouse", "keyboard", "input",
+    "network", "storage", "audio", "system", "performance", "fortnite",
+    "games", "laptop", "fpsboost",
 ]
 
 # Raw category -> owning group key (every raw category maps to one group).
@@ -314,12 +351,13 @@ CATEGORY_LABELS = {
     "input": "Pointer & Input",
     "network": "Network",
     "storage": "Storage",
+    "audio": "Audio",
     "system": "Windows",
     "performance": "Performance",
     "fortnite": "Fortnite",
     "games": "Games",
-    "guides": "Guides",
     "laptop": "Laptop",
+    "power": "Power",
 }
 
 # All browsable groups in display order (excludes profiles/tools nav sections).
@@ -335,12 +373,14 @@ SIDEBAR_TWEAKS = [
     ("keyboard", "Keyboard"),
     ("network", "Network"),
     ("storage", "Storage"),
+    ("audio", "Audio"),
     ("system", "Windows / System"),
     ("performance", "Performance"),
     ("fortnite", "Fortnite"),
     ("games", "Games"),
-    ("guides", "Guides"),
     ("laptop", "Laptop"),
+    ("power", "Power"),
+    ("fpsboost", "FPS Boost"),
 ]
 
 
@@ -380,6 +420,98 @@ def group_tweaks(key: str) -> list[dict]:
     if key == "tools":
         return [t for t in TWEAKS if t["category"] in db_cats or t["id"] in TOOLS_IDS]
     return [t for t in TWEAKS if t["category"] in db_cats and t["id"] not in TOOLS_IDS]
+
+
+# --- GPU vendor filter -------------------------------------------------------
+# When the user selects a GPU vendor in the GPU selector, we filter the
+# tweaks to show only those relevant to that vendor.  The filter logic:
+#   * Include tweaks with NO ``when.gpu`` condition (generic GPU tweaks).
+#   * Include tweaks whose ``when.gpu`` list contains the selected vendor.
+#   * Include tweaks whose ``when.gpu_type`` matches:
+#       nvidia / amd  →  ["dedicated"]
+#       integrated    →  ["integrated"]
+#   * Exclude tweaks whose ``when.gpu`` list does NOT contain the selected vendor.
+
+GPU_VENDOR_MAP = {
+    "nvidia": {"nvidia"},
+    "amd": {"amd"},
+    "integrated": {"intel"},
+}
+
+GPU_TYPE_MAP = {
+    "nvidia": "dedicated",
+    "amd": "dedicated",
+    "integrated": "integrated",
+}
+
+
+def gpu_filter_tweaks(key: str, gpu_vendor: str) -> list[dict]:
+    """Return tweaks for the GPU category filtered by vendor selection.
+
+    When a vendor is selected, only tweaks whose ``when.gpu`` or
+    ``when.gpu_type`` explicitly includes the vendor/type are shown.
+    Untagged tweaks are *not* auto-included — they must carry an
+    explicit ``when`` condition to appear for a specific vendor.
+    """
+    all_tweaks = group_tweaks(key)
+    if not gpu_vendor:
+        return all_tweaks
+    vendor_set = GPU_VENDOR_MAP.get(gpu_vendor, set())
+    gpu_type = GPU_TYPE_MAP.get(gpu_vendor)
+    out = []
+    for t in all_tweaks:
+        when = t.get("when", {})
+        req_gpu = when.get("gpu")
+        req_gpu_type = when.get("gpu_type")
+        # Untagged tweaks (no gpu / gpu_type condition) are excluded
+        # when a vendor is selected — they must be explicitly tagged.
+        if not req_gpu and not req_gpu_type:
+            continue
+        # If when.gpu is set, check vendor match.
+        if req_gpu:
+            req_set = set(req_gpu)
+            if vendor_set & req_set:
+                out.append(t)
+                continue
+        # If when.gpu_type is set, check type match.
+        if req_gpu_type and gpu_type:
+            if gpu_type in req_gpu_type:
+                out.append(t)
+                continue
+    return out
+
+
+# ── CPU vendor/form-factor filtering ──────────────────────────────────
+# Works like GPU filtering: universal tweaks (no when.cpu_vendor / when.laptop)
+# are ALWAYS shown; vendor/form-factor tagged tweaks are only shown when
+# they match the detected hardware.
+
+def cpu_filter_tweaks(key: str, cpu_vendor: str | None = None,
+                      is_laptop: bool | None = None) -> list[dict]:
+    """Return tweaks for the CPU category filtered by vendor and form factor.
+
+    Universal tweaks (no ``when.cpu_vendor`` / ``when.laptop``) are always
+    shown.  Vendor-tagged tweaks only appear when the detected CPU matches.
+    Form-factor tweaks only appear when the detected laptop state matches.
+    """
+    all_tweaks = group_tweaks(key)
+    if cpu_vendor is None and is_laptop is None:
+        return all_tweaks
+    out = []
+    for t in all_tweaks:
+        when = t.get("when", {})
+        req_vendor = when.get("cpu_vendor")
+        req_laptop = when.get("laptop")
+        # If tweak specifies cpu_vendor, check match.
+        if req_vendor and cpu_vendor:
+            if cpu_vendor.lower() not in [v.lower() for v in req_vendor]:
+                continue
+        # If tweak specifies laptop, check match.
+        if req_laptop is not None and is_laptop is not None:
+            if req_laptop != is_laptop:
+                continue
+        out.append(t)
+    return out
 
 
 def affects_for(tweak: dict) -> list[str]:

@@ -36,6 +36,15 @@ def run_gui():
     app.setStyle("Fusion")
     app.setStyleSheet(build_qss())
 
+    # Global exception handler: prevent silent crashes by logging unhandled
+    # exceptions on the main thread instead of letting Qt terminate the process.
+    def _excepthook(exc_type, exc_value, exc_tb):
+        import traceback
+        from rexlog import logger
+        logger.error(f"Unhandled exception: {exc_type.__name__}: {exc_value}\n"
+                     + "".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+    sys.excepthook = _excepthook
+
     screen = app.primaryScreen().availableGeometry()
     splash = CinematicSplash()
     splash.resize(900, 720)
@@ -70,7 +79,8 @@ def run_gui():
         info = payload.get("info")
         error = payload.get("error")
         if holder.get("window") is not None:
-            return  # already entering the app; nothing left to gate
+            splash.update_ok()
+            return
         if error:
             splash.update_error(error)
             return

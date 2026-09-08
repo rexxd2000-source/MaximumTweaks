@@ -179,11 +179,11 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
 
 def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
     """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(frac)."""
+    logger.info("updater: download started")
     dest = data_dir() / UPDATE_EXE_NAME
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     if "api.github.com" in url:
-        # Authenticated binary fetch for (possibly private) GitHub assets.
         req.add_header("Accept", "application/octet-stream")
         if GITHUB_TOKEN:
             req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
@@ -203,25 +203,63 @@ def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
                         progress_cb(min(1.0, got / total))
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise UpdaterError(f"Download failed: {exc}") from exc
-    if dest.stat().st_size == 0:
+    size = dest.stat().st_size
+    if size == 0:
         dest.unlink(missing_ok=True)
         raise UpdaterError("Downloaded file is empty.")
-    logger.info(f"updater: downloaded {dest} ({dest.stat().st_size} bytes)")
+    logger.info(f"updater: downloaded {size} bytes")
+    _verify_download(dest)
+    logger.info("updater: download verified OK")
     return dest
+
+
+def _verify_download(path: Path):
+    """Validate the downloaded file is a plausible Windows PE executable.
+
+    Checks: minimum size, MZ header (PE signature), and that it's not an
+    HTML error page from a CDN or proxy.
+    """
+    MIN_SIZE = 5 * 1024 * 1024  # 5 MB — a legitimate build is always larger
+    size = path.stat().st_size
+    if size < MIN_SIZE:
+        path.unlink(missing_ok=True)
+        raise UpdaterError(
+            f"Downloaded file is too small ({size:,} bytes) — expected at "
+            f"least {MIN_SIZE:,} bytes. The download may be corrupt or "
+            "blocked by a firewall/proxy.")
+    with open(path, "rb") as f:
+        header = f.read(2)
+    if header != b"MZ":
+        path.unlink(missing_ok=True)
+        raise UpdaterError(
+            "Downloaded file is not a valid executable — it may be an "
+            "HTML error page from a CDN or firewall. Check your internet "
+            "connection and try again.")
 
 
 def _stub_script(target: Path, new_exe: Path) -> str:
     target = Path(target)
     new_exe = Path(new_exe)
+    backup = target.parent / "data" / "updates" / "MaximumTweaks.rollback.exe"
     template = """@echo off
-rem Maximum Tweaks self-update stub
+rem Maximum Tweaks self-update stub - with backup and rollback
 set "STUB_LOG=%~dp0stub.log"
 del /Q "%STUB_LOG%" 2>nul
 echo [%date% %time%] stub start >> "%STUB_LOG%"
 echo   target={target} >> "%STUB_LOG%"
 echo   new={new} >> "%STUB_LOG%"
+echo   backup={backup} >> "%STUB_LOG%"
 
-rem Wait for the old process to fully exit (up to 30s).
+rem Step 1: Create a backup of the current exe for rollback.
+echo [%date% %time%] creating backup of current exe >> "%STUB_LOG%"
+copy /Y "{target}" "{backup}" >> "%STUB_LOG%" 2>&1
+if %errorlevel%==0 (
+  echo [%date% %time%] backup created successfully >> "%STUB_LOG%"
+) else (
+  echo [%date% %time%] WARNING: backup failed, proceeding anyway >> "%STUB_LOG%"
+)
+
+rem Step 2: Wait for the old process to fully exit (up to 30s).
 set /a RETRIES=0
 :wait
 tasklist /FI "IMAGENAME eq {exe}" 2>nul | find /I "{exe}" > nul
@@ -236,10 +274,10 @@ if %errorlevel%==0 (
     goto :wait
   )
 )
-echo [%date% %time%] process exited, waiting 2s for file handles to release >> "%STUB_LOG%"
-timeout /t 2 /nobreak > nul
+echo [%date% %time%] process exited, waiting 3s for file handles to release >> "%STUB_LOG%"
+timeout /t 3 /nobreak > nul
 
-rem Try to swap with retries (antivirus may lock the file briefly).
+rem Step 3: Swap in the new build with retries.
 set /a RETRIES=0
 :swap
 echo [%date% %time%] swapping in new build (attempt %RETRIES%) >> "%STUB_LOG%"
@@ -253,19 +291,41 @@ if %errorlevel%==0 (
 set /a RETRIES+=1
 if %RETRIES% GEQ 10 (
   echo [%date% %time%] ERROR: could not replace exe after 10 attempts >> "%STUB_LOG%"
-  echo [%date% %time%] You may need to manually replace {target} >> "%STUB_LOG%"
+  echo [%date% %time%] attempting rollback to backup >> "%STUB_LOG%"
+  if exist "{backup}" (
+    copy /Y "{backup}" "{target}" >> "%STUB_LOG%" 2>&1
+    echo [%date% %time%] rollback completed >> "%STUB_LOG%"
+  ) else (
+    echo [%date% %time%] no backup available for rollback >> "%STUB_LOG%"
+  )
   goto :done
 )
 timeout /t 3 /nobreak > nul
 goto :swap
 
 :swapped
+echo [%date% %time%] new exe installed successfully >> "%STUB_LOG%"
+rem Verify the new exe exists and has reasonable size.
+for %%A in ("{target}") do set NEWSIZE=%%~zA
+echo [%date% %time%] new exe size: %NEWSIZE% bytes >> "%STUB_LOG%"
+if %NEWSIZE% LSS 1000000 (
+  echo [%date% %time%] ERROR: new exe is suspiciously small, rolling back >> "%STUB_LOG%"
+  if exist "{backup}" (
+    copy /Y "{backup}" "{target}" >> "%STUB_LOG%" 2>&1
+    echo [%date% %time%] rollback completed >> "%STUB_LOG%"
+  )
+  goto :done
+)
 echo [%date% %time%] relaunching "{target}" >> "%STUB_LOG%"
 start "" "{target}" >> "%STUB_LOG%" 2>&1
+
 :done
+rem Clean up backup after successful launch (keep for 30s in case of issues).
+echo [%date% %time%] stub finished >> "%STUB_LOG%"
 del /Q "%~f0" 2>nul
 """
-    return template.format(exe=UPDATE_EXE_NAME, new=new_exe, target=target)
+    return template.format(exe=UPDATE_EXE_NAME, new=new_exe, target=target,
+                           backup=backup)
 
 
 def install_and_restart(new_exe: Path):
@@ -280,10 +340,13 @@ def install_and_restart(new_exe: Path):
             "just restart the app.")
     if not new_exe.exists():
         raise UpdaterError("Downloaded update file is missing.")
+    _verify_download(new_exe)
 
     original = exe_path()
     if not original.exists():
         raise UpdaterError(f"Could not find the application at {original}")
+
+    logger.info("updater: preparing update installation")
 
     # Stage alongside the real exe so the batch can act on the same drive.
     stub_dir = original.parent / "data" / "updates"
@@ -295,12 +358,21 @@ def install_and_restart(new_exe: Path):
         os.replace(new_exe, staged)
     except OSError as exc:
         raise UpdaterError(f"Could not stage the update: {exc}") from exc
+    logger.info("updater: update staged")
 
     stub = stub_dir / "apply_update.bat"
     try:
-        stub.write_text(_stub_script(original, staged), encoding="ascii")
+        stub.write_text(_stub_script(original, staged), encoding="utf-8")
     except OSError as exc:
         raise UpdaterError(f"Could not write the updater script: {exc}") from exc
+
+    # Flush all state files before launching the stub — critical for
+    # license persistence and applied-tweak state.
+    try:
+        from engine import state as _state
+        _state._save(_state._load())
+    except Exception:  # noqa: BLE001
+        pass
 
     try:
         subprocess.Popen(

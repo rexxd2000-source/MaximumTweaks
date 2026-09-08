@@ -76,7 +76,6 @@ MAXIMUM = {
     ),
     "risk": "moderate",
     "tweaks": COMPETITIVE["tweaks"] + [
-        "sched-003",   # Processor sleep states off
         "sched-006",   # Hyper-V off
         "sched-007",   # VBS off
         "adv-006",     # Processor scheduling to programs

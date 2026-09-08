@@ -1247,12 +1247,17 @@ class BatchWorker(QThread):
         self.mode = mode
         self.profile = profile
         self.force = force
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
 
     def run(self):
         try:
             result = applier.run(
                 self.ids, self.mode, progress=self._on_progress,
-                profile=self.profile, force=self.force)
+                profile=self.profile, force=self.force,
+                cancel_check=lambda: self._cancelled)
             self.batch_done.emit(result)
         except Exception as exc:  # noqa: BLE001
             self.batch_error.emit(str(exc))
@@ -1330,10 +1335,10 @@ class ProgressDialog(QDialog):
         self.close_btn.setText("Close")
 
     def _close_result(self):
-        # Stop the worker thread if it's still running.
         if self.worker.isRunning():
-            self.worker.terminate()
-            self.worker.wait(2000)
+            if hasattr(self.worker, "cancel"):
+                self.worker.cancel()
+            self.worker.wait(5000)
         self.accept()
 
 

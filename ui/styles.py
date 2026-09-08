@@ -262,7 +262,7 @@ QProgressBar::chunk {{
 }}
 
 /* ---------------- Panels / cards ---------------- */
-#Card, #Hero, #ProfileCard, #PerfCard, #ActionCard, #DiscordCard, #LicenseAccountCard {{
+#Card, #Hero, #ProfileCard, #PerfCard, #ActionCard, #DiscordCard, #LicenseAccountCard, #GpuVendorCard {{
     background-color: {T["card"]};
     border: 1px solid {T["border"]};
     border-radius: 14px;

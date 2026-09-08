@@ -219,6 +219,14 @@ class Optimizer:
         if gpus:
             profile["gpu"] = list(dict.fromkeys(g["vendor"] for g in gpus))
             profile["gpu_names"] = [g["name"] for g in gpus]
+            profile["gpu_types"] = list(dict.fromkeys(
+                g.get("type") for g in gpus if g.get("type")))
+            profile["gpu_dedicated"] = [g["name"] for g in gpus
+                                        if g.get("type") == "dedicated"]
+            profile["gpu_integrated"] = [g["name"] for g in gpus
+                                         if g.get("type") == "integrated"]
+            profile["gpu_vram_gb"] = max((g.get("vram_gb", 0) for g in gpus),
+                                         default=0)
         elif data.get("vendors"):
             profile["gpu"] = data["vendors"]
 

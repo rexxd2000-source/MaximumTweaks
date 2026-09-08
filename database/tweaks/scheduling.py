@@ -1,4 +1,8 @@
-"""Category: Scheduling — CPU scheduling and priority behaviour."""
+"""Category: Scheduling — safe CPU scheduling and priority optimizations.
+
+These tweaks configure how Windows schedules threads and handles interrupts.
+None of them fight the CPU's own power management or force extreme behavior.
+"""
 from __future__ import annotations
 
 from ._base import make_T, validate_module
@@ -7,100 +11,140 @@ T = make_T("Scheduling", win_default="7,8,10,11")
 CATEGORY = "Scheduling"
 
 TWEAKS = validate_module("scheduling", [
-    T("sched-001", "Disable Core Parking",
-      "Prevents CPU cores from parking.",
-      actions=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100")],
-      revert=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 0")],
-      why="Core parking demotes cores to power states; games on parked cores hitch.",
-      changes="Sets minimum parked cores to 100%.",
-      risk="safe", impact="moderate", recommended="recommended", admin=True,
-      tags=["core", "parking", "cpu"]),
-    T("sched-002", "Disable CPU Power Throttling",
-      "Disables frequency throttling on AC.",
-      actions=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 3b04d4fd-1cc7-4f23-ab1c-d1337819c4e2 0")],
-      revert=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 3b04d4fd-1cc7-4f23-ab1c-d1337819c4e2 1")],
-      why="Removes CPU throttling so cores stay at usable clocks.",
-      changes="Disables CPU throttling on AC.",
-      risk="safe", impact="low", recommended="recommended", admin=True,
-      tags=["throttle", "cpu", "frequency"]),
-    T("sched-003", "Disable Processor Sleep States",
-      "Disables processor idle sleep states on AC.",
-      actions=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISABLE 1")],
-      revert=[("cmd", "powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISABLE 0")],
-      why="Reduces C-state exit latency at the cost of idle power.",
-      changes="Disables processor idle states.",
-      risk="safe", impact="moderate", recommended="optional", admin=True,
-      tags=["idle", "cstate", "latency"]),
-    T("sched-004", "Enable Game Priority Boosts",
-      "Guidance on game priority boosts.",
-      actions=[("guidance", "Windows auto-boosts foreground process priority. Do not force game priority manually; the scheduler already does this. Manual priority changes break thread balancing.")],
-      revert=[("guidance", "No change to revert.")],
-      why="Forced priorities unbalance the scheduler's design.",
-      changes="Shows priority guidance.",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["priority", "scheduler", "foreground"]),
-    T("sched-005", "Enable High Performance Interrupts",
-      "Guidance on interrupt affinity.",
-      actions=[("guidance", "Check 'ntoskrnl.exe' and GPU interrupt affinities with tools like MSI Utility. Setting the GPU to High MSI priority can cut input latency on some boards.")],
-      revert=[("guidance", "Reset interrupt priorities.")],
-      why="Interrupt priority affects input and frame-delivery jitter.",
-      changes="Shows interrupt guidance.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["msi", "interrupt", "affinity"]),
-    T("sched-006", "Disable Hyper-V",
-      "Disables Hyper-V hypervisor.",
-      actions=[("cmd", "bcdedit /set hypervisorlaunchtype off")],
-      revert=[("cmd", "bcdedit /set hypervisorlaunchtype auto")],
-      why="Hyper-V adds a hypervisor layer that can raise latency on gaming builds.",
-      changes="Disables the Hyper-V hypervisor.",
-      risk="safe", impact="moderate", recommended="optional", admin=True,
-      tags=["hyperv", "hypervisor", "latency"]),
-    T("sched-007", "Disable Virtualization-Based Security",
-      "Disables VBS and memory integrity.",
-      actions=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 0 /f")],
-      revert=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 1 /f")],
-      why="VBS/Memory Integrity adds virtualization overhead to every context switch.",
-      changes="Disables VBS.",
-      risk="safe", impact="moderate", recommended="optional", admin=True,
-      tags=["vbs", "memoryintegrity", "security"]),
-    T("sched-008", "Disable Scheduler Logging",
-      "Disables scheduler event logging.",
-      actions=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager /v DisableOutOfOrderExecution /t REG_DWORD /d 1 /f")],
-      revert=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager /v DisableOutOfOrderExecution /t REG_DWORD /d 0 /f")],
-      why="Removes out-of-order execution bookkeeping overhead.",
-      changes="Disables scheduler logging.",
-      risk="safe", impact="low", recommended="optional", admin=True,
-      tags=["scheduler", "logging", "cpu"]),
-    T("sched-009", "Disable Dynamic Tick",
-      "Guidance on the dynamic tick timer.",
-      actions=[("guidance", "Disabling the dynamic tick via BCDEdit can stabilize frame pacing on some systems but raises power use. Try it only if frame-time jitter persists.")],
-      revert=[("guidance", "Re-enable the dynamic tick.")],
-      why="Timers waking at varying rates can add micro-jitter.",
-      changes="Shows dynamic-tick guidance.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["tick", "timer", "jitter"]),
-    T("sched-010", "Enable High Precision Event Timer",
-      "Guidance on HPET.",
-      actions=[("guidance", "HPET is forced on in modern Windows; older 'enable HPET' advice is outdated. Leave the timer alone — the scheduler handles it.")],
-      revert=[("guidance", "No change to revert.")],
-      why="Manual timer changes no longer help and can break frame pacing.",
-      changes="Shows HPET guidance.",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["hpet", "timer", "warn"]),
-    T("sched-011", "Set Foreground App Boost",
-      "Guidance on foreground responsiveness.",
-      actions=[("guidance", "Keep 'Choose how much CPU is given to foreground apps' at 'Best performance' in System Properties to prioritize the active game.")],
-      revert=[("guidance", "Set foreground boost to Programs and services.")],
-      why="Foreground priority determines how well the game outcompetes background apps.",
-      changes="Shows foreground boost guidance.",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["foreground", "priority", "cpu"]),
-    T("sched-012", "Disable Spectre Mitigations",
-      "Disables CPU speculative-execution mitigations.",
-      actions=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management /v FeatureSettingsOverrideMask /t REG_DWORD /d 3 /f")],
-      revert=[("cmd", "reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management /v FeatureSettingsOverrideMask /t REG_DWORD /d 0 /f")],
-      why="Removes Meltdown/Spectre mitigation overhead from context switches.",
-      changes="Disables Spectre mitigations.",
-      risk="safe", impact="moderate", recommended="optional", admin=True,
-      tags=["spectre", "mitigation", "security"]),
+
+    # ── Interrupt Handling ───────────────────────────────────────────
+
+    T(
+        "sched-001", "Enable x2APIC",
+        "Enable the extended interrupt controller for better multicore scaling.",
+        actions=[("cmd", "bcdedit /set x2apicpolicy enable")],
+        revert=[("cmd", "bcdedit /deletevalue x2apicpolicy")],
+        why="x2APIC scales interrupt handling across many logical processors, "
+            "reducing APIC contention on systems with 8+ cores.",
+        changes="Sets x2apicpolicy to enable.",
+        risk="moderate", impact="low", recommended="optional",
+        admin=True, confirm=True,
+        tags=["bcdedit", "apic", "interrupt", "multicore"],
+    ),
+
+    # ── Hyper-V ─────────────────────────────────────────────────────
+
+    T(
+        "sched-002", "Disable Hyper-V (Desktop Only)",
+        "Disable the Hyper-V hypervisor to reduce virtualization overhead.",
+        actions=[("cmd", "bcdedit /set hypervisorlaunchtype off")],
+        revert=[("cmd", "bcdedit /set hypervisorlaunchtype auto")],
+        why="Hyper-V adds a hypervisor layer that can raise interrupt latency. "
+            "On a dedicated gaming desktop (not using WSL2, Docker, or "
+            "Hyper-V features), disabling it can reduce input latency.",
+        changes="Disables Hyper-V hypervisor launch.",
+        risk="moderate", impact="moderate", recommended="optional",
+        admin=True, confirm=True,
+        when={"laptop": False},
+        tags=["hyperv", "hypervisor", "latency", "bcdedit"],
+    ),
+
+    # ── Game Priority ───────────────────────────────────────────────
+
+    T(
+        "sched-003", "Game Priority Boost: Let Windows Handle It",
+        "Guidance on foreground process priority.",
+        actions=[
+            ("guidance",
+             "Windows automatically boosts the foreground process priority. "
+             "Do not force game priority manually — the scheduler already "
+             "does this optimally.  Manual priority changes break thread "
+             "balancing and can cause worse performance."),
+        ],
+        revert=[("guidance", "No change to revert.")],
+        why="Forced priorities unbalance the scheduler's design.",
+        changes="Shows priority guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["priority", "scheduler", "foreground", "guidance"],
+    ),
+
+    # ── Interrupt Affinity ──────────────────────────────────────────
+
+    T(
+        "sched-004", "High-Priority Interrupts: Check Your Board",
+        "Guidance on GPU interrupt priority.",
+        actions=[
+            ("guidance",
+             "Check GPU interrupt affinities with MSI Utility v3.  Setting "
+             "the GPU to High MSI priority can cut input latency on some "
+             "motherboards.  This is board-specific — not all systems "
+             "benefit.  Research your specific motherboard before changing "
+             "interrupt priorities."),
+        ],
+        revert=[("guidance", "Reset interrupt priorities in MSI Utility.")],
+        why="Interrupt priority affects input and frame-delivery jitter.",
+        changes="Shows interrupt affinity guidance.",
+        risk="safe", impact="low", recommended="optional",
+        tags=["msi", "interrupt", "affinity", "guidance"],
+    ),
+
+    # ── Timer ───────────────────────────────────────────────────────
+
+    T(
+        "sched-005", "HPET: Leave It Alone",
+        "Guidance on the High Precision Event Timer.",
+        actions=[
+            ("guidance",
+             "HPET is forced on in modern Windows.  Older advice about "
+             "enabling/disabling HPET is outdated.  The scheduler handles "
+             "timer resolution automatically.  Do not modify HPET or "
+             "useplatformclock settings — they can break frame pacing."),
+        ],
+        revert=[("guidance", "No change to revert.")],
+        why="Manual timer changes no longer help and can break frame pacing.",
+        changes="Shows HPET guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["hpet", "timer", "guidance"],
+    ),
+
+    # ── Foreground Boost ────────────────────────────────────────────
+
+    T(
+        "sched-006", "Foreground App Boost: Best Performance",
+        "Guidance on foreground CPU allocation.",
+        actions=[
+            ("guidance",
+             "In System Properties > Advanced > Performance Settings > "
+             "Advanced > Processor scheduling, select 'Programs' (Best "
+             "performance of foreground apps).  This ensures the active "
+             "game gets priority CPU time over background services."),
+        ],
+        revert=[
+            ("guidance",
+             "Set processor scheduling to 'Background services' if needed."),
+        ],
+        why="Foreground priority determines how well the game outcompetes "
+            "background apps for CPU time.",
+        changes="Shows foreground boost guidance.",
+        risk="safe", impact="low", recommended="recommended",
+        tags=["foreground", "priority", "guidance"],
+    ),
+
+    # ── CSRSS ───────────────────────────────────────────────────────
+
+    T(
+        "sched-007", "Lower CSRSS Font Rendering Priority",
+        "Reduce the console subsystem font rendering priority.",
+        actions=[
+            ("reg", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Console",
+             "FontSize", 0, "DWORD"),
+        ],
+        revert=[
+            ("regdel", "HKLM",
+             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Console",
+             "FontSize"),
+        ],
+        why="CSRSS handles console font rendering.  Lowering its priority "
+            "frees CPU time for game threads without visible impact.",
+        changes="Sets Console FontSize to 0.",
+        risk="safe", impact="low", recommended="optional",
+        admin=True,
+        tags=["csrss", "console", "priority"],
+    ),
 ])
