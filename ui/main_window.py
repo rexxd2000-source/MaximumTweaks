@@ -37,6 +37,8 @@ from ui.pages.logs import LogsPage
 from ui.pages.optimize import OptimizePage
 from ui.pages.chat import ChatPage
 from ui.premium_widgets import ComingSoonPage
+from ui.pages.delay_destroyer import DelayDestroyerPage
+from ui.pages.debloat import DebloatPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
 from ui.pages.tweaks import ALL_KEY, TweaksPage
@@ -251,6 +253,16 @@ class MainWindow(QWidget):
         nav_lay.addWidget(btn)
         self.nav_buttons["tools"] = btn
 
+        btn = self._nav_button("\u26a1   Delay Destroyer")
+        btn.clicked.connect(lambda _=False: self.navigate("delay_destroyer"))
+        nav_lay.addWidget(btn)
+        self.nav_buttons["delay_destroyer"] = btn
+
+        btn = self._nav_button("\u2702   Smart Debloater")
+        btn.clicked.connect(lambda _=False: self.navigate("debloat"))
+        nav_lay.addWidget(btn)
+        self.nav_buttons["debloat"] = btn
+
         # ---- AI ASSISTANT
         btn = self._nav_button("\u2728   AI Assistant")
         btn.clicked.connect(lambda _=False: self.navigate("chat"))
@@ -287,6 +299,8 @@ class MainWindow(QWidget):
         self.pages["optimize"] = OptimizePage(self.ctx)
         self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
         self.pages["chat"] = ChatPage(self.ctx)
+        self.pages["delay_destroyer"] = DelayDestroyerPage(self.ctx)
+        self.pages["debloat"] = DebloatPage(self.ctx)
         self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
         self.pages["logs"] = LogsPage()
         for page in self.pages.values():

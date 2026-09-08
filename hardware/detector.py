@@ -102,6 +102,7 @@ def detect() -> dict:
         "gpu_dedicated": [],
         "gpu_integrated": [],
         "gpu_vram_gb": 0,
+        "gpu_driver_version": "",
         "ram_gb": round(psutil.virtual_memory().total / (1024 ** 3), 1),
         "ram_channels": 0,
         "ram_mtps": 0,
@@ -156,11 +157,96 @@ def _detect_cpu(p):
             pass
 
 
+def _nvidia_smi_vram() -> list[dict]:
+    """Query nvidia-smi for accurate NVIDIA GPU VRAM and driver info."""
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi",
+             "--query-gpu=name,memory.total,memory.used,memory.free,"
+             "driver_version,pci.bus_id,gpu_id",
+             "--format=csv,noheader,nounits"],
+            text=True, timeout=10,
+            creationflags=0x08000000, stderr=subprocess.DEVNULL,
+        )
+        gpus = []
+        for line in out.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 5:
+                try:
+                    dedicated_mb = int(float(parts[1]))
+                except (ValueError, IndexError):
+                    dedicated_mb = 0
+                gpus.append({
+                    "name": parts[0],
+                    "dedicated_mb": dedicated_mb,
+                    "driver_version": parts[4] if len(parts) > 4 else "",
+                    "pci_bus": parts[5] if len(parts) > 5 else "",
+                })
+        return gpus
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return []
+
+
+def _registry_gpu_vram() -> dict[str, int]:
+    """Read 64-bit VRAM from registry (HardwareInformation.qwMemorySize).
+
+    The WMI AdapterRAM field is a 32-bit value that clamps at ~4GB.
+    The registry qwMemorySize is the accurate 64-bit value.
+    """
+    import re as _re
+    result = {}
+    base = (
+        r"SYSTEM\CurrentControlSet\Control\Class"
+        r"\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    )
+    try:
+        import winreg
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            sub = winreg.EnumKey(root, i)
+            if not _re.fullmatch(r"\d+", sub):
+                continue
+            try:
+                with winreg.OpenKey(root, sub) as k:
+                    def _qv(name):
+                        try:
+                            v, _t = winreg.QueryValueEx(k, name)
+                            return v
+                        except OSError:
+                            return None
+                    desc = str(_qv("DriverDesc") or "").strip()
+                    vram = _qv("HardwareInformation.qwMemorySize")
+                    if desc:
+                        result[desc.lower()] = int(vram) if vram else 0
+            except OSError:
+                continue
+    except (OSError, ImportError):
+        pass
+    return result
+
+
 def _detect_gpu(p):
+    """Detect GPU with reliable VRAM detection.
+
+    Uses three methods and cross-checks:
+    1. nvidia-smi (most accurate for NVIDIA)
+    2. Registry qwMemorySize (64-bit, accurate for all vendors)
+    3. WMI AdapterRAM (fallback only, broken for >4GB)
+
+    Reports dedicated VRAM separately from shared GPU memory.
+    """
     rows = _csv_rows(
-        "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM")
+        "Get-CimInstance Win32_VideoController | "
+        "Select-Object Name,DriverVersion,AdapterRAM,DriverDate,"
+        "PNPDeviceID,VideoProcessor,CurrentHorizontalResolution,"
+        "CurrentVerticalResolution,CurrentRefreshRate")
+    nvidia_info = _nvidia_smi_vram()
+    reg_vram = _registry_gpu_vram()
+
     for row in rows:
         name = (row.get("Name") or "Unknown Video Controller").strip()
+        if not name or "microsoft" in name.lower():
+            continue
         vendor = _gpu_vendor(name)
         integrated = _gpu_is_integrated(name)
         p["gpu_names"].append(name)
@@ -172,11 +258,50 @@ def _detect_gpu(p):
             p["gpu_integrated"].append(name)
         else:
             p["gpu_dedicated"].append(name)
-        try:
-            vram = round(int(float(row.get("AdapterRAM") or 0)) / (1024 ** 3), 1)
-            p["gpu_vram_gb"] = max(p["gpu_vram_gb"], vram)
-        except (TypeError, ValueError):
-            pass
+
+        dedicated_mb = 0
+        detection_method = "none"
+
+        # Method 1: nvidia-smi (gold standard for NVIDIA)
+        if vendor == "nvidia":
+            for ngpu in nvidia_info:
+                if (ngpu["name"].lower() in name.lower()
+                        or name.lower() in ngpu["name"].lower()):
+                    dedicated_mb = ngpu["dedicated_mb"]
+                    detection_method = "nvidia-smi"
+                    if ngpu.get("driver_version"):
+                        p["gpu_driver_version"] = ngpu["driver_version"]
+                    break
+
+        # Method 2: Registry qwMemorySize (64-bit, all vendors)
+        if dedicated_mb <= 0:
+            reg_vram_bytes = reg_vram.get(name.lower(), 0)
+            if reg_vram_bytes > 0:
+                dedicated_mb = int(reg_vram_bytes / (1024 * 1024))
+                detection_method = "registry"
+
+        # Method 3: WMI AdapterRAM (fallback, may be wrong for >4GB)
+        if dedicated_mb <= 0:
+            try:
+                wmi_vram = int(float(row.get("AdapterRAM") or 0) / (1024 * 1024))
+                if wmi_vram > 0:
+                    dedicated_mb = wmi_vram
+                    detection_method = "wmi"
+            except (TypeError, ValueError):
+                pass
+
+        dedicated_gb = round(dedicated_mb / 1024, 1)
+        p["gpu_vram_gb"] = max(p["gpu_vram_gb"], dedicated_gb)
+
+        # Flag potential detection issues
+        if detection_method == "wmi" and 0 < dedicated_gb <= 4 and not integrated:
+            p.setdefault("gpu_vram_warnings", []).append(
+                f"{name}: VRAM via WMI ({dedicated_gb}GB) — "
+                "may be inaccurate for >4GB GPUs")
+        elif not integrated and dedicated_gb == 0:
+            p.setdefault("gpu_vram_warnings", []).append(
+                f"{name}: VRAM could not be detected")
+
     if not p["gpu"]:
         p["gpu"] = ["unknown"]
 
