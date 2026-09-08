@@ -106,6 +106,8 @@ def run_gui():
         # The old build terminates here; the stub swaps in the new exe and
         # relaunches it. The restarted app runs the same check, finds no newer
         # version, and proceeds straight into the main window — no loop.
+        import time as _time
+        _time.sleep(1)
         os._exit(0)
 
     splash.install_clicked.connect(_start_update_download)

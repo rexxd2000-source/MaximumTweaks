@@ -218,18 +218,52 @@ rem Maximum Tweaks self-update stub
 set "STUB_LOG=%~dp0stub.log"
 del /Q "%STUB_LOG%" 2>nul
 echo [%date% %time%] stub start >> "%STUB_LOG%"
+echo   target={target} >> "%STUB_LOG%"
+echo   new={new} >> "%STUB_LOG%"
+
+rem Wait for the old process to fully exit (up to 30s).
+set /a RETRIES=0
 :wait
-tasklist /FI "IMAGENAME eq {exe}" | find /I "{exe}" > nul
+tasklist /FI "IMAGENAME eq {exe}" 2>nul | find /I "{exe}" > nul
 if %errorlevel%==0 (
-  timeout /t 1 /nobreak > nul
-  goto :wait
+  set /a RETRIES+=1
+  if %RETRIES% GEQ 30 (
+    echo [%date% %time%] ERROR: process still running after 30s, forcing kill >> "%STUB_LOG%"
+    taskkill /F /IM "{exe}" >> "%STUB_LOG%" 2>&1
+    timeout /t 2 /nobreak > nul
+  ) else (
+    timeout /t 1 /nobreak > nul
+    goto :wait
+  )
 )
-echo [%date% %time%] swapping in new build >> "%STUB_LOG%"
+echo [%date% %time%] process exited, waiting 2s for file handles to release >> "%STUB_LOG%"
+timeout /t 2 /nobreak > nul
+
+rem Try to swap with retries (antivirus may lock the file briefly).
+set /a RETRIES=0
+:swap
+echo [%date% %time%] swapping in new build (attempt %RETRIES%) >> "%STUB_LOG%"
 move /Y "{new}" "{target}" >> "%STUB_LOG%" 2>&1
-if not exist "{target}" copy /Y "{new}" "{target}" >> "%STUB_LOG%" 2>&1
+if %errorlevel%==0 goto :swapped
+copy /Y "{new}" "{target}" >> "%STUB_LOG%" 2>&1
+if %errorlevel%==0 (
+  del /Q "{new}" >> "%STUB_LOG%" 2>&1
+  goto :swapped
+)
+set /a RETRIES+=1
+if %RETRIES% GEQ 10 (
+  echo [%date% %time%] ERROR: could not replace exe after 10 attempts >> "%STUB_LOG%"
+  echo [%date% %time%] You may need to manually replace {target} >> "%STUB_LOG%"
+  goto :done
+)
+timeout /t 3 /nobreak > nul
+goto :swap
+
+:swapped
 echo [%date% %time%] relaunching "{target}" >> "%STUB_LOG%"
 start "" "{target}" >> "%STUB_LOG%" 2>&1
-del /Q "%~f0"
+:done
+del /Q "%~f0" 2>nul
 """
     return template.format(exe=UPDATE_EXE_NAME, new=new_exe, target=target)
 

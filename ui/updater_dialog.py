@@ -227,6 +227,8 @@ class UpdateDialog(QDialog):
         # Ensure state files are flushed, then terminate.
         if hasattr(self.parentWidget(), "close"):
             self.parentWidget().close()
+        import time as _time
+        _time.sleep(1)
         os._exit(0)
 
     # ---------------- helpers ----------------

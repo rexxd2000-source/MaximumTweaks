@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.5"
+APP_VERSION = "2.0.6"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -238,6 +238,7 @@ DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
 #     production:  https://maximumtweaks.onrender.com
 # ---------------------------------------------------------------------------
 LICENSE_API_URL = "https://maximumtweaks.onrender.com"
+
 
 
 
