@@ -12,12 +12,13 @@ API:
     splash.build_now.connect(build_main_window)   # ~80%
     splash.finished.connect(show_window_and_fade) # 100%
 
-Update flow (inline loading step, no popup):
-    splash.update_checking()                      # hold progress at HOLD_PCT
+Update flow (full-screen, ported from updater-flow.html — no card, no popup):
+    splash.update_checking()                      # "Checking for updates" view
     on check result: update_ok() or update_available(cur, new, notes)
-    while downloading: update_progress(frac); then set_installing()
+    while downloading: update_progress(frac); then update_downloaded()
     on failure: update_error(msg)
-    install_clicked / skip_clicked / retry_clicked report the user's choice.
+    buttons: Install (install_clicked), Skip (skip_clicked), Retry
+    (retry_clicked), and the ready view's green Restart (restart_clicked).
 """
 from __future__ import annotations
 
@@ -104,188 +105,120 @@ def _monotonic_ms() -> float:
     return _time.monotonic() * 1000.0
 
 
-_UPDATE_QSS = """
-#UpdPanel {
-    background-color: rgba(10, 16, 23, 240);
-    border: 1px solid #1D2B37;
-    border-radius: 14px;
-}
-#UpdTitle {
-    color: #8B6BFF;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 2px;
+_FLOW_QSS = """
+#FlowGhost {
     background: transparent;
-    border: none;
-}
-#UpdMsg {
-    color: #AAB8C3;
-    font-size: 12px;
-    background: transparent;
-    border: none;
-}
-#UpdBar {
-    background-color: #151D25;
-    border: none;
-    border-radius: 3px;
-    min-height: 6px;
-    max-height: 6px;
-}
-#UpdBar::chunk {
-    background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
-                                      stop: 0 #7C3AED, stop: 1 #8B6BFF);
-    border-radius: 3px;
-}
-#UpdPrimary {
-    background-color: #8B6BFF;
     color: #F6F4FC;
+    border: 1px solid #2B2838;
+    border-radius: 11px;
+    padding: 11px 24px;
+    font-family: "Inter";
+    font-size: 13.5px;
+    font-weight: 600;
+}
+#FlowGhost:hover { background: rgba(255, 255, 255, 0.07); }
+#FlowGhost:pressed { background: rgba(255, 255, 255, 0.10); }
+#FlowGhost:disabled { color: #514A70; border-color: rgba(255, 255, 255, 0.05); }
+
+#FlowPrimary {
+    background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                                stop: 0 #8B6BFF, stop: 1 #6D4FE0);
+    color: #FFFFFF;
     border: none;
-    border-radius: 8px;
-    padding: 8px 20px;
-    font-size: 12px;
-    font-weight: 700;
+    border-radius: 11px;
+    padding: 11px 28px;
+    font-family: "Inter";
+    font-size: 13.5px;
+    font-weight: 600;
 }
-#UpdPrimary:hover {
-    background-color: #9C80FF;
+#FlowPrimary:hover { background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                                stop: 0 #9D80FF, stop: 1 #7A5CF2); }
+#FlowPrimary:pressed { background: #6D4FE0; }
+#FlowPrimary:disabled { background: #2A2440; color: #5C5A6B; }
+
+#FlowGreen {
+    background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                                stop: 0 #3DDC97, stop: 1 #1F8F63);
+    color: #07140F;
+    border: none;
+    border-radius: 11px;
+    padding: 11px 28px;
+    font-family: "Inter";
+    font-size: 13.5px;
+    font-weight: 600;
 }
-#UpdPrimary:disabled {
-    background-color: #1E1B2E;
-    color: #4C6B7A;
-}
-#UpdGhost {
-    background-color: transparent;
-    color: #8FA6B8;
-    border: 1px solid #2A3A46;
-    border-radius: 8px;
-    padding: 8px 20px;
-    font-size: 12px;
-}
-#UpdGhost:hover {
-    color: #DCE8F0;
-    border-color: #3C5262;
-}
-#UpdGhost:disabled {
-    color: #3E4F5C;
-    border-color: #1E2A33;
-}
+#FlowGreen:hover { background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
+                                stop: 0 #57E6A8, stop: 1 #26A16F); }
+#FlowGreen:pressed { background: #1F8F63; }
+#FlowGreen:disabled { background: #14362A; color: #5C8A77; }
 """
 
 
-class _UpdatePanel(QWidget):
-    """Inline update card layered over the splash stage.
+class _RingSpinner(QWidget):
+    """64px rotating ring (updater-flow.html .spin-ring): a faint violet track
+    with a bright sweeping leading edge, one 0.9s revolution."""
 
-    Modes:
-      info         — "Update available vX → vY" with Install / Skip
-      downloading  — progress bar, actions hidden
-      installing   — full progress bar, actions disabled
-      error        — message + Retry / Skip
-    """
-
-    install = Signal()
-    skip = Signal()
-    retry = Signal()
-
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, size: int = 64):
         super().__init__(parent)
-        self.setObjectName("UpdPanel")
-        self.setStyleSheet(_UPDATE_QSS)
-        self._mode = "info"
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._rot = 0.0
+        self._t = QTimer(self)
+        self._t.setInterval(16)
+        self._t.timeout.connect(self._tick)
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 18, 24, 16)
-        lay.setSpacing(10)
+    def start(self):
+        if not self._t.isActive():
+            self._t.start()
+            self.show()
+            self.raise_()
 
-        self._title = QLabel("UPDATE AVAILABLE")
-        self._title.setObjectName("UpdTitle")
-        self._title.setAlignment(Qt.AlignCenter)
+    def stop(self):
+        self._t.stop()
+        self.hide()
 
-        self._msg = QLabel("")
-        self._msg.setObjectName("UpdMsg")
-        self._msg.setAlignment(Qt.AlignCenter)
-        self._msg.setWordWrap(True)
+    def _tick(self):
+        self._rot = (self._rot + 360.0 / 900.0) % 360.0
+        self.update()
 
-        self._bar = QProgressBar()
-        self._bar.setObjectName("UpdBar")
-        self._bar.setRange(0, 100)
-        self._bar.setValue(0)
-        self._bar.setTextVisible(False)
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = QPointF(self.width() / 2.0, self.height() / 2.0)
+        r = self.width() / 2.0 - 2.0
+        track = QPen(QColor(150, 130, 235, 46), 2)
+        track.setCapStyle(Qt.RoundCap)
+        p.setPen(track)
+        p.drawArc(QRectF(c.x() - r, c.y() - r, r * 2, r * 2), 0, 360 * 16)
+        sweep = QPen(QColor("#C9C0FF"), 2)
+        sweep.setCapStyle(Qt.RoundCap)
+        p.setPen(sweep)
+        p.drawArc(QRectF(c.x() - r, c.y() - r, r * 2, r * 2),
+                  int(-(90.0 + self._rot) * 16), int(250 * 16))
+        p.end()
 
-        self._primary = QPushButton("Install Update")
-        self._primary.setObjectName("UpdPrimary")
-        self._primary.setCursor(Qt.PointingHandCursor)
-        self._skip = QPushButton("Skip")
-        self._skip.setObjectName("UpdGhost")
-        self._skip.setCursor(Qt.PointingHandCursor)
 
-        row = QHBoxLayout()
-        row.setSpacing(10)
-        row.addStretch()
-        row.addWidget(self._skip)
-        row.addWidget(self._primary)
-        row.addStretch()
+# ---------------------------------------------------------------------------
+# Full-screen update flow — pixel-accurate port of updater-flow.html.
+# The boot canvas keeps painting the background/blobs/dots/topbar/bottombar;
+# the hero area swaps between the flow's views (checking, update available,
+# downloading, installing, ready, error). Action buttons are real widgets so
+# they stay clickable on top of the painted scene.
+# ---------------------------------------------------------------------------
+_HEAD_FONT = 22
+_SUB_WIDTH = 420
+_ACTIONS_Y = 0.685          # vertical centre of the action-button row
+_ACTIONS_H = 44
 
-        lay.addWidget(self._title)
-        lay.addWidget(self._msg)
-        lay.addWidget(self._bar)
-        lay.addLayout(row)
 
-        self._primary.clicked.connect(self._on_primary)
-        self._skip.clicked.connect(self.skip)
-
-    # ---------------- modes ----------------
-
-    def show_info(self, current: str, new: str, notes: str = ""):
-        self._mode = "info"
-        self._title.setText("UPDATE AVAILABLE")
-        text = f"Maximum Tweaks v{current} \u2192 v{new}"
-        if notes:
-            text += f"\n\n{notes[:320].strip()}"
-        self._msg.setText(text)
-        self._bar.hide()
-        self._primary.show()
-        self._primary.setEnabled(True)
-        self._primary.setText("Install Update")
-        self._skip.show()
-        self._skip.setEnabled(True)
-        self._skip.setText("Skip")
-
-    def show_download(self, frac: float):
-        self._mode = "downloading"
-        self._title.setText("DOWNLOADING UPDATE")
-        self._msg.setText("Downloading the new build\u2026")
-        self._bar.show()
-        self._bar.setValue(int(round(_clamp01(frac) * 100)))
-        self._primary.hide()
-        self._skip.setEnabled(False)
-        self._skip.setText("Please wait\u2026")
-
-    def show_installing(self):
-        self._mode = "installing"
-        self._title.setText("INSTALLING UPDATE")
-        self._msg.setText("Applying the update \u2014 the app will restart\u2026")
-        self._bar.show()
-        self._bar.setValue(100)
-        self._primary.hide()
-        self._skip.setEnabled(False)
-        self._skip.setText("Please wait\u2026")
-
-    def show_error(self, message: str):
-        self._mode = "error"
-        self._title.setText("UPDATE ERROR")
-        self._msg.setText(message or "Could not check for updates.")
-        self._bar.hide()
-        self._primary.show()
-        self._primary.setEnabled(True)
-        self._primary.setText("Retry")
-        self._skip.show()
-        self._skip.setEnabled(True)
-        self._skip.setText("Skip")
-
-    def _on_primary(self):
-        if self._mode == "info":
-            self.install.emit()
-        elif self._mode == "error":
-            self.retry.emit()
+def _flow_font(family: str, pixel: int, weight: QFont.Weight,
+               spacing: float = 0.0) -> QFont:
+    f = QFont(family, 1)
+    f.setPixelSize(pixel)
+    f.setWeight(weight)
+    if spacing:
+        f.setLetterSpacing(QFont.AbsoluteSpacing, spacing)
+    return f
 
 
 class _ProbeThread(QThread):
@@ -352,9 +285,10 @@ class CinematicSplash(QWidget):
     corner glow blobs, 38px dot grid and rising particles fill the screen.
 
     API: signals build_now, finished, install_clicked, skip_clicked,
-    retry_clicked; methods start(), update_checking(), update_ok(),
-    update_available(cur,new,notes), update_progress(frac), set_installing(),
-    update_error(msg), fade_out(ms, on_done).
+    retry_clicked, restart_clicked; methods start(), update_checking(),
+    update_ok(), update_available(cur,new,notes), update_progress(frac),
+    update_downloaded(), set_download_bytes(total), update_error(msg),
+    fade_out(ms, on_done).
     """
 
     build_now = Signal()
@@ -362,6 +296,7 @@ class CinematicSplash(QWidget):
     install_clicked = Signal()
     skip_clicked = Signal()
     retry_clicked = Signal()
+    restart_clicked = Signal()
 
     STAGES = ((0, "INITIALIZING ENGINE"), (24, "DETECTING HARDWARE"),
               (40, "LOADING TWEAK DATABASE"), (58, "VERIFYING LICENSE"),
@@ -399,16 +334,44 @@ class CinematicSplash(QWidget):
                            for _ in range(40)]
         self._update_phase = False
         self._entered_phase = False
-        self._pending_panel = None
         self._update_state = "idle"
         self._held = False
         self._ok_hold_until: float | None = None
         self._download_frac = 0.0
-        self._panel = _UpdatePanel(self)
-        self._panel.hide()
-        self._panel.install.connect(self.install_clicked)
-        self._panel.skip.connect(self.skip_clicked)
-        self._panel.retry.connect(self.retry_clicked)
+        self._dl_total_bytes = 0
+        self._dl_probe_at: float | None = None
+        self._dl_probe_frac = 0.0
+        self._dl_speed = "0.0 MB/s"
+        self._flow_cur = APP_VERSION.lstrip("v")
+        self._flow_new = ""
+        self._flow_items: list[str] = []
+        self._flow_error = ""
+
+        # Full-screen update-flow chrome: spinner + the action buttons.
+        self._spinner = _RingSpinner(self)
+        self._spinner.raise_()
+
+        self._btn_skip = QPushButton("Skip", self)
+        self._btn_skip.setObjectName("FlowGhost")
+        self._btn_skip.setStyleSheet(_FLOW_QSS)
+        self._btn_skip.setCursor(Qt.PointingHandCursor)
+        self._btn_skip.hide()
+
+        self._btn_primary = QPushButton("Install update", self)
+        self._btn_primary.setObjectName("FlowPrimary")
+        self._btn_primary.setStyleSheet(_FLOW_QSS)
+        self._btn_primary.setCursor(Qt.PointingHandCursor)
+        self._btn_primary.hide()
+
+        self._btn_restart = QPushButton("Restart now", self)
+        self._btn_restart.setObjectName("FlowGreen")
+        self._btn_restart.setStyleSheet(_FLOW_QSS)
+        self._btn_restart.setCursor(Qt.PointingHandCursor)
+        self._btn_restart.hide()
+
+        self._btn_skip.clicked.connect(self.skip_clicked)
+        self._btn_primary.clicked.connect(self._on_flow_primary)
+        self._btn_restart.clicked.connect(self.restart_clicked)
         self._bg: QPixmap | None = None
         self._load_db()
 
@@ -429,7 +392,6 @@ class CinematicSplash(QWidget):
         self._started = True
         self._update_phase = False
         self._entered_phase = False
-        self._pending_panel = None
         self._t0 = None
         self._timer.start()
         self._start_probe()
@@ -448,88 +410,151 @@ class CinematicSplash(QWidget):
         self._toast_values.update(v)
         self.update()
 
-    # ---------------- inline update flow ----------------
+    # ---------------- full-screen update flow ----------------
 
     def update_checking(self):
         self._update_state = "checking"
         self._held = True
         self._ok_hold_until = None
-        self._panel.hide()
+        self._set_actions(None)
+        self._spinner.start()
         self.update()
-
-    def _enter_update_phase(self):
-        fn = self._pending_panel
-        self._pending_panel = None
-        if fn is not None:
-            self._update_phase = True
-            fn()
-        elif self._update_state == "checking":
-            self._update_phase = True
-            self._held = True
-            self.update()
 
     def update_ok(self):
         self._update_state = "ok"
         self._held = False
-        self._update_phase = False
         self._ok_hold_until = _monotonic_ms() + 650.0
-        self._panel.hide()
+        self._set_actions(None)
+        self._spinner.stop()
         self.update()
 
     def update_available(self, current: str, new: str, notes: str = ""):
         self._update_state = "available"
-        if self._update_phase:
-            self._panel.show_info(current, new, notes)
-            self._show_panel()
-        else:
-            self._held = True
-            self._pending_panel = lambda: (
-                self._panel.show_info(current, new, notes), self._show_panel())
+        self._flow_cur = str(current or "").lstrip("v")
+        self._flow_new = str(new or "").lstrip("v")
+        self._flow_items = self._parse_flow_notes(notes)[:3]
+        self._held = True
+        self._ok_hold_until = None
+        self._spinner.stop()
+        self._set_actions(("skip", "install"))
+        self.update()
+
+    def set_download_bytes(self, total: int):
+        self._dl_total_bytes = int(total or 0)
 
     def update_progress(self, frac: float):
         self._update_state = "downloading"
         self._download_frac = _clamp01(frac)
-        self._panel.show_download(self._download_frac)
-        self._show_panel()
+        self._track_download_speed()
+        self._held = True
+        self._set_actions(None)
+        self._spinner.stop()
         self.update()
 
-    def set_installing(self):
+    def update_downloaded(self):
+        """Download finished — play the installing beat, then the ready view
+        with the green Restart action (ported from updater-flow.html)."""
         self._update_state = "installing"
         self._download_frac = 1.0
-        self._panel.show_installing()
-        self._show_panel()
+        self._held = True
+        self._set_actions(None)
+        self._spinner.start()
         self.update()
+        QTimer.singleShot(1400, self._ready_view)
+
+    def _ready_view(self):
+        if self._update_state == "installing":
+            self._update_state = "ready"
+            self._held = True
+            self._spinner.stop()
+            self._set_actions(("restart",))
+            self.update()
 
     def update_error(self, message: str):
         self._update_state = "error"
-        if self._update_phase:
-            self._panel.show_error(message)
-            self._show_panel()
+        self._flow_error = str(message or "Couldn\u2019t check for updates.")
+        self._held = True
+        self._ok_hold_until = None
+        self._spinner.stop()
+        self._set_actions(("skip", "retry"))
+        self.update()
+
+    def _parse_flow_notes(self, notes: str) -> list[str]:
+        lines = [ln.strip() for ln in (notes or "").replace("\r", "").splitlines()
+                 if ln.strip()]
+        out: list[str] = []
+        for ln in lines:
+            ln = ln.lstrip("-*+#>\u26a1").strip()
+            if not ln:
+                continue
+            if len(ln) > 62:
+                ln = ln[:61] + "\u2026"
+            out.append(ln)
+        return out
+
+    def _track_download_speed(self):
+        now = _monotonic_ms()
+        if self._dl_probe_at is not None and self._dl_total_bytes > 0:
+            dt = (now - self._dl_probe_at) / 1000.0
+            df = max(0.0, self._download_frac - self._dl_probe_frac)
+            if dt > 0.05:
+                mb = df * self._dl_total_bytes / 1048576.0
+                self._dl_speed = f"{mb / dt:.1f} MB/s"
+        self._dl_probe_at = now
+        self._dl_probe_frac = self._download_frac
+
+    def _on_flow_primary(self):
+        if self._update_state == "available":
+            self.install_clicked.emit()
+        elif self._update_state == "error":
+            self.retry_clicked.emit()
+
+    def _set_actions(self, spec):
+        """spec: None | ('skip','install') | ('skip','retry') | ('restart',)."""
+        skip, primary, restart = self._btn_skip, self._btn_primary, self._btn_restart
+        if spec == ("skip", "install"):
+            skip.setText("Skip")
+            skip.show()
+            primary.setText("Install update")
+            primary.show()
+            restart.hide()
+        elif spec == ("skip", "retry"):
+            skip.setText("Skip")
+            skip.show()
+            primary.setText("Retry")
+            primary.show()
+            restart.hide()
+        elif spec == ("restart",):
+            restart.setText("Restart now")
+            restart.show()
+            skip.hide()
+            primary.hide()
         else:
-            self._held = True
-            self._pending_panel = lambda: (
-                self._panel.show_error(message), self._show_panel())
-        self.update()
+            skip.hide()
+            primary.hide()
+            restart.hide()
+        self._layout_actions()
 
-    def _show_panel(self):
-        self._panel.show()
-        self._panel.raise_()
-        self._position_panel()
-        self.update()
-
-    def _position_panel(self):
-        pw = 430
-        self._panel.adjustSize()
-        ph = max(self._panel.sizeHint().height(), 128)
-        x = (self.width() - pw) // 2
-        y = int(self.height() * 0.72) - ph // 2
-        self._panel.setGeometry(x, y, pw, ph)
+    def _layout_actions(self):
+        vis = [b for b in (self._btn_skip, self._btn_primary, self._btn_restart)
+               if b.isVisible()]
+        if not vis:
+            return
+        widths = [max(b.sizeHint().width(), 0) for b in vis]
+        gap = 12
+        total = sum(widths) + gap * (len(vis) - 1)
+        x = (self.width() - total) / 2.0
+        y = self.height() * _ACTIONS_Y - _ACTIONS_H / 2.0
+        for b, wd in zip(vis, widths):
+            b.setGeometry(round(x), round(y), wd, _ACTIONS_H)
+            x += wd + gap
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._bg = None
-        if self._panel is not None and self._panel.isVisible():
-            self._position_panel()
+        self._layout_actions()
+        if getattr(self, "_spinner", None) is not None:
+            self.update()
 
     def fade_out(self, duration_ms: int = 700, on_done=None):
         anim = QPropertyAnimation(self, b"windowOpacity", self)
@@ -557,7 +582,6 @@ class CinematicSplash(QWidget):
             self._ok_hold_until = None
         if t >= self._dur_ms and not self._entered_phase:
             self._entered_phase = True
-            self._enter_update_phase()
         if (t >= self._dur_ms and not self._done_emitted
                 and not self._held and self._ok_hold_until is None):
             self._done_emitted = True
@@ -574,7 +598,7 @@ class CinematicSplash(QWidget):
         u = _clamp01(t / self._dur_ms)
         pct = _ease_out_cubic(u) * 100.0
         if self._update_state == "downloading":
-            pct = max(pct, 58.0 + self._download_frac * 32.0)
+            pct = 58.0 + self._download_frac * 32.0
         elif self._update_state == "installing":
             pct = 96.0
         elif self._held:
@@ -718,16 +742,37 @@ class CinematicSplash(QWidget):
         p.setPen(QColor("#F6F4FC"))
         p.drawText(QRectF(81, 28, 320, 30),
                    Qt.AlignVCenter | Qt.AlignLeft, "Maximum Tweaks")
-        # elapsed clock
-        secs = int(t / 1000)
-        fc = QFont("JetBrains Mono", 11)
-        fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
-        p.setFont(fc)
-        p.setPen(QColor("#514A70"))
-        p.drawText(QRectF(w - 240, 28, 200, 30),
-                   Qt.AlignVCenter | Qt.AlignRight,
-                   "%02d:%02d:%02d" % (secs // 3600, (secs // 60) % 60,
-                                        secs % 60))
+        # step tracker (update flow) or elapsed clock
+        _step = {"checking": 1, "available": 1, "downloading": 2,
+                 "installing": 3, "ready": 4}.get(self._update_state, 0)
+        if _step:
+            fc = QFont("JetBrains Mono", 10.5)
+            fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+            p.setFont(fc)
+            s1, s2 = "Step ", " of 4"
+            sn = str(_step)
+            w1 = p.fontMetrics().horizontalAdvance(s1)
+            wn = p.fontMetrics().horizontalAdvance(sn)
+            x = w - 40 - (w1 + wn + p.fontMetrics().horizontalAdvance(s2))
+            p.setPen(QColor("#514A70"))
+            p.drawText(QRectF(x, 28, w1 + wn, 30),
+                       Qt.AlignVCenter | Qt.AlignLeft, s1)
+            p.setPen(QColor("#C9C0FF"))
+            p.drawText(QRectF(x + w1, 28, wn, 30),
+                       Qt.AlignVCenter | Qt.AlignLeft, sn)
+            p.setPen(QColor("#514A70"))
+            p.drawText(QRectF(x + w1 + wn, 28, 240, 30),
+                       Qt.AlignVCenter | Qt.AlignLeft, s2)
+        else:
+            secs = int(t / 1000)
+            fc = QFont("JetBrains Mono", 11)
+            fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+            p.setFont(fc)
+            p.setPen(QColor("#514A70"))
+            p.drawText(QRectF(w - 240, 28, 200, 30),
+                       Qt.AlignVCenter | Qt.AlignRight,
+                       "%02d:%02d:%02d" % (secs // 3600, (secs // 60) % 60,
+                                            secs % 60))
 
     def _hero_font(self, px, weight):
         f = QFont("Segoe UI", 1)
@@ -738,6 +783,10 @@ class CinematicSplash(QWidget):
 
     def _draw_hero(self, p: QPainter, w: int, h: int, pct: float,
                    t: float):
+        if self._update_state in ("checking", "available", "downloading",
+                                  "installing", "ready", "error"):
+            self._draw_flow(p, w, h)
+            return
         # stage label
         stage = self.STAGES[0][1]
         for thr, txt in self.STAGES:
@@ -832,6 +881,178 @@ class CinematicSplash(QWidget):
                          sr.top(), lw, 18),
                    Qt.AlignLeft | Qt.AlignVCenter, step)
 
+    # ---------------- update-flow painting ----------------
+
+    def _draw_flow(self, p: QPainter, w: int, h: int):
+        st = self._update_state
+        stage = {"checking": "Updater", "available": "Update available",
+                 "downloading": "Downloading update",
+                 "installing": "Installing"}.get(st)
+        if stage:
+            self._draw_stage(p, w, h, stage)
+        if st == "checking":
+            self._spinner.move(w // 2 - 32, int(h * 0.32))
+            self._spinner.start()
+            self._draw_state(p, w, int(h * 0.32) + 64 + 34,
+                             "Checking for updates",
+                             "Comparing your installed version against the "
+                             "latest release.")
+        elif st == "available":
+            self._spinner.stop()
+            self._draw_available(p, w, h)
+        elif st == "downloading":
+            self._spinner.stop()
+            self._draw_downloading(p, w, h)
+        elif st == "installing":
+            self._spinner.move(w // 2 - 32, int(h * 0.32))
+            self._spinner.start()
+            self._draw_state(p, w, int(h * 0.32) + 64 + 34,
+                             "Applying update",
+                             "Replacing app files and verifying integrity \u2014 "
+                             "this only takes a moment.")
+        elif st == "ready":
+            self._spinner.stop()
+            self._draw_ready(p, w, h)
+        elif st == "error":
+            self._spinner.stop()
+            self._draw_state(p, w, int(h * 0.36),
+                             "Couldn\u2019t check for updates", self._flow_error)
+
+    def _draw_stage(self, p: QPainter, w: int, h: int, text: str):
+        p.setFont(_flow_font("JetBrains Mono", 12, QFont.Weight.Medium, 2.6))
+        p.setPen(QColor("#C9C0FF"))
+        p.drawText(QRectF(0, int(h * 0.185), w, 20), Qt.AlignCenter, text)
+
+    def _draw_state(self, p: QPainter, w: int, top: int, title: str,
+                    sub: str):
+        p.setFont(_flow_font("Space Grotesk", _HEAD_FONT, QFont.Weight.DemiBold))
+        p.setPen(QColor("#F6F4FC"))
+        p.drawText(QRectF(0, top, w, 34), Qt.AlignCenter, title)
+        p.setFont(_flow_font("Inter", 13, QFont.Weight.Normal))
+        p.setPen(QColor("#928AAD"))
+        p.drawText(QRectF((w - _SUB_WIDTH) / 2.0, top + 44, _SUB_WIDTH, 64),
+                   Qt.TextWordWrap | Qt.AlignHCenter, sub)
+
+    def _draw_available(self, p: QPainter, w: int, h: int):
+        cur = "v" + (self._flow_cur or "")
+        new = "v" + (self._flow_new or "")
+        fs = _flow_font("Space Grotesk", 30, QFont.Weight.Bold)
+        p.setFont(fs)
+        fm = p.fontMetrics()
+        wcur, wnew = fm.horizontalAdvance(cur), fm.horizontalAdvance(new)
+        arrow_w = 44
+        total = wcur + arrow_w + wnew
+        x = (w - total) / 2.0
+        cy = int(h * 0.30)
+        p.setPen(QColor("#928AAD"))
+        p.drawText(QRectF(x, cy, wcur, 38), Qt.AlignCenter, cur)
+        p.setFont(_flow_font("Inter", 22, QFont.Weight.Medium))
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(x + wcur, cy, arrow_w, 38), Qt.AlignCenter, "\u2192")
+        p.setFont(fs)
+        p.setPen(QColor("#C9C0FF"))
+        p.drawText(QRectF(x + wcur + arrow_w, cy, wnew, 38),
+                   Qt.AlignCenter, new)
+        lab = _flow_font("JetBrains Mono", 10, QFont.Weight.Medium, 0.8)
+        p.setFont(lab)
+        p.setPen(QColor("#514A70"))
+        ly = cy + 44
+        p.drawText(QRectF(x, ly, wcur, 16), Qt.AlignCenter, "INSTALLED")
+        p.drawText(QRectF(x + wcur + arrow_w, ly, wnew, 16),
+                   Qt.AlignCenter, "NEW")
+
+        cw = 340
+        clx = (w - cw) / 2.0
+        cy2 = ly + 46
+        p.setFont(_flow_font("JetBrains Mono", 10, QFont.Weight.Medium, 1.1))
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(clx, cy2, cw, 16),
+                   Qt.AlignVCenter | Qt.AlignLeft, "WHAT\u2019S NEW")
+        if self._flow_items:
+            iy = cy2 + 30
+            for i, item in enumerate(self._flow_items[:3]):
+                yy = iy + i * 26
+                p.setFont(_flow_font("Inter", 12.5, QFont.Weight.Normal))
+                dash = "\u2014"
+                dw = p.fontMetrics().horizontalAdvance(dash)
+                p.setPen(QColor("#C9C0FF"))
+                p.drawText(QRectF(clx, yy, dw, 18),
+                           Qt.AlignVCenter | Qt.AlignLeft, dash)
+                p.setPen(QColor("#928AAD"))
+                p.drawText(QRectF(clx + dw + 9, yy, cw - dw - 9, 18),
+                           Qt.AlignVCenter | Qt.AlignLeft, item)
+
+    def _draw_downloading(self, p: QPainter, w: int, h: int):
+        frac = _clamp01(self._download_frac)
+        label = f"{int(round(frac * 100))}%"
+        size = int(round(max(90, min(190, w * 0.13))))
+        f = self._hero_font(size, QFont.Weight.Bold)
+        p.setFont(f)
+        fm = p.fontMetrics()
+        tw = fm.horizontalAdvance(label)
+        rect = QRectF((w - tw) / 2.0, h * 0.36 - fm.height() * 0.5, tw,
+                      fm.height() * 1.1)
+        g2 = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        g2.setColorAt(0.0, QColor("#FFFFFF"))
+        g2.setColorAt(0.55, QColor("#C9C0FF"))
+        g2.setColorAt(1.0, QColor("#4BE8D8"))
+        glow = QRadialGradient(rect.center(), rect.width() * 0.75)
+        glow.setColorAt(0.0, QColor(139, 107, 255, 40))
+        glow.setColorAt(1.0, QColor(139, 107, 255, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(rect.center(), rect.width() * 0.62,
+                      rect.width() * 0.62)
+        p.setFont(f)
+        tpen = QPen()
+        tpen.setBrush(QBrush(g2))
+        p.setPen(tpen)
+        p.drawText(rect, Qt.AlignCenter, label)
+
+        bw = min(560.0, w * 0.56)
+        bx = (w - bw) / 2.0
+        by = rect.bottom() + 40
+        track = QRectF(bx, by, bw, 6)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(255, 255, 255, 15))
+        p.drawRoundedRect(track, 3, 3)
+        fill = bw * frac
+        if fill > 1:
+            bg = QLinearGradient(track.topLeft(), track.topRight())
+            bg.setColorAt(0.0, QColor("#8B6BFF"))
+            bg.setColorAt(1.0, QColor("#4BE8D8"))
+            p.setBrush(bg)
+            p.drawRoundedRect(QRectF(bx, by, fill, 6), 3, 3)
+        p.setFont(_flow_font("JetBrains Mono", 11, QFont.Weight.Medium, 0.5))
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(bx, by + 16, bw, 18),
+                   Qt.AlignVCenter | Qt.AlignLeft,
+                   "Downloading the new build\u2026")
+        p.drawText(QRectF(bx, by + 16, bw, 18),
+                   Qt.AlignVCenter | Qt.AlignRight, self._dl_speed)
+
+    def _draw_ready(self, p: QPainter, w: int, h: int):
+        cx, cy = w // 2, int(h * 0.36)
+        glow = QRadialGradient(QPointF(cx, cy), 60)
+        glow.setColorAt(0.0, QColor(61, 220, 151, 54))
+        glow.setColorAt(1.0, QColor(61, 220, 151, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(QPointF(cx, cy), 58, 58)
+        p.setPen(QPen(QColor(61, 220, 151, 102), 1))
+        p.setBrush(QColor(61, 220, 151, 26))
+        p.drawEllipse(QPointF(cx, cy), 32, 32)
+        cpen = QPen(QColor("#3DDC97"), 3)
+        cpen.setCapStyle(Qt.RoundCap)
+        cpen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(cpen)
+        p.drawPolyline([QPointF(cx - 9, cy + 1), QPointF(cx - 3, cy + 7),
+                        QPointF(cx + 10, cy - 6)])
+        self._draw_state(
+            p, w, cy + 62,
+            "Update installed",
+            f"Maximum Tweaks v{self._flow_new} is ready. Restart to finish.")
+
     def _draw_bottombar(self, p: QPainter, w: int, h: int, pct: float):
         top = h - 66
         p.setPen(QPen(QColor(255, 255, 255, 15), 1))
@@ -840,9 +1061,15 @@ class CinematicSplash(QWidget):
         fv.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
         p.setFont(fv)
         p.setPen(QColor("#514A70"))
+        v_old = self._flow_cur
+        v_new = self._flow_new
+        if self._update_state in ("available", "downloading", "installing",
+                                  "ready"):
+            foot = f"MAXIMUM ENGINE \u00b7 v{v_old} \u2192 v{v_new}"
+        else:
+            foot = "MAXIMUM ENGINE \u00b7 v" + APP_VERSION
         p.drawText(QRectF(40, top + 10, 480, 20),
-                   Qt.AlignVCenter | Qt.AlignLeft,
-                   "MAXIMUM ENGINE \u00b7 v" + APP_VERSION)
+                   Qt.AlignVCenter | Qt.AlignLeft, foot)
         vals = self._toast_values
         chips = (
             ("Hardware detected", bool(vals.get("gpu")) and vals.get("gpu") not in ("...", "GPU")),

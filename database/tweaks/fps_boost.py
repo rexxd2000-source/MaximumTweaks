@@ -293,8 +293,8 @@ TWEAKS = validate_module("fps_boost", [
     T(
         "fpsb-011", "Activate Maximum Power Plan",
         "Creates, fully configures and activates the Maximum Power Plan — a "
-        "maximum-performance gaming power plan with the processor locked to "
-        "100% and minimal power-saving delays.",
+        "maximum-performance gaming power plan that lets the CPU boost to 100% "
+        "under load while idling down at rest, minimizing power-saving delays.",
         actions=[
             # Create the plan from the High Performance base, then apply the
             # full Reaper-spec profile (same as the Power Plans pp-013 tweak).
@@ -302,8 +302,8 @@ TWEAKS = validate_module("fps_boost", [
              "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
              MAX_PLAN_NAME),
 
-            ("power", "processor_min", 100, "AC"),
-            ("power", "processor_min", 100, "DC"),
+            ("power", "processor_min", 5, "AC"),
+            ("power", "processor_min", 5, "DC"),
             ("power", "processor_max", 100, "AC"),
             ("power", "processor_max", 100, "DC"),
 
@@ -347,7 +347,8 @@ TWEAKS = validate_module("fps_boost", [
              "381b4222-f694-41f0-9685-ff5bb260df2e"),
             ("powerscheme", "delete", MAX_PLAN_GUID),
         ],
-        why="The Maximum Power Plan locks processors to 100%, disables PCI "
+        why="The Maximum Power Plan lets the CPU boost to 100% under load while "
+            "idling down at rest (no forced 100% clock floor), disables PCI "
             "Express link state power management and keeps systems from idling "
             "to sleep on AC, minimizing micro-latencies and power-saving "
             "delays for maximum-performance gaming.",
@@ -399,7 +400,7 @@ TWEAKS = validate_module("fps_boost", [
             ("reg", "HKLM",
              r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
              r"\Multimedia\SystemProfile",
-             "SystemResponsiveness", 0, "DWORD"),
+             "SystemResponsiveness", 10, "DWORD"),
         ],
         revert=[
             ("regdel", "HKLM",
@@ -407,10 +408,10 @@ TWEAKS = validate_module("fps_boost", [
              r"\Multimedia\SystemProfile",
              "SystemResponsiveness"),
         ],
-        why="SystemResponsiveness reserves a percentage of CPU for "
-            "background tasks.  Setting it to 0 gives foreground games "
-            "access to all CPU resources.",
-        changes="Sets MMCSS SystemResponsiveness to 0.",
+        why="SystemResponsiveness reserves a small percentage of CPU for "
+            "background tasks.  Setting it to 10 keeps the system "
+            "serviceable while giving foreground games most of the CPU.",
+        changes="Sets MMCSS SystemResponsiveness to 10.",
         risk="safe", impact="moderate", recommended="recommended",
         admin=True,
         tags=["mmcss", "responsiveness", "cpu", "background"],

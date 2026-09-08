@@ -1,6 +1,6 @@
 """Category: CPU — the CPU & Scheduling tweak set, verbatim.
 
-These are exactly the 10 tweaks defined by the Reaper Performance Suite
+These are exactly the tweaks defined by the Reaper Performance Suite
 "CPU & Scheduling" group (verified against the installed exe).  Ids,
 names, descriptions, registry/powercfg/bcdedit commands and warnings are
 reproduced as-is.  Nothing has been added beyond this set.
@@ -32,7 +32,7 @@ TWEAKS = validate_module("cpu", [
         "Increases foreground process priority boost for smoother gaming.",
         actions=[
             ("reg", "HKLM", _PRIORITY_CONTROL,
-             "Win32PrioritySeparation", 38, "DWORD"),
+             "Win32PrioritySeparation", 26, "DWORD"),
         ],
         revert=[
             ("reg", "HKLM", _PRIORITY_CONTROL,
@@ -40,7 +40,7 @@ TWEAKS = validate_module("cpu", [
         ],
         why="Raises the foreground boost so the active game gets more CPU "
             "time relative to background processes.",
-        changes="Sets Win32PrioritySeparation to 38.",
+        changes="Sets Win32PrioritySeparation to 26.",
         risk="low", impact="moderate", recommended="recommended",
         admin=True, confirm=True,
         sub_category="gaming",
@@ -97,51 +97,7 @@ TWEAKS = validate_module("cpu", [
         tags=["core", "parking", "power", "powercfg"],
     ),
 
-    # ── 4) Disable HPET ─────────────────────────────────────────────
-
-    T(
-        "disable_hpet", "Disable HPET",
-        "Disables the High Precision Event Timer via BCD so the OS uses "
-        "the faster TSC clock, reducing input lag and stutter.",
-        actions=[
-            ("cmd", "bcdedit /set useplatformclock false"),
-        ],
-        revert=[
-            ("cmd", "bcdedit /deletevalue useplatformclock"),
-        ],
-        why="Forces the OS to use the TSC instead of the High Precision "
-            "Event Timer, which can reduce interrupt latency.",
-        changes="Sets useplatformclock to false.",
-        risk="advanced", impact="moderate", recommended="advanced",
-        admin=True, confirm=True,
-        sub_category="advanced",
-        tags=["hpet", "timer", "bcdedit", "interrupt"],
-    ),
-
-    # ── 5) Disable Dynamic Tick ─────────────────────────────────────
-
-    T(
-        "disable_dynamic_tick", "Disable Dynamic Tick",
-        "Disables dynamic tick suppression so the system keeps a regular "
-        "timer tick (latency experiment).",
-        actions=[
-            ("cmd", "bcdedit /set disabledynamictick yes"),
-        ],
-        revert=[
-            ("cmd", "bcdedit /deletevalue disabledynamictick"),
-        ],
-        why="Keeps the timer tick running regularly instead of relying on "
-            "dynamic tick suppression, lowering timer-related latency.",
-        changes="Sets disabledynamictick to yes.",
-        risk="advanced", impact="high", recommended="experimental",
-        admin=True, confirm=True,
-        warn="Benchmark before/after — modern systems may perform better "
-             "with default timer behavior.",
-        sub_category="advanced",
-        tags=["timer", "tick", "bcdedit", "latency", "experimental", "restart"],
-    ),
-
-    # ── 6) Timer Resolution ─────────────────────────────────────────
+    # ── 4) Timer Resolution ─────────────────────────────────────────
 
     T(
         "timer_resolution", "Timer Resolution",
@@ -158,13 +114,15 @@ TWEAKS = validate_module("cpu", [
         why="A faster global timer resolution lets games and input be "
             "serviced on a tighter schedule, cutting input lag.",
         changes="Sets GlobalTimerResolution=1 and TimerResolution=5000.",
-        risk="low", impact="high", recommended="recommended",
+        risk="low", impact="high", recommended="experimental",
         admin=True, confirm=True,
+        warn="Timer resolution behaviors vary by CPU and Windows config — "
+             "benchmark before/after.",
         sub_category="gaming",
-        tags=["timer", "resolution", "latency"],
+        tags=["timer", "resolution", "latency", "experimental"],
     ),
 
-    # ── 7) Disable Power Throttling ─────────────────────────────────
+    # ── 5) Disable Power Throttling ─────────────────────────────────
 
     T(
         "power_throttling_off", "Disable Power Throttling",
@@ -184,7 +142,7 @@ TWEAKS = validate_module("cpu", [
         tags=["throttling", "power", "background"],
     ),
 
-    # ── 8) Disable Processor Idle States ────────────────────────────
+    # ── 6) Disable Processor Idle States ────────────────────────────
 
     T(
         "processor_idle_disable", "Disable Processor Idle States",
@@ -211,7 +169,7 @@ TWEAKS = validate_module("cpu", [
         tags=["idle", "cstate", "power", "powercfg", "experimental"],
     ),
 
-    # ── 9) Foreground CPU Scheduling Profile ────────────────────────
+    # ── 7) Foreground CPU Scheduling Profile ────────────────────────
 
     T(
         "foreground_priority", "Foreground CPU Scheduling Profile",
@@ -219,21 +177,21 @@ TWEAKS = validate_module("cpu", [
         "workloads.",
         actions=[
             ("reg", "HKLM", _PRIORITY_CONTROL,
-             "Win32PrioritySeparation", 38, "DWORD"),
+             "Win32PrioritySeparation", 26, "DWORD"),
         ],
         revert=[
             ("regdel", "HKLM", _PRIORITY_CONTROL, "Win32PrioritySeparation"),
         ],
         why="Biases the Windows scheduler's foreground boost toward "
             "interactive workloads.",
-        changes="Sets Win32PrioritySeparation to 38.",
+        changes="Sets Win32PrioritySeparation to 26.",
         risk="advanced", impact="high", recommended="advanced",
         admin=True, confirm=True,
         sub_category="advanced",
         tags=["priority", "foreground", "scheduler", "restart"],
     ),
 
-    # ── 10) Game Process Priority Policy ────────────────────────────
+    # ── 8) Game Process Priority Policy ────────────────────────────
 
     T(
         "game_process_priority", "Game Process Priority Policy",

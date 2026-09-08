@@ -190,6 +190,7 @@ def run_gui():
         if not info:
             return
         worker = DownloadWorker(info["url"], splash)
+        worker.bytes_total.connect(splash.set_download_bytes)
         worker.progress.connect(splash.update_progress)
         worker.done.connect(_on_update_downloaded)
         _update["dl"] = worker  # keep a strong ref until finished
@@ -199,8 +200,14 @@ def run_gui():
         if error or new_exe is None:
             splash.update_error(error or "Download failed.")
             return
+        _update["new_exe"] = new_exe
+        splash.update_downloaded()
+
+    def _apply_update():
+        new_exe = _update.get("new_exe")
+        if not new_exe:
+            return
         from engine import updater
-        splash.set_installing()
         try:
             updater.install_and_restart(new_exe)
         except updater.UpdaterError as exc:
@@ -216,6 +223,7 @@ def run_gui():
     splash.install_clicked.connect(_start_update_download)
     splash.skip_clicked.connect(_release_into_app)
     splash.retry_clicked.connect(_start_update_check)
+    splash.restart_clicked.connect(_apply_update)
     _start_update_check()
 
     def build_window():
