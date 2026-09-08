@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Secrets — never commit
+.env
+auth_backend/.env
+
+# Local data / user state
+data/
+config/state.json
+database/
+profiles/
+reports/
+backups/
+Logs/
+_dev/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
