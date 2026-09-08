@@ -36,6 +36,8 @@ a = Analysis(
         "engine.game_config",
         "engine.tools_runner",
         "engine.updater",
+        "auth_backend.main",
+        "uvicorn",
         "ui.main_window",
         "ui.categories",
         "ui.updater_dialog",
