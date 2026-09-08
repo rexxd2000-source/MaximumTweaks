@@ -32,6 +32,9 @@ except ImportError:  # pragma: no cover - only needed when DATABASE_URL is set
     dict_row = None
     ConnectionPool = None
 
+import logging
+logger = logging.getLogger("maxtweaks.license.db")
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "licenses.db"
 
 SQLITE_SCHEMA = """
@@ -183,11 +186,44 @@ class LicenseDB:
             return q.replace("?", "%s")
         return q
 
+    @staticmethod
+    def _is_stale_conn(exc) -> bool:
+        """True when the error indicates a dead/purged pooled connection."""
+        msg = str(exc).lower()
+        return any(s in msg for s in (
+            "adminshutdown", "server closed", "connection attempt failed",
+            "connection already closed", "could not connect",
+        ))
+
     def _exec(self, conn, sql: str, params=()):
         """Run one statement with engine-appropriate placeholders."""
         if params:
             return conn.execute(self._sql(sql), params)
         return conn.execute(self._sql(sql))
+
+    def _run_with_retry(self, fn, *, commit: bool = True):
+        """Execute *fn(conn)* with a fresh connection; retry once on stale-pool errors."""
+        for attempt in range(2):
+            conn = self._connect()
+            try:
+                result = fn(conn)
+                if commit:
+                    conn.commit()
+                return result
+            except Exception as exc:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                if attempt == 0 and self._is_stale_conn(exc):
+                    logger.warning("db: stale Neon connection, retrying (attempt %d)", attempt + 1)
+                    continue
+                raise
+            else:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     # ------------------------------------------------------------------
     # Row helpers
@@ -199,15 +235,13 @@ class LicenseDB:
         return {key: row[key] for key in row.keys()}
 
     def get(self, license_key: str) -> dict | None:
+        def _fn(conn):
+            row = self._exec(
+                conn, "SELECT * FROM licenses WHERE license_key = ?",
+                (license_key,)).fetchone()
+            return self._row_to_dict(row)
         with self._lock:
-            conn = self._connect()
-            try:
-                row = self._exec(
-                    conn, "SELECT * FROM licenses WHERE license_key = ?",
-                    (license_key,)).fetchone()
-                return self._row_to_dict(row)
-            finally:
-                conn.close()
+            return self._run_with_retry(_fn, commit=False)
 
     # ------------------------------------------------------------------
     # Writes (admin + activation flow)
@@ -216,165 +250,128 @@ class LicenseDB:
     def create(self, license_key: str, plan: str = "lifetime",
                customer: str = "", note: str = "",
                expires_at: str | None = None) -> dict:
+        def _fn(conn):
+            self._exec(
+                conn,
+                "INSERT INTO licenses (license_key, status, plan, customer,"
+                " note, created_at, expires_at) VALUES (?, 'unused', ?, ?, ?, ?, ?)",
+                (license_key, plan, customer, note, _utc_now(), expires_at))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "INSERT INTO licenses (license_key, status, plan, customer,"
-                    " note, created_at, expires_at) VALUES (?, 'unused', ?, ?, ?, ?, ?)",
-                    (license_key, plan, customer, note, _utc_now(), expires_at))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
         rec = self.get(license_key)
         if rec is None:  # pragma: no cover
             raise RuntimeError("license record was not created")
         return rec
 
     def activate(self, license_key: str, device_id: str) -> dict:
-        """Bind an unused license to a device and mark it active.
-
-        Returns the updated record. Only ``unused`` licenses can be activated
-        through this path (re-activation of an already-bound key is handled by
-        the API layer so the caller can return the right error code).
-        """
+        """Bind an unused license to a device and mark it active."""
         now = _utc_now()
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET status = 'active', device_id = ?,"
+                " activated_at = COALESCE(activated_at, ?),"
+                " activation_count = activation_count + 1,"
+                " last_validated = ?, revoked_at = NULL,"
+                " revoked_reason = '' WHERE license_key = ?",
+                (device_id, now, now, license_key))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET status = 'active', device_id = ?,"
-                    " activated_at = COALESCE(activated_at, ?),"
-                    " activation_count = activation_count + 1,"
-                    " last_validated = ?, revoked_at = NULL,"
-                    " revoked_reason = '' WHERE license_key = ?",
-                    (device_id, now, now, license_key))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
         return self.get(license_key)
 
     def touch_validation(self, license_key: str) -> None:
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET last_validated = ? WHERE license_key = ?",
+                (_utc_now(), license_key))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET last_validated = ? WHERE license_key = ?",
-                    (_utc_now(), license_key))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
 
     def mark_expired(self, license_key: str) -> None:
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET status = 'expired' WHERE license_key = ?",
+                (license_key,))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET status = 'expired' WHERE license_key = ?",
-                    (license_key,))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
 
     def revoke(self, license_key: str, reason: str = "") -> dict | None:
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET status = 'revoked', revoked_at = ?,"
+                " revoked_reason = ? WHERE license_key = ?",
+                (_utc_now(), reason, license_key))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET status = 'revoked', revoked_at = ?,"
-                    " revoked_reason = ? WHERE license_key = ?",
-                    (_utc_now(), reason, license_key))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
         return self.get(license_key)
 
     def unrevoke(self, license_key: str) -> dict | None:
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET status = 'active', revoked_at = NULL,"
+                " revoked_reason = '' WHERE license_key = ?",
+                (license_key,))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET status = 'active', revoked_at = NULL,"
-                    " revoked_reason = '' WHERE license_key = ?",
-                    (license_key,))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
         return self.get(license_key)
 
     def unbind(self, license_key: str) -> dict | None:
-        """Support action for a PC change: unbind the device and free the key.
-
-        The license keeps its activation_count history; status returns to
-        ``unused`` so the same key can be activated on the new machine. This
-        is the ONLY supported way to change hardware (never client-side).
-        """
+        """Support action for a PC change: unbind the device and free the key."""
+        def _fn(conn):
+            self._exec(
+                conn,
+                "UPDATE licenses SET status = 'unused', device_id = NULL,"
+                " activated_at = NULL, reset_count = reset_count + 1,"
+                " revoked_at = NULL, revoked_reason = '' WHERE license_key = ?",
+                (license_key,))
         with self._lock:
-            conn = self._connect()
-            try:
-                self._exec(
-                    conn,
-                    "UPDATE licenses SET status = 'unused', device_id = NULL,"
-                    " activated_at = NULL, reset_count = reset_count + 1,"
-                    " revoked_at = NULL, revoked_reason = '' WHERE license_key = ?",
-                    (license_key,))
-                conn.commit()
-            finally:
-                conn.close()
+            self._run_with_retry(_fn)
         return self.get(license_key)
 
     def list_all(self, status: str | None = None) -> list[dict]:
+        def _fn(conn):
+            if status:
+                rows = self._exec(
+                    conn,
+                    "SELECT * FROM licenses WHERE status = ?"
+                    " ORDER BY created_at DESC", (status,)).fetchall()
+            else:
+                rows = self._exec(
+                    conn,
+                    "SELECT * FROM licenses ORDER BY created_at DESC").fetchall()
+            return [self._row_to_dict(r) for r in rows]
         with self._lock:
-            conn = self._connect()
-            try:
-                if status:
-                    rows = self._exec(
-                        conn,
-                        "SELECT * FROM licenses WHERE status = ?"
-                        " ORDER BY created_at DESC", (status,)).fetchall()
-                else:
-                    rows = self._exec(
-                        conn,
-                        "SELECT * FROM licenses ORDER BY created_at DESC").fetchall()
-                return [self._row_to_dict(r) for r in rows]
-            finally:
-                conn.close()
+            return self._run_with_retry(_fn, commit=False)
 
     def search(self, q: str) -> list[dict]:
         """Admin search across license key / customer / note (substring)."""
+        def _fn(conn):
+            like = f"%{q}%"
+            rows = self._exec(
+                conn,
+                "SELECT * FROM licenses WHERE license_key LIKE ?"
+                " OR customer LIKE ? OR note LIKE ?"
+                " ORDER BY created_at DESC",
+                (like, like, like)).fetchall()
+            return [self._row_to_dict(r) for r in rows]
         with self._lock:
-            conn = self._connect()
-            try:
-                like = f"%{q}%"
-                rows = self._exec(
-                    conn,
-                    "SELECT * FROM licenses WHERE license_key LIKE ?"
-                    " OR customer LIKE ? OR note LIKE ?"
-                    " ORDER BY created_at DESC",
-                    (like, like, like)).fetchall()
-                return [self._row_to_dict(r) for r in rows]
-            finally:
-                conn.close()
+            return self._run_with_retry(_fn, commit=False)
 
     def stats(self) -> dict:
+        def _fn(conn):
+            rows = self._exec(
+                conn,
+                "SELECT status, COUNT(*) AS n FROM licenses GROUP BY status").fetchall()
+            total = self._exec(
+                conn,
+                "SELECT COUNT(*) AS n FROM licenses").fetchone()["n"]
+            return {"total": total, "by_status": {r["status"]: r["n"] for r in rows}}
         with self._lock:
-            conn = self._connect()
-            try:
-                rows = self._exec(
-                    conn,
-                    "SELECT status, COUNT(*) AS n FROM licenses GROUP BY status").fetchall()
-                total = self._exec(
-                    conn,
-                    "SELECT COUNT(*) AS n FROM licenses").fetchone()["n"]
-            finally:
-                conn.close()
-        return {"total": total, "by_status": {r["status"]: r["n"] for r in rows}}
+            return self._run_with_retry(_fn, commit=False)
 
 
 def _close_pool() -> None:
