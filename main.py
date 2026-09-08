@@ -56,6 +56,31 @@ def run_gui():
 
     holder: dict = {"window": None}
 
+    # Offer an update during the loading screen: fetch in the background and,
+    # if a newer build exists, pop a modal "new version" dialog over the splash.
+    _boot_ui: dict = {}
+
+    def _on_boot_update(payload):
+        info = payload.get("info")
+        if not info:
+            return
+        if holder.get("window") is not None:
+            return  # main window already up; its toast covers this case
+        from ui.updater_dialog import UpdateDialog
+        dlg = UpdateDialog(parent=splash, check_on_open=False)
+        dlg.set_info(info)
+        _boot_ui["dlg"] = dlg  # keep a ref so the nested loop stays alive
+        dlg.exec()
+
+    def _start_boot_update():
+        from ui.updater_dialog import FetchWorker
+        worker = FetchWorker(splash)
+        worker.done.connect(_on_boot_update)
+        _boot_ui["worker"] = worker  # keep a strong ref until finished
+        worker.start()
+
+    _start_boot_update()
+
     def build_window():
         if holder["window"] is None:
             from ui.main_window import MainWindow

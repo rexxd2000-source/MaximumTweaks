@@ -192,14 +192,20 @@ def _stub_script(target: Path, new_exe: Path) -> str:
     new_exe = Path(new_exe)
     template = """@echo off
 rem Rex Tweaks self-update stub
+set "STUB_LOG=%~dp0stub.log"
+del /Q "%STUB_LOG%" 2>nul
+echo [%date% %time%] stub start >> "%STUB_LOG%"
 :wait
 tasklist /FI "IMAGENAME eq {exe}" | find /I "{exe}" > nul
 if %errorlevel%==0 (
   timeout /t 1 /nobreak > nul
   goto :wait
 )
-move /Y "{new}" "{target}" > nul
-start "" "{target}"
+echo [%date% %time%] swapping in new build >> "%STUB_LOG%"
+move /Y "{new}" "{target}" >> "%STUB_LOG%" 2>&1
+if not exist "{target}" copy /Y "{new}" "{target}" >> "%STUB_LOG%" 2>&1
+echo [%date% %time%] relaunching "{target}" >> "%STUB_LOG%"
+start "" "{target}" >> "%STUB_LOG%" 2>&1
 del /Q "%~f0"
 """
     return template.format(exe=UPDATE_EXE_NAME, new=new_exe, target=target)

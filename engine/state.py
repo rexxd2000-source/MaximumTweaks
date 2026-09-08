@@ -6,8 +6,11 @@ import os
 import time
 
 from rexlog import logger
+from config.app_config import ROOT
 
-STATE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+# State must persist across launches: next to the exe in frozen builds (ROOT),
+# next to the source tree in dev. A _MEIPASS/temp-based path is wiped on exit.
+STATE_DIR = os.path.join(str(ROOT), "data")
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 
 # In-memory copy of state.json. State only ever changes through _save(), so

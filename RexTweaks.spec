@@ -8,9 +8,10 @@ from config.app_config import APP_NAME, APP_VERSION, ROOT
 
 block_cipher = None
 
-# Runtime data: the tweak database + config live next to main.py.
+# Runtime data: the tweak database + config live next to main.py; artwork
+# (rex_logo.png, discord_logo.png) is bundled so frozen builds keep their logos.
 datas = []
-for rel in ("config", "database"):
+for rel in ("config", "database", "assets"):
     src = ROOT / rel
     datas.append((str(src), rel))
 

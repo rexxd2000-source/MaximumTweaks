@@ -80,9 +80,9 @@ class UpdateDialog(QDialog):
 
     def __init__(self, parent=None, check_on_open: bool = True):
         super().__init__(parent)
-        self.setWindowTitle("Update")
+        self.setWindowTitle("Update Available")
         self.setModal(True)
-        self.resize(430, 250)
+        self.resize(440, 300)
         self._worker = None
         self._info = None
         self._new_exe = None
@@ -91,7 +91,7 @@ class UpdateDialog(QDialog):
         lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(12)
 
-        title = QLabel("Update")
+        title = QLabel("New version available")
         title.setStyleSheet("font-size: 20px; font-weight: 900;")
         lay.addWidget(title)
 
@@ -123,6 +123,24 @@ class UpdateDialog(QDialog):
             self._check()
 
     # ---------------- actions ----------------
+
+    def set_info(self, info: dict):
+        """Preload an already-fetched update (used by the splash popup, so the
+        "new version" dialog appears during the loading screen)."""
+        self._info = info
+        ver = info["version"]
+        notes = (info.get("notes") or "").strip()
+        text = (f"A new version of {APP_NAME} is available: v{ver} "
+                f"(you're on v{APP_VERSION}).\n\nDownload it now?")
+        if notes:
+            text += f"\n\nWhat's new:\n{notes[:600]}"
+        self.msg.setText(text)
+        self.primary.setText("Download & Install")
+        try:
+            self.primary.clicked.disconnect(self._check)
+        except RuntimeError:
+            pass
+        self.primary.clicked.connect(self._download)
 
     def _check(self):
         self._set_busy(True, "Checking for updates\u2026")

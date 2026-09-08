@@ -47,6 +47,19 @@ def project_root() -> Path:
 
 ROOT = project_root()
 
+
+def _assets_dir() -> Path:
+    """Read-only artwork. In frozen builds the assets are bundled by the spec
+    into the PyInstaller extraction dir (sys._MEIPASS), not next to the exe;
+    in dev they live in the source tree."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and meipass:
+        bundled = Path(meipass) / "assets"
+        if bundled.is_dir():
+            return bundled
+    return ROOT / "assets"
+
+
 DIRS = {
     "engine": ROOT / "engine",
     "ui": ROOT / "ui",
@@ -59,7 +72,7 @@ DIRS = {
     "backups": ROOT / "backups",
     "rexlog": ROOT / "rexlog",
     "logs": ROOT / "Logs",
-    "assets": ROOT / "assets",
+    "assets": _assets_dir(),
     "config": ROOT / "config",
     "reports": ROOT / "reports",
 }
