@@ -149,7 +149,9 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
         url = asset_url
 
     if not is_newer(version, APP_VERSION):
+        logger.info(f"updater: up to date (latest is v{version})")
         return None
+    logger.info(f"updater: update available: v{version} -> {url}")
     return {"version": version, "notes": notes, "url": url}
 
 

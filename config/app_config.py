@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Rex Tweaks"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Rex Engine"
 
@@ -162,6 +162,7 @@ DISCORD_CDN = "https://cdn.discordapp.com"
 
 # Official community invite link (enables the Join button / sidebar).
 DISCORD_INVITE_URL = "https://discord.gg/NKnkgKzex"
+
 
 
 
