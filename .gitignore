@@ -14,7 +14,7 @@ auth_backend/.env
 # Local data / user state
 data/
 config/state.json
-database/
+database/tweaks.json
 profiles/
 reports/
 backups/
