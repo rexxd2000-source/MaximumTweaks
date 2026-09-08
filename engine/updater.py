@@ -362,7 +362,9 @@ def install_and_restart(new_exe: Path):
 
     stub = stub_dir / "apply_update.bat"
     try:
-        stub.write_text(_stub_script(original, staged), encoding="utf-8")
+        script = _stub_script(original, staged).encode("ascii", errors="replace").decode("ascii")
+        with open(stub, "w", encoding="ascii", errors="replace") as fh:
+            fh.write(script)
     except OSError as exc:
         raise UpdaterError(f"Could not write the updater script: {exc}") from exc
 
