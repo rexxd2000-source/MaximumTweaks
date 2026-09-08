@@ -342,6 +342,8 @@ class CinematicSplash(QWidget):
         self._dl_probe_at: float | None = None
         self._dl_probe_frac = 0.0
         self._dl_speed = "0.0 MB/s"
+        self._dl_speed_raw = -1.0
+        self._dl_start_pct = 58.0
         self._flow_cur = APP_VERSION.lstrip("v")
         self._flow_new = ""
         self._flow_items: list[str] = []
@@ -443,6 +445,8 @@ class CinematicSplash(QWidget):
         self._dl_total_bytes = int(total or 0)
 
     def update_progress(self, frac: float):
+        if self._update_state != "downloading":
+            self._dl_start_pct = self._current_pct()
         self._update_state = "downloading"
         self._download_frac = _clamp01(frac)
         self._track_download_speed()
@@ -499,7 +503,12 @@ class CinematicSplash(QWidget):
             df = max(0.0, self._download_frac - self._dl_probe_frac)
             if dt > 0.05:
                 mb = df * self._dl_total_bytes / 1048576.0
-                self._dl_speed = f"{mb / dt:.1f} MB/s"
+                raw = mb / dt
+                if self._dl_speed_raw < 0:
+                    self._dl_speed_raw = raw
+                else:
+                    self._dl_speed_raw = self._dl_speed_raw * 0.7 + raw * 0.3
+                self._dl_speed = f"{self._dl_speed_raw:.1f} MB/s"
         self._dl_probe_at = now
         self._dl_probe_frac = self._download_frac
 
@@ -598,7 +607,10 @@ class CinematicSplash(QWidget):
         u = _clamp01(t / self._dur_ms)
         pct = _ease_out_cubic(u) * 100.0
         if self._update_state == "downloading":
-            pct = 58.0 + self._download_frac * 32.0
+            start = max(self._dl_start_pct, 58.0)
+            range_top = max(start + self._download_frac * (100.0 - start),
+                           start)
+            pct = min(range_top, 100.0)
         elif self._update_state == "installing":
             pct = 96.0
         elif self._held:
@@ -988,9 +1000,12 @@ class CinematicSplash(QWidget):
                        -0.02 * size)
         p.setFont(f)
         fm = p.fontMetrics()
+        max_w = fm.horizontalAdvance("100%")
+        cx = w / 2.0
         tw = fm.horizontalAdvance(label)
-        rect = QRectF((w - tw) / 2.0, h * 0.36 - fm.height() * 0.5, tw,
-                      fm.height() * 1.1)
+        rect = QRectF(cx - max_w / 2.0, h * 0.36 - fm.height() * 0.5,
+                      max_w, fm.height() * 1.1)
+        text_rect = QRectF(cx - tw / 2.0, rect.top(), tw, rect.height())
         g2 = QLinearGradient(rect.topLeft(), rect.bottomLeft())
         g2.setColorAt(0.0, QColor("#FFFFFF"))
         g2.setColorAt(0.55, QColor("#C9C0FF"))
@@ -1006,7 +1021,7 @@ class CinematicSplash(QWidget):
         tpen = QPen()
         tpen.setBrush(QBrush(g2))
         p.setPen(tpen)
-        p.drawText(rect, Qt.AlignCenter, label)
+        p.drawText(text_rect, Qt.AlignCenter, label)
 
         bw = min(560.0, w * 0.56)
         bx = (w - bw) / 2.0
