@@ -1,6 +1,6 @@
 """Maximum Tweaks logging system.
 
-Writes a rotating log file to Logs/rextweaks.log and optionally mirrors
+Writes a rotating log file to Logs/maximumtweaks.log and optionally mirrors
 to the console. Logs application events, hardware detection, applied and
 reverted tweaks, errors and failed operations.
 """
@@ -23,7 +23,7 @@ def register_ui_sink(fn):
 
 def _make_logger() -> logging.Logger:
     global _initialized
-    logger = logging.getLogger("rextweaks")
+    logger = logging.getLogger("maximumtweaks")
     if _initialized:
         return logger
     logger.setLevel(logging.DEBUG)

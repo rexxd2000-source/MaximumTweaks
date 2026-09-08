@@ -1,8 +1,8 @@
-# Rex Tweaks
+# Maximum Tweaks
 
 Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert
 
-Rex Tweaks is a Windows system optimizer with a **603-tweak database** across
+Maximum Tweaks is a Windows system optimizer with a **603-tweak database** across
 45 categories (CPU, GPU, RAM, network, power, services, privacy, storage,
 audio, input, BIOS, game-specific and more). It detects your hardware, marks
 only **compatible** tweaks as ready, and applies/reverts them with one click.
@@ -45,7 +45,7 @@ only **compatible** tweaks as ready, and applies/reverts them with one click.
 - **Preview before apply** — see the exact registry keys, services and commands
   a tweak touches before running it.
 - **Terminal mode** for scripting (`--cli`).
-- Built-in logging (live-viewable in the app) at `Logs/rextweaks.log`.
+- Built-in logging (live-viewable in the app) at `Logs/maximumtweaks.log`.
 
 ## Requirements
 
@@ -98,7 +98,7 @@ New builds are **pushed to users without a reinstall**:
 
 Requirements for publishing:
 
-- `GITHUB_REPO` set in `config/app_config.py` (e.g. `"you/RexTweaks"`).
+- `GITHUB_REPO` set in `config/app_config.py` (e.g. `"you/MaximumTweaks"`).
 - A GitHub Personal Access Token in `$env:GITHUB_TOKEN` (scope: `repo`).
 - GitHub CLI (`gh`) is **not** required — the script uses `curl`.
 
@@ -106,7 +106,7 @@ Requirements for publishing:
 > token into `config\_secrets.py` (gitignored) so the built exe can read the
 > latest release and download the asset. The updater then talks to the GitHub
 > API with that token — no public mirror is needed. Never commit
-> `config/_secrets.py`.
+> `config/_secrets.py`. This repo is public, so none of that is required here.
 
 The app's update check resolves the **latest release tag** of `GITHUB_REPO`
 and downloads the asset named `MaximumTweaks.exe`. For a custom server instead of
@@ -127,7 +127,7 @@ database/   tweak database (603 tweaks) + action executor
 engine/     recommender, bundles, applier, applied-state tracking
 hardware/   hardware detection (WMI + psutil)
 ui/         PySide6 pages: dashboard, detect, tweaks, optimize, logs
-Logs/       rotating rextweaks.log
+Logs/       rotating maximumtweaks.log
 data/       state.json — tracks which tweaks you applied
 ```
 

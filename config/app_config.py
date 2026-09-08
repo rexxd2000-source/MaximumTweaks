@@ -33,10 +33,10 @@ GEMINI_MODEL = "gemini-3.5-flash"
 LAUNCH_DATETIME = "2026-08-14 16:00:00"
 
 # Set to your repository URL to enable the "Open GitHub" button in the sidebar.
-GITHUB_URL = "https://github.com/rexxd2000-source/RexTweaks"
+GITHUB_URL = "https://github.com/rexxd2000-source/MaximumTweaks"
 
 # Repo owner/repo for update checks (used by build scripts/README only).
-GITHUB_REPO = "rexxd2000-source/RexTweaks"
+GITHUB_REPO = "rexxd2000-source/MaximumTweaks"
 
 # Update auth token: read from the GITHUB_TOKEN env var, else from the
 # build-time generated config/_secrets.py (gitignored, embedded into the exe).
@@ -107,7 +107,7 @@ def project_root() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     here = Path(__file__).resolve().parent.parent  # config -> MaximumTweaks
-    if here.name.lower() == "rextweaks":
+    if here.name.lower() == "maximumtweaks":
         return here
     # Fallback: folder that contains this package
     return Path(__file__).resolve().parent.parent
@@ -148,7 +148,7 @@ DIRS = {
 STATE_FILE = ROOT / "config" / "state.json"
 DB_JSON_EXPORT = ROOT / "database" / "tweaks.json"
 BACKUP_INDEX = ROOT / "backups" / "index.json"
-LOG_FILE = ROOT / "Logs" / "rextweaks.log"
+LOG_FILE = ROOT / "Logs" / "maximumtweaks.log"
 
 RISK_LEVELS = ("safe", "low", "moderate", "advanced")
 IMPACT_LEVELS = ("very low", "low", "moderate", "high", "extreme")

@@ -1,11 +1,15 @@
 <#
 .SYNOPSIS
-  MAXIMUM TWEAKS license key generator - no server URL bundled.
+  MAXIMUM TWEAKS license key generator.
 
 .DESCRIPTION
   Interactive mini-app that generates license keys through the backend's
-  POST /admin/generate endpoint. The server URL is never hardcoded: pass
-  -Server, set LICENSE_API_URL= in auth_backend\.env, or type it when prompted.
+  POST /admin/generate endpoint. The server URL ships as a built-in default
+  and can be overridden with -Server or LICENSE_API_URL= in auth_backend\.env.
+
+  The admin token comes from -Token, auth_backend\.env, or a built-in default
+  that is only present in copies the owner hands out. The public copy on
+  GitHub carries no token, so only authorized copies can generate keys.
 
   Choose the license duration interactively (1 month / 6 months / lifetime)
   or pass -Duration when scripting.
@@ -34,7 +38,8 @@
   Explicit expiry "YYYY-MM-DD HH:MM:SS" (overrides Duration).
 
 .PARAMETER Token
-  ADMIN_TOKEN. Defaults to ADMIN_TOKEN= in auth_backend\.env.
+  ADMIN_TOKEN. Defaults to ADMIN_TOKEN= in auth_backend\.env, then the
+  built-in default embedded by the owner (authorized copies only).
 
 .PARAMETER NoPause
   Don't wait for a keypress before closing.
@@ -62,6 +67,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Built-in defaults. The PUBLIC copy on GitHub ships with a blank token so
+# only people who receive an owner-authorized copy can generate keys.
+$DefaultServer = "https://maximumtweaks.onrender.com"
+$DefaultAdminToken = ""
+
 function Get-EnvValue {
     param([string]$EnvFile, [string]$Key)
     if (-not (Test-Path $EnvFile)) { return "" }
@@ -77,13 +87,15 @@ function Get-AdminToken {
     $envFile = Join-Path $PSScriptRoot ".env"
     $val = Get-EnvValue $envFile "ADMIN_TOKEN"
     if ($val) { return $val }
-    throw "ADMIN_TOKEN not found. Pass -Token or set ADMIN_TOKEN= in auth_backend\.env"
+    if ($DefaultAdminToken) { return $DefaultAdminToken }
+    throw "No admin token configured. Ask the Maximum Tweaks owner for an authorized copy of this script."
 }
 
 function Resolve-Server {
     if ($Server) { return $Server.Trim().TrimEnd("/") }
     $val = Get-EnvValue (Join-Path $PSScriptRoot ".env") "LICENSE_API_URL"
     if ($val) { return $val.Trim().TrimEnd("/") }
+    if ($DefaultServer) { return $DefaultServer.Trim().TrimEnd("/") }
     $resp = Read-Host "License server URL (e.g. https://your-domain)"
     $resp = $resp.Trim().TrimEnd("/")
     if (-not $resp) {
@@ -151,7 +163,6 @@ try {
     Write-Host ""
     Write-Host "  MAXIMUM TWEAKS - License Key Generator" -ForegroundColor Cyan
     Write-Host "  --------------------------------------" -ForegroundColor Cyan
-    Write-Host "  Server   : $server"
     Write-Host "  Duration : $dur"
     Write-Host "  Plan     : $planName"
     if ($expiresAt) { Write-Host "  Expires  : $expiresAt (UTC)" }

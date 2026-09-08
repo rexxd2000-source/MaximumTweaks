@@ -38,7 +38,7 @@ def _is_test_db(dsn: str) -> bool:
 pytestmark = pytest.mark.skipif(
     not _DSN or not _is_test_db(_DSN),
     reason="set TEST_DATABASE_URL to a dedicated throwaway Postgres DB "
-           "(e.g. a 'rextweaks_test' database on Neon) to run Postgres tests; "
+           "(e.g. a 'maximumtweaks_test' database on Neon) to run Postgres tests; "
            "it must never point at the production database",
 )
 

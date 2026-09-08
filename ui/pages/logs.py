@@ -1,4 +1,4 @@
-"""Logs page: live tail of Logs/rextweaks.log."""
+"""Logs page: live tail of Logs/maximumtweaks.log."""
 from __future__ import annotations
 
 import os
