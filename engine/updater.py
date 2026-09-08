@@ -317,7 +317,7 @@ if %NEWSIZE% LSS 1000000 (
   goto :done
 )
 echo [%date% %time%] relaunching "{target}" >> "%STUB_LOG%"
-start "" "{target}" >> "%STUB_LOG%" 2>&1
+powershell -WindowStyle Hidden -Command "Start-Process '{target}'" >> "%STUB_LOG%" 2>&1
 
 :done
 rem Clean up backup after successful launch (keep for 30s in case of issues).
