@@ -119,4 +119,34 @@ TWEAKS = validate_module("repair", [
       changes="Schedules a disk check for the next boot.",
       risk="safe", impact="low", recommended="optional", admin=True,
       tags=["chkdsk", "disk", "fix"]),
+    T("rep-015", "CPU Optimization Repair",
+      "Detect-first cleaner for bad scheduling values left behind by old "
+      "MaximumTweaks builds, REG packs, BAT packs or other optimizers.",
+      actions=[
+          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\PriorityControl",
+           "Win32PrioritySeparation", 26, "DWORD"),
+          ("reg", "HKLM", r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+           "SystemResponsiveness", 10, "DWORD"),
+          ("cmd", r"""powershell -NoProfile -Command "$e = & bcdedit /enum {current} 2>$null | Out-String; foreach ($n in @('useplatformclock','disabledynamictick','tscsyncpolicy')) { if ($e -match [regex]::Escape($n)) { & bcdedit /deletevalue $n *> $null } }" """),
+          ("guidance", "Process-level repairs (explicit CPU Set restrictions and "
+                        "low game memory priority) run from the Game Process "
+                        "category while the game is running."),
+      ],
+      revert=[
+          ("guidance", "Registry values are restored to their exact previous "
+                       "values by the app's snapshot backup. Forced BCD timer "
+                       "values are NOT re-created: the cleaner deletes them on "
+                       "purpose and Windows restores its own defaults."),
+      ],
+      why="Scheduling values and BCD timer overrides stuck around by old "
+          "optimizers can force CPU/MMCSS behavior that hurts responsiveness. "
+          "This repairs only what is actually set: Win32PrioritySeparation is "
+          "reset to 26 decimal, MMCSS SystemResponsiveness to 10, and any "
+          "explicit HPET/dynamic-tick/tsc overrides are deleted (never "
+          "replaced with the opposite forced value).",
+      changes="Resets Win32PrioritySeparation to 26, SystemResponsiveness to "
+              "10, and deletes detected BCD timer overrides.",
+      risk="low", impact="moderate", recommended="recommended", admin=True,
+      added="2026-09-07",
+      tags=["cpu", "priorities", "repair", "bcd", "mmcss", "cleanup"]),
 ])

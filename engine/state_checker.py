@@ -24,6 +24,8 @@ Detection is implemented natively per action kind:
   ini       filesystem  -> ini key=value matches the applied target
   appx      powershell  -> package present/absent
   cmd       parsing     -> powercfg, reg add/delete command forms
+  process   win32       -> running-game CPU state (see game_process_manager)
+  netadp    powershell  -> active NIC advanced properties / adapter RSS
   guidance/restart/mkdir -> None (no persistent state)
 
 All reads go through a per-process cache, so a full-system audit reuses
@@ -38,6 +40,8 @@ import subprocess
 import threading
 
 from rexlog import logger
+
+from . import reg_util
 
 _LOCK = threading.RLock()
 _CACHE: dict = {}
@@ -229,26 +233,8 @@ def _reg_map(hive: str, path: str) -> dict[str, tuple[str, str]]:
     cached = _cache_get(key)
     if cached is not _MISS:
         return cached
-    full = _HIVE_FULL.get(hive.upper(), hive.upper())
     gen = _current_gen()
-    ok, out = _run(f'reg query "{hive}\\{path}"')
-    values: dict[str, tuple[str, str]] = {}
-    if ok:
-        wanted = f"{full}\\{path}".upper()
-        section = None
-        for line in out.splitlines():
-            hm = _HKEY_RE.match(line)
-            if hm:
-                section = hm.group("path").upper()
-                continue
-            if section != wanted:
-                continue
-            m = _REG_VALUE_RE.match(line)
-            if m:
-                data = m.group("data")
-                if data.strip().lower() == "(value not set)":
-                    continue
-                values[m.group("name").strip().lower()] = (m.group("type"), data)
+    values = reg_util.map_values(hive, path)
     _cache_set(key, values, gen)
     return values
 
@@ -475,6 +461,76 @@ def _check_netsh(name: str, value: str) -> bool | None:
     return None
 
 
+def _netadp_props() -> list[dict]:
+    """Advanced properties of active physical adapters: [{adapter, display,
+    keyword, value}]. Cached per audit generation like every other read."""
+    cached = _cache_get(("netadp_props",))
+    if cached is not _MISS:
+        return cached
+    gen = _current_gen()
+    rows: list[dict] = []
+    try:
+        from . import net_latency
+        for a in net_latency.adapter_names():
+            for p in net_latency.advanced_props(a):
+                rows.append({
+                    "adapter": a,
+                    "display": str(p.get("DisplayName") or "").strip(),
+                    "keyword": str(p.get("RegistryKeyword") or "").strip(),
+                    "value": str(p.get("DisplayValue") or "").strip(),
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.warn(f"state checker: NIC property query failed: {exc}")
+    _cache_set(("netadp_props",), rows, gen)
+    return rows
+
+
+def _netadp_rss() -> list[dict]:
+    """RSS state of active physical adapters: [{adapter, enabled}]."""
+    cached = _cache_get(("netadp_rss",))
+    if cached is not _MISS:
+        return cached
+    gen = _current_gen()
+    rows: list[dict] = []
+    try:
+        from . import net_latency
+        rows = [{"adapter": str(r.get("adapter") or "").strip(),
+                 "enabled": bool(r.get("enabled"))}
+                for r in net_latency.rss_state()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warn(f"state checker: NIC RSS query failed: {exc}")
+    _cache_set(("netadp_rss",), rows, gen)
+    return rows
+
+
+def _check_netadp(op: str) -> bool | None:
+    """Live-state check for the NIC latency ops (see engine.net_latency)."""
+    from . import net_latency
+    if op == "interrupt_moderation":
+        rows = [r for r in _netadp_props()
+                if net_latency.is_interrupt_moderation(r["display"], r["keyword"])]
+        if not rows:
+            return None
+        return all(net_latency.is_disabled_value(r["value"]) for r in rows)
+    if op == "rss":
+        g = _netsh_tcp_global().get("receive-side scaling state")
+        if g is None:
+            return None
+        if g.strip().lower() != "enabled":
+            return False
+        rows = _netadp_rss()
+        if rows and not all(bool(r["enabled"]) for r in rows):
+            return False
+        return True
+    if op == "nicpower":
+        rows = [r for r in _netadp_props()
+                if net_latency.is_power_prop(r["display"], r["keyword"])]
+        if not rows:
+            return None
+        return all(net_latency.is_disabled_value(r["value"]) for r in rows)
+    return None
+
+
 # ---------------- value comparison helpers ----------------
 
 def _num_match(target, data: str) -> bool:
@@ -523,13 +579,13 @@ def _reg_value_absent(hive, path, name) -> bool:
 
 def _reg_key_absent(hive, path) -> bool:
     # A key that exists but has no values must NOT read as "absent" (regkeydel
-    # would falsely verify). Existence is judged by the reg.exe exit code.
+    # would falsely verify). Existence is judged by opening the key.
     key = ("regkey_exists", hive.upper(), path.upper())
     cached = _cache_get(key)
     if cached is not _MISS:
         return not bool(cached)
     gen = _current_gen()
-    ok, _out = _run(f'reg query "{hive}\\{path}"')
+    ok = reg_util.key_exists(hive, path)
     _cache_set(key, ok, gen)
     return not ok
 
@@ -541,17 +597,7 @@ def _reg_subkeys(hive, path) -> list[str]:
     if cached is not _MISS:
         return cached
     gen = _current_gen()
-    full = _HIVE_FULL.get(hive.upper(), hive.upper())
-    ok, out = _run(f'reg query "{hive}\\{path}"')
-    names = []
-    if ok:
-        wanted = f"{full}\\{path}".upper()
-        for line in out.splitlines():
-            m = _HKEY_RE.match(line)
-            if m:
-                sec = m.group("path").upper()
-                if sec.startswith(wanted + "\\") and not sec.startswith(wanted + "\\\\"):
-                    names.append(f"{path}\\{sec[len(wanted) + 1:]}")
+    names = reg_util.subkeys(hive, path)
     _cache_set(key, names, gen)
     return names
 
@@ -792,6 +838,8 @@ def _check_action(action) -> bool | None:
             return _check_ini_absent(action[1], action[2], action[3])
         if kind == "appx":
             return _check_appx(action[1], action[2])
+        if kind == "netadp":
+            return _check_netadp(action[1] if len(action) > 1 else "")
     except Exception as exc:  # noqa: BLE001 - never let one check break the audit
         logger.warn(f"state checker: {action[0]} check failed: {exc}")
         return None

@@ -51,8 +51,6 @@ class FortniteConfig(GameConfig):
                           "options": ["Low", "Medium", "High"]},
         "reflex": {"label": "Reflex Low Latency", "kind": "enum",
                    "options": ["Off", "On", "On + Boost"]},
-        "fullscreen_opts": {"label": "Disable Fullscreen Optimizations",
-                            "kind": "bool", "default": False},
         "run_admin": {"label": "Run as Administrator", "kind": "bool",
                       "default": False},
     }
@@ -142,8 +140,6 @@ class FortniteConfig(GameConfig):
             reflex_raw = "0"
         reflex_map = {"0": "Off", "1": "On", "2": "On + Boost"}
         result["reflex"] = reflex_map.get(reflex_raw, "Off")
-        # Fullscreen optimizations: not directly exposed in Fortnite config
-        result["fullscreen_opts"] = False
         result["run_admin"] = False
         return result
 
@@ -212,9 +208,6 @@ class FortniteConfig(GameConfig):
         reflex_val = reflex_map.get(values.get("reflex", "Off"), "0")
         _set(FORTNITE_SECTION, "bLatencyTweak1", reflex_val)
         report["applied"].append(f"Reflex {values.get('reflex', 'Off')}")
-
-        # Fullscreen optimizations: not directly exposed in Fortnite config
-        report["applied"].append("Fullscreen optimizations (set in-game)")
 
         try:
             ini_path.write_text(text, encoding="utf-8")

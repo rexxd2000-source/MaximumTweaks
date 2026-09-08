@@ -102,18 +102,16 @@ TWEAKS = validate_module("precision", [
       "Click-to-shot timing tightness.",
       actions=[
           ("reg", "HKLM", _MMCSS, "SystemResponsiveness", 10, "DWORD"),
-          ("reg", "HKCU", r"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2, "DWORD"),
       ],
       revert=[
           ("regdel", "HKLM", _MMCSS, "SystemResponsiveness"),
-          ("reg", "HKCU", r"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 0, "DWORD"),
       ],
-      why="Keeps a small CPU margin for input handling and removes the "
-          "fullscreen-optimization compositor hop so the click reaches the game in the same frame.",
-      changes="Sets MMCSS responsiveness to 10 and disables fullscreen optimizations.",
+      why="Keeps a small CPU margin for background input handling so the "
+          "click reaches the game in the same frame.",
+      changes="Sets MMCSS responsiveness to 10.",
       risk="low", impact="high", recommended="recommended", admin=True,
       win="10,11",
-      tags=["mmcss", "fso", "click", "precision"]),
+      tags=["mmcss", "click", "precision"]),
 
     T("pre-007", "Packet Timing",
       "Network jitter & micro-loss mitigation.",

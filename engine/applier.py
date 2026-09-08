@@ -54,170 +54,174 @@ def run(ids: list[str], mode: str = "apply",
     applied: list[str] = []
     results: dict = {}
     total = len(ids)
-    for idx, tid in enumerate(ids, start=1):
-        # Cooperative cancellation: check before each tweak.
-        if cancel_check and cancel_check():
-            activity.emit("warning", "Batch cancelled by user")
-            logger.info(f"{mode} batch cancelled at {idx}/{total}")
-            break
+    # Defer every state.json write (mark_applied + backup snapshots) to ONE
+    # atomic write at batch end instead of thousands of full-file rewrites
+    # that previously turned large batches into minutes of serialized IO.
+    with state_mgr.state_batch():
+        for idx, tid in enumerate(ids, start=1):
+            # Cooperative cancellation: check before each tweak.
+            if cancel_check and cancel_check():
+                activity.emit("warning", "Batch cancelled by user")
+                logger.info(f"{mode} batch cancelled at {idx}/{total}")
+                break
 
-        tweak = BY_ID.get(tid)
-        if tweak is None:
-            results[tid] = {"ok": False, "status": "failed",
-                            "detail": "unknown tweak id", "verified": None,
-                            "live": None, "code": None, "actions": []}
-            activity.emit("error", f"Unknown tweak id {tid}")
-            if progress:
-                progress(idx, total, tid, False, "unknown tweak id")
-            continue
-
-        # Safety gate first — never execute a blocked tweak.
-        if mode == "apply":
-            pf = preflight(tweak, profile=profile, mode="apply", force=force)
-            if not pf["allowed"]:
-                results[tid] = {"ok": False, "status": "blocked",
-                                "detail": pf["reason"], "verified": None,
-                                "live": None, "code": pf["code"],
-                                "actions": []}
-                activity.emit("warning", f"{tweak['name']} blocked: {pf['reason']}")
-                logger.info(f"apply {tid} BLOCKED ({pf['code']}): {pf['reason']}")
+            tweak = BY_ID.get(tid)
+            if tweak is None:
+                results[tid] = {"ok": False, "status": "failed",
+                                "detail": "unknown tweak id", "verified": None,
+                                "live": None, "code": None, "actions": []}
+                activity.emit("error", f"Unknown tweak id {tid}")
                 if progress:
-                    progress(idx, total, tid, False, pf["reason"])
+                    progress(idx, total, tid, False, "unknown tweak id")
                 continue
 
-        # Snapshot backups before execute (for revert verification after).
-        pre_backups = {}
-        if mode == "revert" and not dry_run:
-            pre_backups = _collect_backups(tid)
+            # Safety gate first — never execute a blocked tweak.
+            if mode == "apply":
+                pf = preflight(tweak, profile=profile, mode="apply", force=force)
+                if not pf["allowed"]:
+                    results[tid] = {"ok": False, "status": "blocked",
+                                    "detail": pf["reason"], "verified": None,
+                                    "live": None, "code": pf["code"],
+                                    "actions": []}
+                    activity.emit("warning", f"{tweak['name']} blocked: {pf['reason']}")
+                    logger.info(f"apply {tid} BLOCKED ({pf['code']}): {pf['reason']}")
+                    if progress:
+                        progress(idx, total, tid, False, pf["reason"])
+                    continue
 
-        # Execute — one unexpected crash must never abort the whole batch.
-        try:
-            ok, details = apply_tweak(tid, mode=mode, dry_run=dry_run)
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"{mode} {tid}: unexpected exception: {exc}")
-            ok, details = False, [((tweak["actions"] or [("",)])[0], False,
-                                   f"{type(exc).__name__}: {exc}")]
-        summary = _summarize(details)
-        results[tid] = {"ok": bool(ok), "status": "failed", "detail": summary,
-                        "verified": None, "live": None, "code": None,
-                        "actions": details}
+            # Snapshot backups before execute (for revert verification after).
+            pre_backups = {}
+            if mode == "revert" and not dry_run:
+                pre_backups = _collect_backups(tid)
 
-        # Dry-run: nothing was written, so there is nothing to verify or record.
-        if dry_run:
-            if ok:
-                results[tid]["status"] = "dry_run"
-                if progress:
-                    progress(idx, total, tid, True, "dry-run: " + summary)
-                continue
-            results[tid]["status"] = "failed"
-            activity.emit("error", f"{tweak['name']} dry-run failed — {summary}")
-            if progress:
-                progress(idx, total, tid, False, summary)
-            continue
-
-        # Post-apply verification against the live system: a tweak is only
-        # recorded as applied when the measured state matches. Execution
-        # success alone is not proof. The pre-batch audit populated the
-        # checker's process-global cache with PRE-apply reads, so drop it
-        # before the verify or every reg/power/svc value just written is stale.
-        state_checker.invalidate_cache()
-        verified = None
-        live = None
-        if ok:
+            # Execute — one unexpected crash must never abort the whole batch.
             try:
-                live = state_checker.check_tweak(tweak)
+                ok, details = apply_tweak(tid, mode=mode, dry_run=dry_run)
             except Exception as exc:  # noqa: BLE001
-                logger.warn(f"verify {tid}: state check failed: {exc}")
-                live = None
-            if live is None:
-                verified = None  # not measurable (guidance / opaque action)
-            else:
-                verified = (live is True) if mode == "apply" else (live is False)
+                logger.error(f"{mode} {tid}: unexpected exception: {exc}")
+                ok, details = False, [((tweak["actions"] or [("",)])[0], False,
+                                       f"{type(exc).__name__}: {exc}")]
+            summary = _summarize(details)
+            results[tid] = {"ok": bool(ok), "status": "failed", "detail": summary,
+                            "verified": None, "live": None, "code": None,
+                            "actions": details}
 
-        if ok and mode == "apply" and verified is not False:
-            state_mgr.unmark_disabled(tid)
-            state_mgr.mark_applied(tid)
-            applied.append(tid)
-            status = "applied" if verified else "applied_unverified"
-            results[tid]["status"] = status
-            results[tid]["verified"] = verified
-            results[tid]["live"] = live
-            activity.emit(
-                "success",
-                f"{tweak['name']} applied (verified)" if verified
-                else f"{tweak['name']} applied (not verifiable)")
-        elif ok and mode == "revert":
-            # ── Post-revert verification ──────────────────────────
-            # After a revert, verify that the live system now matches the
-            # original backup values (if any were captured).  A revert is
-            # only reported as "reverted" when verification confirms the
-            # original state has been restored.
-            revert_verified = _verify_revert(tid, tweak, pre_backups)
-            if revert_verified is True:
-                state_mgr.unmark_applied(tid)
-                state_mgr.mark_disabled(tid)
-                status = "reverted"
-                results[tid]["status"] = status
-                results[tid]["verified"] = True
-                results[tid]["live"] = live
-                activity.emit("info", f"{tweak['name']} reverted (verified)")
-            elif revert_verified is False:
-                # Execution succeeded but the restored state does not match
-                # the original backups — the revert did not fully take effect.
-                state_mgr.unmark_applied(tid)
-                state_mgr.mark_disabled(tid)
-                status = "reverted_unverified"
-                results[tid]["status"] = status
-                results[tid]["verified"] = False
-                results[tid]["live"] = live
-                activity.emit(
-                    "error",
-                    f"{tweak['name']} revert did not verify — "
-                    f"original state may not have been restored")
-            elif verified is not False:
-                # No backups to compare (tweak applied before this feature
-                # shipped) and state_checker says the tweak is inactive.
-                state_mgr.unmark_applied(tid)
-                state_mgr.mark_disabled(tid)
-                status = "reverted"
+            # Dry-run: nothing was written, so there is nothing to verify or record.
+            if dry_run:
+                if ok:
+                    results[tid]["status"] = "dry_run"
+                    if progress:
+                        progress(idx, total, tid, True, "dry-run: " + summary)
+                    continue
+                results[tid]["status"] = "failed"
+                activity.emit("error", f"{tweak['name']} dry-run failed — {summary}")
+                if progress:
+                    progress(idx, total, tid, False, summary)
+                continue
+
+            # Post-apply verification against the live system: a tweak is only
+            # recorded as applied when the measured state matches. Execution
+            # success alone is not proof. The pre-batch audit populated the
+            # checker's process-global cache with PRE-apply reads, so drop it
+            # before the verify or every reg/power/svc value just written is stale.
+            state_checker.invalidate_cache()
+            verified = None
+            live = None
+            if ok:
+                try:
+                    live = state_checker.check_tweak(tweak)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warn(f"verify {tid}: state check failed: {exc}")
+                    live = None
+                if live is None:
+                    verified = None  # not measurable (guidance / opaque action)
+                else:
+                    verified = (live is True) if mode == "apply" else (live is False)
+
+            if ok and mode == "apply" and verified is not False:
+                state_mgr.unmark_disabled(tid)
+                state_mgr.mark_applied(tid)
+                applied.append(tid)
+                status = "applied" if verified else "applied_unverified"
                 results[tid]["status"] = status
                 results[tid]["verified"] = verified
                 results[tid]["live"] = live
                 activity.emit(
-                    "info",
-                    f"{tweak['name']} reverted (verified)" if verified
-                    else f"{tweak['name']} reverted (not verifiable)")
+                    "success",
+                    f"{tweak['name']} applied (verified)" if verified
+                    else f"{tweak['name']} applied (not verifiable)")
+            elif ok and mode == "revert":
+                # ── Post-revert verification ──────────────────────────
+                # After a revert, verify that the live system now matches the
+                # original backup values (if any were captured).  A revert is
+                # only reported as "reverted" when verification confirms the
+                # original state has been restored.
+                revert_verified = _verify_revert(tid, tweak, pre_backups)
+                if revert_verified is True:
+                    state_mgr.unmark_applied(tid)
+                    state_mgr.mark_disabled(tid)
+                    status = "reverted"
+                    results[tid]["status"] = status
+                    results[tid]["verified"] = True
+                    results[tid]["live"] = live
+                    activity.emit("info", f"{tweak['name']} reverted (verified)")
+                elif revert_verified is False:
+                    # Execution succeeded but the restored state does not match
+                    # the original backups — the revert did not fully take effect.
+                    state_mgr.unmark_applied(tid)
+                    state_mgr.mark_disabled(tid)
+                    status = "reverted_unverified"
+                    results[tid]["status"] = status
+                    results[tid]["verified"] = False
+                    results[tid]["live"] = live
+                    activity.emit(
+                        "error",
+                        f"{tweak['name']} revert did not verify — "
+                        f"original state may not have been restored")
+                elif verified is not False:
+                    # No backups to compare (tweak applied before this feature
+                    # shipped) and state_checker says the tweak is inactive.
+                    state_mgr.unmark_applied(tid)
+                    state_mgr.mark_disabled(tid)
+                    status = "reverted"
+                    results[tid]["status"] = status
+                    results[tid]["verified"] = verified
+                    results[tid]["live"] = live
+                    activity.emit(
+                        "info",
+                        f"{tweak['name']} reverted (verified)" if verified
+                        else f"{tweak['name']} reverted (not verifiable)")
+                else:
+                    results[tid]["status"] = "failed"
+                    activity.emit("error", f"{tweak['name']} revert failed")
+            elif ok and verified is False:
+                # Executed but the live system does not match the target: the
+                # change did not take effect (or was immediately reverted by the OS).
+                # Never record it as applied.
+                results[tid]["status"] = "unverified"
+                results[tid]["verified"] = False
+                results[tid]["live"] = live
+                activity.emit(
+                    "error",
+                    f"{tweak['name']} did not verify after {mode} "
+                    f"(live state = {live}) — not recorded as applied")
             else:
                 results[tid]["status"] = "failed"
-                activity.emit("error", f"{tweak['name']} revert failed")
-        elif ok and verified is False:
-            # Executed but the live system does not match the target: the
-            # change did not take effect (or was immediately reverted by the OS).
-            # Never record it as applied.
-            results[tid]["status"] = "unverified"
-            results[tid]["verified"] = False
-            results[tid]["live"] = live
-            activity.emit(
-                "error",
-                f"{tweak['name']} did not verify after {mode} "
-                f"(live state = {live}) — not recorded as applied")
-        else:
-            results[tid]["status"] = "failed"
-            activity.emit("error", f"{tweak['name']} failed — {summary}")
+                activity.emit("error", f"{tweak['name']} failed — {summary}")
 
-        # Keep the restart-required flag in sync: set when any applied tweak
-        # needs a reboot, cleared when the last one is reverted.
-        if ok and "reboot" in (tweak.get("tags") or []):
-            state_mgr.recompute_restart_required()
-            if mode == "apply" and verified is not False:
-                activity.emit("restart", "Restart required to finalize changes")
+            # Keep the restart-required flag in sync: set when any applied tweak
+            # needs a reboot, cleared when the last one is reverted.
+            if ok and "reboot" in (tweak.get("tags") or []):
+                state_mgr.recompute_restart_required()
+                if mode == "apply" and verified is not False:
+                    activity.emit("restart", "Restart required to finalize changes")
 
-        logger.info(
-            f"{mode} {tid} ({tweak['name']}) -> ok={ok} verified={verified} "
-            f"status={results[tid]['status']} live={live} {summary}")
+            logger.info(
+                f"{mode} {tid} ({tweak['name']}) -> ok={ok} verified={verified} "
+                f"status={results[tid]['status']} live={live} {summary}")
 
-        if progress:
-            progress(idx, total, tid, bool(ok), summary)
+            if progress:
+                progress(idx, total, tid, bool(ok), summary)
     return {"applied": applied, "results": results}
 
 

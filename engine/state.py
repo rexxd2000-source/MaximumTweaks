@@ -6,6 +6,7 @@ import os
 import shutil
 import threading
 import time
+from contextlib import contextmanager
 
 from rexlog import logger
 from config.app_config import ROOT
@@ -44,13 +45,74 @@ def _migrate_legacy_state() -> None:
             logger.warn(f"state: failed to migrate legacy state: {exc}")
 
 # Thread safety: protect _CACHE and file writes from concurrent access.
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
 
 # In-memory copy of state.json. State only ever changes through _save(), so
 # the file is read once and served from here afterwards. Without this cache
 # the UI's O(N^2) loops re-read the file hundreds of thousands of times and
 # freeze the app at startup (window shows "Not Responding" for ~15s).
 _CACHE: dict | None = None
+
+# Deferred-write batch mode: while _BATCH_DEPTH > 0 every _save() only updates
+# the in-memory _CACHE and flags _DIRTY; the single real file write happens on
+# the outermost end_state_batch().  Apply All / Revert All previously rewrote
+# the whole (growing) state.json for EVERY tweak + every backup snapshot —
+# thousands of full json.dump + os.replace rounds under this lock, which
+# serialized the worker thread's writes against the UI thread's reads and
+# stretched batches into minutes.  Collapsing them into one atomic write at
+# the end makes a batch near-instant and removes the lock contention.
+_BATCH_DEPTH = 0
+_DIRTY = False
+
+
+def _persist(state: dict) -> bool:
+    """Write state.json atomically (must be called with _LOCK held)."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(state, fh, indent=2)
+        os.replace(tmp, STATE_FILE)  # atomic on the same volume
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"state: FAILED to write {STATE_FILE}: {exc} "
+                     f"(state changes will not survive this session)")
+        return False
+
+
+def begin_state_batch() -> None:
+    """Enter deferred-write mode (see module docstring)."""
+    global _BATCH_DEPTH
+    with _LOCK:
+        _BATCH_DEPTH += 1
+
+
+def end_state_batch() -> None:
+    """Leave deferred-write mode; persist once when the outermost batch ends."""
+    global _BATCH_DEPTH, _DIRTY
+    with _LOCK:
+        if _BATCH_DEPTH > 0:
+            _BATCH_DEPTH -= 1
+        if _BATCH_DEPTH == 0 and _DIRTY:
+            _DIRTY = False
+            if _CACHE is not None:
+                _persist(_CACHE)
+
+
+@contextmanager
+def state_batch():
+    """Run a block with state-file writes deferred to a single write at exit.
+
+    All intermediate updates remain visible in memory (reads are consistent),
+    so the UI and the worker share one live view; only the disk write is
+    collapsed.  Persistence runs in a ``finally`` so an aborted batch never
+    leaves the writer in deferred mode.
+    """
+    begin_state_batch()
+    try:
+        yield
+    finally:
+        end_state_batch()
 
 
 def _load() -> dict:
@@ -75,21 +137,14 @@ def _load_full() -> dict:
 
 
 def _save(state: dict) -> bool:
-    """Persist state.json atomically. Returns True on success."""
-    global _CACHE
+    """Record a state change; persists immediately or defers inside a batch."""
+    global _CACHE, _DIRTY
     with _LOCK:
-        try:
-            os.makedirs(STATE_DIR, exist_ok=True)
-            tmp = STATE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(state, fh, indent=2)
-            os.replace(tmp, STATE_FILE)  # atomic on the same volume
-            _CACHE = state
+        _CACHE = state
+        if _BATCH_DEPTH > 0:
+            _DIRTY = True
             return True
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"state: FAILED to write {STATE_FILE}: {exc} "
-                         f"(state changes will not survive this session)")
-            return False
+        return _persist(state)
 
 
 def applied_ids() -> set[str]:
@@ -230,6 +285,70 @@ def clear_ini_backups(tweak_id: str) -> bool:
 
 def ini_backup_ids() -> set[str]:
     return set(_load().get("ini_backups", {}))
+
+
+# --- Game-process backups (exact revert) ------------------------------------
+# Recorded *before* a process-level tweak changes a running game's state, so
+# Revert can restore the exact original values (per executable name, matched
+# against whatever game process is running at revert time). Shape per tweak:
+#   {exe_lower: {"kind": "high_qos"|"cpu_sets"|"memory_priority"|"priority",
+#                "pid": <int>, "memory_priority": int|None,
+#                "priority_class": int|None, "cpu_sets": [[mask, group], ...]|None}}
+
+def get_process_backups(tweak_id: str) -> dict | None:
+    return _load().get("process_backups", {}).get(tweak_id)
+
+
+def save_process_backups(tweak_id: str, entries: dict) -> bool:
+    state = _load()
+    state.setdefault("process_backups", {})[tweak_id] = entries
+    ok = _save(state)
+    logger.info(f"state: recorded {len(entries)} process backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def clear_process_backups(tweak_id: str) -> bool:
+    state = _load()
+    state.get("process_backups", {}).pop(tweak_id, None)
+    ok = _save(state)
+    logger.info(f"state: cleared process backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def process_backup_ids() -> set[str]:
+    return set(_load().get("process_backups", {}))
+
+
+# --- Network-adapter backups (exact revert) ----------------------------------
+# Recorded *before* a NIC op flips an adapter's advanced property (Interrupt
+# Moderation, EEE/Green Ethernet/etc., adapter RSS) so Revert restores the true
+# previous value instead of a hardcoded default. Per tweak:
+#   {"op": "interrupt_moderation"|"rss"|"nicpower",
+#    "entries": [{"kind": "prop"|"rss_global"|"rss_adapter",
+#                 "adapter", "prop", "prev_value", "valid", "supported"}, ...]}
+
+def get_netadp_backups(tweak_id: str) -> dict | None:
+    return _load().get("netadp_backups", {}).get(tweak_id)
+
+
+def save_netadp_backups(tweak_id: str, payload: dict) -> bool:
+    state = _load()
+    state.setdefault("netadp_backups", {})[tweak_id] = payload
+    ok = _save(state)
+    logger.info(f"state: recorded netadp backup for {tweak_id} (saved={ok})")
+    return ok
+
+
+def clear_netadp_backups(tweak_id: str) -> bool:
+    state = _load()
+    state.get("netadp_backups", {}).pop(tweak_id, None)
+    ok = _save(state)
+    logger.info(f"state: cleared netadp backups for {tweak_id} (saved={ok})")
+    return ok
+
+
+def netadp_backup_ids() -> set[str]:
+    return set(_load().get("netadp_backups", {}))
 
 
 # --- Power setting backups (exact revert) ---------------------------------

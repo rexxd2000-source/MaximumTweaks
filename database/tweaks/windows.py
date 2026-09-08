@@ -7,23 +7,6 @@ T = make_T("Windows", win_default="10,11")
 CATEGORY = "Windows"
 
 TWEAKS = validate_module("windows", [
-    T("win-001", "Disable Game DVR",
-      "Turns off the Xbox Game DVR background capture feature.",
-      actions=[("reg", "HKCU", r"System\GameConfigStore", "GameDVR_Enabled", 0, "DWORD")],
-      revert=[("reg", "HKCU", r"System\GameConfigStore", "GameDVR_Enabled", 1, "DWORD")],
-      why="Game DVR silently records in the background, consuming CPU, GPU and disk while games run.",
-      changes="Disables Game DVR capture globally.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["dvr", "capture", "recording", "overlay"]),
-
-    T("win-004", "Disable Fullscreen Optimizations",
-      "Uses the legacy fullscreen path so games bypass the DWM composition overlay.",
-      actions=[("reg", "HKCU", r"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2, "DWORD")],
-      revert=[("reg", "HKCU", r"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 0, "DWORD")],
-      why="Some engines get extra latency or stutter from the GameDVR fullscreen optimizations layer.",
-      changes="Sets the fullscreen optimization behaviour mode to legacy.",
-      risk="low", impact="moderate", recommended="recommended", confirm=True,
-      tags=["fullscreen", "fse", "dwm", "latency"]),
     T("win-005", "Disable Balloon Tip Notifications",
       "Turns off Explorer balloon tips and toasts.",
       actions=[("reg", "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "EnableBalloonTips", 0, "DWORD")],

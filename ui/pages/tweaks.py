@@ -361,6 +361,7 @@ class TweaksPage(QWidget):
         self.btn_apply_all.setObjectName("Secondary")
         self.btn_apply_all.setMinimumHeight(32)
         self.btn_apply_all.clicked.connect(self._apply_all)
+        self._apply_all_text = "Apply all"
         self._right_cluster.addWidget(self.btn_apply_all)
 
         self.btn_revert_all = QPushButton("Revert all")
@@ -883,7 +884,28 @@ class TweaksPage(QWidget):
         self._worker = BatchWorker(ids, mode, self, profile=self.ctx.profile)
         self._worker.batch_done.connect(self._on_batch_done)
         self._worker.batch_error.connect(self._on_batch_error)
+        self._worker.progress.connect(self._on_batch_progress)
         self._worker.start()
+
+    def _on_batch_progress(self, done, total, tid, ok, summary):
+        """Live run feedback: update Apply All with a running counter so a long
+        batch never looks like a frozen app. Called once per tweak from the
+        worker thread via a queued signal, so it runs on the GUI thread."""
+        if not self._busy:
+            return
+        if self.fixed_group or not hasattr(self, "btn_apply_all"):
+            return
+        name = (BY_ID.get(tid) or {}).get("name", tid) if tid else ""
+        text = f"{done}/{total} \u2014 {name}" if name else f"{done}/{total} \u2026"
+        self.btn_apply_all.setText(text)
+        self.btn_apply_all.setToolTip(
+            f"Working\u2026 {done} of {total} tweak(s) completed\n"
+            + (summary or ""))
+
+    def _restore_batch_buttons(self):
+        if hasattr(self, "btn_apply_all"):
+            self.btn_apply_all.setText(self._apply_all_text)
+            self.btn_apply_all.setToolTip("")
 
     def _post_batch(self, ids):
         """Invalidate cached reads and re-check the real system state so the
@@ -894,20 +916,23 @@ class TweaksPage(QWidget):
         # whether the live system could be verified. This keeps a toggle OFF
         # once the user turns it off, even when the target still matches.
         results = getattr(self, "_last_results", {})
-        for tid in self._batch_ids:
-            r = results.get(tid) or {}
-            ok = r.get("ok") and r.get("status") != "dry_run"
-            if not ok:
-                self.ctx.live.pop(tid, None)
-                continue
-            if self._batch_mode == "revert":
-                state_mgr.unmark_applied(tid)
-                state_mgr.mark_disabled(tid)
-                self.ctx.live[tid] = False
-            else:
-                state_mgr.mark_applied(tid)
-                state_mgr.unmark_disabled(tid)
-                self.ctx.live[tid] = True
+        # Collapse the per-tweak mark_applied/mark_disabled writes into ONE
+        # state.json write instead of re-serializing the whole file per tweak.
+        with state_mgr.state_batch():
+            for tid in self._batch_ids:
+                r = results.get(tid) or {}
+                ok = r.get("ok") and r.get("status") != "dry_run"
+                if not ok:
+                    self.ctx.live.pop(tid, None)
+                    continue
+                if self._batch_mode == "revert":
+                    state_mgr.unmark_applied(tid)
+                    state_mgr.mark_disabled(tid)
+                    self.ctx.live[tid] = False
+                else:
+                    state_mgr.mark_applied(tid)
+                    state_mgr.unmark_disabled(tid)
+                    self.ctx.live[tid] = True
         self._in_flight.clear()
         self.ctx.invalidate_state()
         self.ctx.force_audit_ids(ids)
@@ -921,6 +946,7 @@ class TweaksPage(QWidget):
 
     def _on_batch_done(self, result):
         self._busy = False
+        self._restore_batch_buttons()
         results = result.get("results", {})
         self._last_results = results
         ok_ids = [tid for tid, r in results.items()
@@ -940,6 +966,7 @@ class TweaksPage(QWidget):
 
     def _on_batch_error(self, msg):
         self._busy = False
+        self._restore_batch_buttons()
         self._in_flight.clear()
         self._set_toolbar()
         toast(f"Batch error \u2014 {msg}", "error", self)

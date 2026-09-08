@@ -30,6 +30,10 @@ Action tuples (first element selects executor implementation):
   ("sched", "disable", "/TN \\"task\\"") / ("sched", "enable", ...)
   ("appx", "remove", package)             Remove a per-user Appx package
   ("appx", "register", package)           Re-register a package (revert)
+  ("process", op)                         Process-level op on running games
+                                          (see engine.game_process_manager)
+  ("netadp", op)                          NIC latency op on active adapters
+                                          (see engine.net_latency)
   ("restart", "explorer")                 Restart explorer.exe
   ("mkdir", path)                         Create directory tree (revert-safe)
 
@@ -121,6 +125,12 @@ def _validate_action(action, tweak_id):
     elif kind in ("sched", "appx", "restart", "mkdir"):
         if len(action) < 2:
             raise ValueError(f"Tweak {tweak_id}: {kind} action incomplete")
+    elif kind == "process":
+        if len(action) < 2 or not isinstance(action[1], str):
+            raise ValueError(f"Tweak {tweak_id}: process action needs an op name")
+    elif kind == "netadp":
+        if len(action) < 2 or not isinstance(action[1], str):
+            raise ValueError(f"Tweak {tweak_id}: netadp action needs an op name")
     elif kind == "guidance":
         if len(action) < 2 or not isinstance(action[1], str):
             raise ValueError(f"Tweak {tweak_id}: guidance action needs text")

@@ -417,81 +417,6 @@ TWEAKS = validate_module("fps_boost", [
         tags=["mmcss", "responsiveness", "cpu", "background"],
     ),
 
-    # ── Game DVR Recording ──────────────────────────────────────────
-    T(
-        "fpsb-014", "Disable Game DVR and Recording",
-        "Disables Windows Game DVR background recording to free GPU and CPU resources.",
-        actions=[
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_Enabled", 0, "DWORD"),
-            ("reg", "HKLM",
-             r"SOFTWARE\Policies\Microsoft\Windows\GameDVR",
-             "AllowGameDVR", 0, "DWORD"),
-            ("reg", "HKCU",
-             r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
-             "AppCaptureEnabled", 0, "DWORD"),
-        ],
-        revert=[
-            ("regdel", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_Enabled"),
-            ("regdel", "HKLM",
-             r"SOFTWARE\Policies\Microsoft\Windows\GameDVR",
-             "AllowGameDVR"),
-            ("regdel", "HKCU",
-             r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
-             "AppCaptureEnabled"),
-        ],
-        why="Game DVR continuously records gameplay in the background, "
-            "consuming CPU, GPU, and disk resources even when you are "
-            "not recording.",
-        changes="Disables Game DVR and background recording.",
-        risk="safe", impact="moderate", recommended="recommended",
-        admin=True,
-        tags=["game", "dvr", "recording", "background"],
-    ),
-
-    # ── Fullscreen Optimizations ────────────────────────────────────
-    T(
-        "fpsb-015", "Disable Fullscreen Optimizations",
-        "Forces exclusive fullscreen mode for lower input latency.",
-        actions=[
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_FSEBehaviorMode", 2, "DWORD"),
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_HonorUserFSEBehaviorMode", 1, "DWORD"),
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_FSEBehavior", 2, "DWORD"),
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_DXGIHonorFSEWindowsCompatible", 1, "DWORD"),
-        ],
-        revert=[
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_FSEBehaviorMode", 0, "DWORD"),
-            ("regdel", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_HonorUserFSEBehaviorMode"),
-            ("reg", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_FSEBehavior", 0, "DWORD"),
-            ("regdel", "HKCU",
-             r"System\GameConfigStore",
-             "GameDVR_DXGIHonorFSEWindowsCompatible"),
-        ],
-        why="Windows fullscreen optimizations add a compositor layer "
-            "between the game and the display, increasing input latency "
-            "and reducing performance.",
-        changes="Disables Windows fullscreen optimizations.",
-        risk="safe", impact="moderate", recommended="recommended",
-        tags=["fso", "fullscreen", "exclusive", "latency"],
-    ),
-
     # ── Game Mode ───────────────────────────────────────────────────
     T(
         "fpsb-016", "Enable Windows Game Mode",
@@ -520,29 +445,6 @@ TWEAKS = validate_module("fps_boost", [
         tags=["game", "mode", "priority", "windows"],
     ),
 
-    # ── HAGS ────────────────────────────────────────────────────────
-    T(
-        "fpsb-017", "Enable Hardware-Accelerated GPU Scheduling",
-        "Enables HAGS so the GPU manages its own memory for lower CPU overhead.",
-        actions=[
-            ("reg", "HKLM",
-             r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-             "HwSchMode", 2, "DWORD"),
-        ],
-        revert=[
-            ("reg", "HKLM",
-             r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-             "HwSchMode", 1, "DWORD"),
-        ],
-        why="HAGS lets the GPU schedule its own work instead of relying "
-            "on the CPU, reducing CPU overhead and improving frame rates "
-            "in supported games.",
-        changes="Enables Hardware-Accelerated GPU Scheduling.",
-        risk="safe", impact="moderate", recommended="recommended",
-        admin=True,
-        tags=["hags", "gpu", "scheduling", "directx"],
-    ),
-
     # ── Timer Resolution ────────────────────────────────────────────
     T(
         "fpsb-018", "Optimize Timer Resolution",
@@ -560,8 +462,9 @@ TWEAKS = validate_module("fps_boost", [
         why="A higher timer resolution allows Windows to poll input "
             "devices more frequently, reducing input latency in games.",
         changes="Enables global timer resolution requests.",
-        risk="safe", impact="moderate", recommended="recommended",
+        risk="advanced", impact="moderate", recommended="advanced",
         admin=True,
+        warn="Behavior varies by CPU and Windows build — benchmark before/after.",
         tags=["timer", "resolution", "input", "latency"],
     ),
 

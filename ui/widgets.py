@@ -1031,6 +1031,8 @@ def format_action(action) -> str:
         return f"create folder: {action[1]}"
     if kind == "guidance":
         return f"guidance: {(action[1] if len(action) > 1 else '')[:140]}"
+    if kind == "netadp":
+        return f"network adapter: {(action[1] if len(action) > 1 else '')}"
     return str(action)
 
 
