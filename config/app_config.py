@@ -1,4 +1,4 @@
-"""Rex Tweaks global configuration and path helpers."""
+﻿"""Rex Tweaks global configuration and path helpers."""
 from __future__ import annotations
 
 import os
@@ -34,7 +34,7 @@ def project_root() -> Path:
 
     In a frozen (PyInstaller) build the source tree lives in a temp extraction
     dir that is wiped on exit, so ROOT resolves to the folder that holds the
-    .exe — that is where Logs/ and data/ persist.
+    .exe â€” that is where Logs/ and data/ persist.
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -109,35 +109,35 @@ THEME = {
 
 
 ICONS = {
-    "dashboard": "\u25c8",   # ◆
-    "search": "\u2315",      # ⌕
-    "windows": "\u26fa",     # ⛺
-    "system": "\u2699",      # ⚙
-    "cpu": "\u2b22",         # ⬢
-    "gpu": "\u25c6",         # ◆
-    "ram": "\u2588",         # █
-    "storage": "\u25b6",     # ▶
-    "network": "\u2637",     # ☷
-    "input": "\u21a8",       # ↨
-    "mouse": "\u21a8",       # ↨
-    "keyboard": "\u2328",    # ⌨
-    "aim": "\u2694",         # ⚔
-    "performance": "\u26a1", # ⚡
-    "games": "\u2605",       # ★
-    "fortnite": "\u25c9",    # ◉
-    "tweaks": "\u2630",      # ☰
-    "gaming": "\u2605",      # ★
-    "services": "\u2693",    # ⚓
-    "power": "\u26a1",       # ⚡
-    "tools": "\u26cf",       # ⛏
-    "profiles": "\u2654",    # ♔
-    "reports": "\u2711",     # ✑
-    "logs": "\u2709",        # ✉
-    "shield": "\u26d1",      # ⛑
-    "wrench": "\u26b8",      # ⚸
-    "flag": "\u2691",        # ⚑
-    "settings": "\u2699",    # ⚙
-    "discord": "\u25c9",     # ◉
+    "dashboard": "\u25c8",   # â—†
+    "search": "\u2315",      # âŒ•
+    "windows": "\u26fa",     # â›º
+    "system": "\u2699",      # âš™
+    "cpu": "\u2b22",         # â¬¢
+    "gpu": "\u25c6",         # â—†
+    "ram": "\u2588",         # â–ˆ
+    "storage": "\u25b6",     # â–¶
+    "network": "\u2637",     # â˜·
+    "input": "\u21a8",       # â†¨
+    "mouse": "\u21a8",       # â†¨
+    "keyboard": "\u2328",    # âŒ¨
+    "aim": "\u2694",         # âš”
+    "performance": "\u26a1", # âš¡
+    "games": "\u2605",       # â˜…
+    "fortnite": "\u25c9",    # â—‰
+    "tweaks": "\u2630",      # â˜°
+    "gaming": "\u2605",      # â˜…
+    "services": "\u2693",    # âš“
+    "power": "\u26a1",       # âš¡
+    "tools": "\u26cf",       # â›
+    "profiles": "\u2654",    # â™”
+    "reports": "\u2711",     # âœ‘
+    "logs": "\u2709",        # âœ‰
+    "shield": "\u26d1",      # â›‘
+    "wrench": "\u26b8",      # âš¸
+    "flag": "\u2691",        # âš‘
+    "settings": "\u2699",    # âš™
+    "discord": "\u25c9",     # â—‰
 }
 
 ADMIN_NOTE = (
@@ -162,3 +162,8 @@ DISCORD_CDN = "https://cdn.discordapp.com"
 
 # Official community invite link (enables the Join button / sidebar).
 DISCORD_INVITE_URL = "https://discord.gg/NKnkgKzex"
+
+
+
+
+
