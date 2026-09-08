@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"

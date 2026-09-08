@@ -121,9 +121,7 @@ def run_gui():
 
     def reveal_window():
         win = build_window()
-        win.move(screen.topLeft())
-        win.show()
-        win.raise_()
+        win.showMaximized()
         return win
 
     def on_finished():

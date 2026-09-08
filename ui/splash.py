@@ -355,7 +355,7 @@ class CinematicSplash(QWidget):
     retry_clicked = Signal()
 
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        super().__init__(parent, Qt.FramelessWindowHint)
         self.setStyleSheet("background-color: #05070A;")
         self._t0: float | None = None
         self._dur_ms = _dur

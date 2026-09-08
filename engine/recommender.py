@@ -124,8 +124,10 @@ def evaluate(tweak: dict, profile: dict) -> dict:
         reasons.append("Requires a mechanical HDD")
     if when.get("nvme") and not profile.get("nvme"):
         reasons.append("Requires an NVMe SSD")
-    if when.get("laptop") and not profile.get("laptop"):
+    if when.get("laptop") is True and not profile.get("laptop"):
         reasons.append("Requires a laptop")
+    if when.get("laptop") is False and profile.get("laptop"):
+        reasons.append("Not compatible with laptops — causes excessive battery drain or breaks hybrid graphics")
 
     # Windows version gating: the ``win`` field is the per-tweak support list
     # (e.g. "10" or "11"), and ``when.win_versions`` is the same as a condition.
