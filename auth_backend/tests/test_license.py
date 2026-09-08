@@ -1,6 +1,10 @@
 """Tests for the MAXIMUM TWEAKS license server.
 
-Runs against a throwaway SQLite DB in a temp dir; no network, no real keys.
+Runs against a throwaway SQLite DB in a temp dir by default; no network, no
+real keys. To exercise the PostgreSQL path instead, set TEST_DATABASE_URL to
+a dedicated throwaway Postgres DB (never the production database) - the whole
+suite then runs against it. A production DATABASE_URL in a .env is never
+touched by the tests.
 Env vars are set before ``main`` is imported because it reads its config at
 import time.
 """
@@ -15,6 +19,15 @@ os.environ["LICENSE_SECRET"] = "test-secret-not-for-production"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
 os.environ["SESSION_TTL_HOURS"] = "2"
 os.environ["OFFLINE_GRACE_HOURS"] = "24"
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # pick up TEST_DATABASE_URL from auth_backend/.env if set
+except Exception:  # noqa: BLE001
+    pass
+
+if os.environ.get("TEST_DATABASE_URL", "").strip():
+    os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"].strip()
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -37,7 +50,7 @@ def _clean_db():
     with db._lock:
         conn = db._connect()
         try:
-            conn.execute("DELETE FROM licenses")
+            db._exec(conn, "DELETE FROM licenses")
             conn.commit()
         finally:
             conn.close()
@@ -222,8 +235,9 @@ def test_validate_catches_expired_key():
     with db._lock:
         conn = db._connect()
         try:
-            conn.execute("UPDATE licenses SET expires_at = ? WHERE license_key = ?",
-                         ("2000-01-01 00:00:00", key))
+            db._exec(conn,
+                     "UPDATE licenses SET expires_at = ? WHERE license_key = ?",
+                     ("2000-01-01 00:00:00", key))
             conn.commit()
         finally:
             conn.close()

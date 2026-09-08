@@ -125,16 +125,18 @@ Tests use a throwaway SQLite DB and the FastAPI `TestClient` (no network).
 - Create a **Web Service** from this repo with **Root Directory = `auth_backend`**.
 - **Build command**: `pip install -r requirements.txt`
 - **Start command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- Free-instance filesystems are **ephemeral** — a restart/redeploy wipes the
-  DB. Attach a **Persistent Disk** to the service and set
-  `LICENSE_DB_PATH=/var/data/licenses.db` (or similar on the disk), then run
-  `cd auth_backend && python -m admin` from the Render shell to generate keys.
+- **Database**: free-instance filesystems are **ephemeral** — a restart/redeploy
+  wipes the DB. Point `DATABASE_URL` at a managed PostgreSQL (e.g. Neon) so
+  licenses survive restarts/redeploys. Alternatively attach a **Persistent
+  Disk** and set `LICENSE_DB_PATH=/var/data/licenses.db` (or similar on the
+  disk), then run `cd auth_backend && python -m admin` from the Render shell
+  to generate keys.
 - Set `LICENSE_SECRET` and `ADMIN_TOKEN` as Render environment variables,
   never in the repository.
 - The desktop app talks to the same HTTPS origin (`LICENSE_API_URL` in
   `config/app_config.py`), default `https://maximumtweaks.onrender.com`.
-- After deploy, `/health` must report the license service — the app will
-  refuse keys while the old Discord-auth backend is live.
+- After deploy, `GET /health` must return `{"status":"ok"}` — the app refuses
+  keys when the license service is unreachable.
 
 ## Security notes
 
