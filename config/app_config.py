@@ -1,7 +1,9 @@
 """Maximum Tweaks global configuration and path helpers."""
 from __future__ import annotations
 
+import getpass
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -36,6 +38,32 @@ GITHUB_URL = "https://github.com/rexxd2000-source/RexTweaks"
 # Repo owner/repo for update checks (used by build scripts/README only).
 GITHUB_REPO = "rexxd2000-source/RexTweaks"
 
+# Update auth token: read from the GITHUB_TOKEN env var, else from the
+# build-time generated config/_secrets.py (gitignored, embedded into the exe).
+# Required to read GitHub Releases / download assets from a PRIVATE repo.
+def _load_github_token() -> str:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        return token
+    meipass = getattr(sys, "_MEIPASS", None)
+    candidates = []
+    if meipass:
+        candidates.append(Path(meipass) / "config" / "_secrets.py")
+    candidates.append(Path(__file__).resolve().parent / "_secrets.py")
+    for path in candidates:
+        try:
+            if path.is_file():
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    text = line.strip()
+                    if text.startswith("GITHUB_TOKEN"):
+                        return text.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return ""
+
+
+GITHUB_TOKEN = _load_github_token()
+
 # ---- Live updater ----------------------------------------------------------
 # The app checks for a "latest" GitHub Release (tag name doubles as the
 # version, asset must be named exactly `UPDATE_EXE_NAME`) unless
@@ -47,6 +75,26 @@ UPDATE_EXE_NAME = "MaximumTweaks.exe"  # must match the build name in MaximumTwe
 
 # Minimal supported Windows build (Win10 1903 / 19041+ preferred)
 MIN_WIN_BUILD = 18362
+
+
+def current_windows_user() -> str:
+    """The current Windows account/PC username, sanitized for display.
+
+    Detected automatically (never hardcoded) so it works on every machine
+    that runs the app. Falls back to a neutral label if it cannot resolve.
+    """
+    raw = ""
+    try:
+        raw = getpass.getuser()
+    except Exception:  # noqa: BLE001
+        raw = ""
+    if not raw:
+        raw = (os.environ.get("USERNAME") or "").strip()
+    if not raw:
+        raw = (os.environ.get("COMPUTERNAME") or "").strip()
+    name = re.sub(r"[^\w .\-()@]+", " ", raw, flags=re.UNICODE).strip()
+    name = re.sub(r"\s+", " ", name)
+    return name[:32] or "User"
 
 
 def project_root() -> Path:

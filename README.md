@@ -71,8 +71,8 @@ python main.py apply <id> [--dry-run] | revert <id> [--dry-run] | report <id>
 
 ```powershell
 pip install pyinstaller
-python -m PyInstaller RexTweaks.spec --noconfirm
-# output: dist\RexTweaks.exe
+python -m PyInstaller MaximumTweaks.spec --noconfirm
+# output: dist\MaximumTweaks.exe
 ```
 
 Run the resulting exe as **Administrator** to apply admin-requiring tweaks
@@ -91,9 +91,9 @@ New builds are **pushed to users without a reinstall**:
 ### Publish an update
 
 ```powershell
-# one command: bumps version, builds dist\RexTweaks.exe, tags, creates the
+# one command: bumps version, builds dist\MaximumTweaks.exe, tags, creates the
 # GitHub Release and uploads the exe
-.\.\release.ps1 -Version 1.1.0
+.\release.ps1 -Version 2.0.1
 ```
 
 Requirements for publishing:
@@ -102,12 +102,18 @@ Requirements for publishing:
 - A GitHub Personal Access Token in `$env:GITHUB_TOKEN` (scope: `repo`).
 - GitHub CLI (`gh`) is **not** required — the script uses `curl`.
 
+> **Private repos**: if `GITHUB_REPO` is private, `release.ps1` embeds the
+> token into `config\_secrets.py` (gitignored) so the built exe can read the
+> latest release and download the asset. The updater then talks to the GitHub
+> API with that token — no public mirror is needed. Never commit
+> `config/_secrets.py`.
+
 The app's update check resolves the **latest release tag** of `GITHUB_REPO`
-and downloads the asset named `RexTweaks.exe`. For a custom server instead of
+and downloads the asset named `MaximumTweaks.exe`. For a custom server instead of
 GitHub, set `UPDATE_MANIFEST_URL` to a JSON document:
 
 ```json
-{ "version": "1.2.0", "url": "https://your-cdn.com/RexTweaks.exe", "notes": "what's new" }
+{ "version": "2.0.1", "url": "https://your-cdn.com/MaximumTweaks.exe", "notes": "what's new" }
 ```
 
 Leave `GITHUB_REPO` and `UPDATE_MANIFEST_URL` empty to disable update checks.

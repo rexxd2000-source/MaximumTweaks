@@ -17,7 +17,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import DISCORD_INVITE_URL, THEME as T
+from config.app_config import (
+    DISCORD_INVITE_URL,
+    THEME as T,
+    current_windows_user,
+)
 from engine import license as license_mgr
 from ui.license import LicenseActivateWorker, publish_identity
 from ui.widgets import qss_rgba, toast
@@ -280,8 +284,11 @@ class GateWindow(QWidget):
             self.error_label.setText("The license server returned no session.")
             self.error_label.show()
             return
-        publish_identity()
-        from ui import context
-        name = context.LICENSE_NAME or license_mgr.owner_name(sess)
-        toast(f"Welcome, {name} \u2014 license activated", "success", self)
-        self.unlocked.emit(sess)
+        try:
+            publish_identity()
+            toast(f"Welcome, {current_windows_user()} \u2014 license activated",
+                  "success", self)
+        finally:
+            # Unlock no matter what so the gate never gets stuck on the key
+            # prompt after a successful activation.
+            self.unlocked.emit(sess)

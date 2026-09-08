@@ -174,6 +174,18 @@ class RexLogo(QWidget):
 # Pulsing live status badge (ADMIN MODE ACTIVE / SYS OPTIMIZED)
 # --------------------------------------------------------------------------
 
+def _measure_text(text: str, px: int, spacing: float) -> int:
+    """Measure text with the exact font paintEvent draws (bold + letter
+    spacing), so sizeHint never under-sizes and clips the last character."""
+    from PySide6.QtGui import QFontMetrics
+    f = QFont("Segoe UI Variable Display")
+    f.setPixelSize(px)
+    f.setBold(True)
+    f.setLetterSpacing(QFont.AbsoluteSpacing, spacing)
+    fm = QFontMetrics(f)
+    return fm.horizontalAdvance(text) + int(spacing * max(0, len(text) - 1))
+
+
 class LiveBadge(QWidget):
     """Pill with an animated pulsing dot + status text."""
 
@@ -199,8 +211,7 @@ class LiveBadge(QWidget):
 
     def sizeHint(self):
         from PySide6.QtCore import QSize
-        fm = self.fontMetrics()
-        return QSize(fm.horizontalAdvance(self._text) + 54, 30)
+        return QSize(40 + _measure_text(self._text, 11, 0.6) + 14, 30)
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -267,8 +278,7 @@ class BackendStatusBlock(QWidget):
 
     def sizeHint(self):
         from PySide6.QtCore import QSize
-        fm = self.fontMetrics()
-        return QSize(fm.horizontalAdvance(self._main) + 70, 50)
+        return QSize(52 + _measure_text(self._main, 12, 0.8) + 18, 50)
 
     def paintEvent(self, event):
         p = QPainter(self)

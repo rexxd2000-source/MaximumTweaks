@@ -31,7 +31,6 @@ from engine import activity
 from rexlog import logger
 from ui.categories import SIDEBAR_TWEAKS, logo_path
 from ui.context import AppContext
-from ui.license import SidebarLicenseCard
 from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
@@ -139,18 +138,6 @@ class MainWindow(QWidget):
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
 
-    def _show_license_gate(self):
-        """Re-open the license gate (e.g. the sidebar Activate button)."""
-        from ui.gate import GateWindow
-        gate = GateWindow()
-        gate.setGeometry(self.frameGeometry())
-        gate.show()
-
-        def unlock(_session):
-            gate.fade_out(600)
-        gate.unlocked.connect(unlock)
-
-
     # ---------------- Sidebar ----------------
 
     def _nav_button(self, text, obj="Nav"):
@@ -201,7 +188,11 @@ class MainWindow(QWidget):
         sec = QLabel("MAIN")
         sec.setObjectName("NavSection")
         nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['dashboard']}   Dashboard")
+        btn = self._nav_button("Dashboard")
+        logo = logo_path("home")
+        if logo.is_file():
+            btn.setIcon(QIcon(str(logo)))
+            btn.setIconSize(QSize(15, 15))
         btn.clicked.connect(lambda _=False: self.navigate("dashboard"))
         nav_lay.addWidget(btn)
         self.nav_buttons["dashboard"] = btn
@@ -240,7 +231,11 @@ class MainWindow(QWidget):
         sec = QLabel("PROFILES")
         sec.setObjectName("NavSection")
         nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['profiles']}   Game Profiles")
+        btn = self._nav_button("Game Profiles")
+        logo = logo_path("profiles")
+        if logo.is_file():
+            btn.setIcon(QIcon(str(logo)))
+            btn.setIconSize(QSize(15, 15))
         btn.clicked.connect(lambda _=False: self.navigate("profiles"))
         nav_lay.addWidget(btn)
         self.nav_buttons["profiles"] = btn
@@ -273,12 +268,6 @@ class MainWindow(QWidget):
 
         scroll.setWidget(nav)
         lay.addWidget(scroll, 1)
-
-        # License status block pinned below the nav (outside the scroll area)
-        # so its rounded corners are never clipped by the sidebar viewport.
-        self.sidebar_license = SidebarLicenseCard(self.ctx)
-        self.sidebar_license.activate_requested.connect(self._show_license_gate)
-        lay.addWidget(self.sidebar_license)
 
         ver = QLabel(f"v{APP_VERSION} \u00b7 Maximum Engine")
         ver.setObjectName("Tag")

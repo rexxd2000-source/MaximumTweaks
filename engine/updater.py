@@ -31,6 +31,7 @@ from pathlib import Path
 from config.app_config import (
     APP_VERSION,
     GITHUB_REPO,
+    GITHUB_TOKEN,
     ROOT,
     UPDATE_EXE_NAME,
     UPDATE_MANIFEST_URL,
@@ -91,10 +92,12 @@ class _HttpError(Exception):
         self.status = status
 
 
-def _get_json(url: str, timeout: float = 15.0) -> dict:
+def _get_json(url: str, timeout: float = 15.0, token: str = "") -> dict:
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     req.add_header("Accept", "application/json")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             try:
@@ -112,6 +115,13 @@ def _github_api_url() -> str:
     if not owner_repo or "/" not in owner_repo:
         raise UpdaterError("Update checks not configured — set GITHUB_REPO.")
     return f"https://api.github.com/repos/{owner_repo}/releases/latest"
+
+
+def _github_asset_url(asset_id) -> str:
+    """API asset endpoint: streams the binary directly (no redirect), so the
+    Authorization header survives even when the repo is private."""
+    owner_repo = (GITHUB_REPO or "").strip("/")
+    return f"https://api.github.com/repos/{owner_repo}/releases/assets/{asset_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +142,7 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
         if not version or not url:
             raise UpdaterError("The update manifest is missing version/url.")
     else:
-        data = _get_json(_github_api_url(), timeout)
+        data = _get_json(_github_api_url(), timeout, token=GITHUB_TOKEN)
         tag = str(data.get("tag_name") or "").strip().lstrip("v")
         if not tag:
             raise UpdaterError("The release has no version tag.")
@@ -147,7 +157,12 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
         asset_url = ""
         for asset in data.get("assets", []):
             if str(asset.get("name")) == UPDATE_EXE_NAME:
-                asset_url = str(asset.get("browser_download_url") or "")
+                # Private repos: download via the authenticated API endpoint.
+                asset_id = asset.get("id")
+                if asset_id and GITHUB_TOKEN:
+                    asset_url = _github_asset_url(asset_id)
+                else:
+                    asset_url = str(asset.get("browser_download_url") or "")
                 break
         if not asset_url:
             raise UpdaterError(
@@ -166,6 +181,11 @@ def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
     dest = data_dir() / UPDATE_EXE_NAME
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
+    if "api.github.com" in url:
+        # Authenticated binary fetch for (possibly private) GitHub assets.
+        req.add_header("Accept", "application/octet-stream")
+        if GITHUB_TOKEN:
+            req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             total = int(resp.headers.get("Content-Length") or 0)

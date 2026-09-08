@@ -152,8 +152,32 @@ def validate_startup():
     _STARTUP_WORKER.start()
 
 
+def relock(window):
+    """Lock the app again: hide the main window and show the license gate.
+
+    Used after deactivation/logout so the user is routed back to the primary
+    auth view instead of staying in the app. Unlocking re-shows the window
+    and refreshes every license-dependent widget.
+    """
+    from ui.gate import GateWindow
+    ctx = getattr(window, "ctx", None)
+    gate = GateWindow()
+    gate.setGeometry(window.frameGeometry())
+    gate.show()
+    window.hide()
+
+    def unlock(_session):
+        window.show()
+        window.raise_()
+        publish_identity()
+        if ctx is not None:
+            ctx.license_changed.emit()
+        gate.fade_out(600)
+    gate.unlocked.connect(unlock)
+
+
 def deactivate(ctx, view):
-    """Deactivate this device and clear the local session."""
+    """Deactivate this device, clear the local session and lock the app."""
     worker = getattr(view, "_license_worker", None)
     if worker is not None and worker.isRunning():
         return
@@ -166,6 +190,7 @@ def deactivate(ctx, view):
         publish_identity()
         ctx.license_changed.emit()
         toast("License deactivated on this device", "info", view)
+        relock(view.window())
     worker.done.connect(done)
     worker.start()
 
@@ -244,11 +269,6 @@ class SidebarLicenseCard(QFrame):
             status.setStyleSheet(
                 f"color: {_ACCENT}; font-size: 11px; font-weight: 700;")
             lay.addWidget(status)
-
-            out = QPushButton("Deactivate")
-            out.setObjectName("Secondary")
-            out.clicked.connect(lambda: deactivate(self.ctx, self))
-            lay.addWidget(out)
         elif not license_mgr.is_configured():
             note = QLabel(
                 "License server not configured. Set LICENSE_API_URL in "
@@ -353,11 +373,6 @@ class LicenseAccountCard(QFrame):
                 f"color: {_ACCENT}; font-size: 10px; font-weight: 800;"
                 " letter-spacing: 0.8px;")
             lay.addWidget(status)
-
-            out = QPushButton("Sign Out (Deactivate)")
-            out.setObjectName("Secondary")
-            out.clicked.connect(lambda: deactivate(self.ctx, self))
-            lay.addWidget(out)
         elif not license_mgr.is_configured():
             note = QLabel(
                 "License server not configured. Set LICENSE_API_URL in "

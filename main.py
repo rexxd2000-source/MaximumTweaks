@@ -39,7 +39,8 @@ def run_gui():
 
     screen = app.primaryScreen().availableGeometry()
     splash = CinematicSplash()
-    splash.setGeometry(screen)
+    splash.resize(900, 720)
+    splash.move(screen.center().x() - 450, screen.center().y() - 360)
     splash.show()
     splash.start()
 

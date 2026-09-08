@@ -22,10 +22,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import ICONS, LAUNCH_DATETIME, THEME as T
+from config.app_config import ICONS, LAUNCH_DATETIME, THEME as T, current_windows_user
 from engine import activity, license as license_mgr, state as state_mgr
 from engine.telemetry import TelemetrySampler, invalidate_disk_cache
-from ui.license import LicenseAccountCard
 from ui.monitor_widgets import (
     BackendStatusBlock,
     CleanupThread,
@@ -38,7 +37,6 @@ from ui.monitor_widgets import (
     TogglePill,
     threshold_color,
 )
-from ui import context
 from ui.categories import logo_path
 from ui.widgets import IconTile, ToggleSwitch, chip, clear_layout, qss_rgba, toast
 
@@ -102,10 +100,6 @@ class DashboardPage(QWidget):
         rlay = QVBoxLayout(right)
         rlay.setContentsMargins(0, 0, 0, 0)
         rlay.setSpacing(10)
-        self.license_card = LicenseAccountCard(self.ctx)
-        self.license_card.activate_requested.connect(
-            self._open_license_gate)
-        rlay.addWidget(self.license_card)
         rlay.addWidget(self._build_ultra_card())
         rlay.addStretch()
         work.addWidget(right, 0, 1)
@@ -142,10 +136,7 @@ class DashboardPage(QWidget):
     # ---------------- Header / brand ----------------
 
     def _welcome_text(self):
-        name = context.LICENSE_NAME
-        if name:
-            return f"Welcome, {name}!"
-        return "Welcome, guest!"
+        return f"Welcome, {current_windows_user()}!"
 
     def _refresh_welcome(self):
         if getattr(self, "welcome_label", None) is not None:
@@ -252,17 +243,6 @@ class DashboardPage(QWidget):
             self.backend_block.set_status("LICENSE ACTIVE", T["accent"])
         else:
             self.backend_block.set_status("AWAITING ACTIVATION", T["warning"])
-
-    def _open_license_gate(self):
-        from ui.gate import GateWindow
-        gate = GateWindow()
-        gate.setGeometry(self.window().frameGeometry())
-        gate.show()
-
-        def unlock(_session):
-            gate.fade_out(600)
-        gate.unlocked.connect(unlock)
-
 
     def _refresh_hw(self):
         profile = self.ctx.profile or {}

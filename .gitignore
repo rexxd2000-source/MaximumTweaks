@@ -10,6 +10,7 @@ dist/
 # Secrets — never commit
 .env
 auth_backend/.env
+config/_secrets.py
 
 # Local data / user state
 data/

@@ -13,8 +13,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import APP_NAME, APP_VERSION, ENGINE_NAME, LOG_FILE
+from config.app_config import (
+    APP_NAME,
+    APP_VERSION,
+    ENGINE_NAME,
+    LOG_FILE,
+    THEME as T,
+    current_windows_user,
+)
+from engine import license as license_mgr
 from engine import state as state_mgr
+from ui.license import LicenseAccountCard, deactivate, relock
 from ui.widgets import section_label
 
 
@@ -44,6 +53,10 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.ctx = ctx
         self.navigate = navigate
+        self._license_worker = None
+        self._busy = False
+        self._signout_btn = None
+        self._signout_row = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -52,6 +65,10 @@ class SettingsPage(QWidget):
         title = QLabel("Settings")
         title.setObjectName("PageTitle")
         root.addWidget(title)
+        welcome = QLabel(f"Welcome, {current_windows_user()}")
+        welcome.setStyleSheet(
+            f"font-size: 15px; font-weight: 700; color: {T['accent']};")
+        root.addWidget(welcome)
         sub = QLabel("Appearance, security and application state.")
         sub.setObjectName("PageSub")
         root.addWidget(sub)
@@ -70,6 +87,23 @@ class SettingsPage(QWidget):
             "changes. Maximum Tweaks is running as "
             f"{'Administrator' if admin else 'a standard user'}.",
             btn))
+
+        self._license_card = LicenseAccountCard(self.ctx)
+        self._license_card.activate_requested.connect(
+            lambda: relock(self.window()))
+        root.addWidget(self._license_card)
+
+        self._signout_btn = QPushButton("Sign Out")
+        self._signout_btn.setObjectName("Danger")
+        self._signout_btn.clicked.connect(lambda: deactivate(self.ctx, self))
+        self._signout_row = SettingRow(
+            "License account",
+            "Sign out on this device, clear the local session and lock the app. "
+            "You can reactivate at any time with your license key.",
+            self._signout_btn)
+        root.addWidget(self._signout_row)
+        self._refresh_signout()
+        self.ctx.license_changed.connect(self._refresh_signout)
 
         root.addWidget(section_label("Data & State"))
 
@@ -117,6 +151,20 @@ class SettingsPage(QWidget):
             return bool(ctypes.windll.shell32.IsUserAnAdmin())
         except Exception:  # noqa: BLE001
             return False
+
+    def set_busy(self, busy: bool):
+        self._busy = busy
+        if self._signout_btn is not None:
+            self._signout_btn.setEnabled(not busy)
+            self._signout_btn.setText("Signing out\u2026" if busy else "Sign Out")
+
+    def _refresh_signout(self):
+        if self._signout_row is None:
+            return
+        authorized = bool(license_mgr.session() and license_mgr.is_authorized())
+        self._signout_row.setVisible(authorized)
+        if self._signout_btn is not None:
+            self._signout_btn.setEnabled(authorized and not self._busy)
 
     def _confirm(self, title, text):
         return QMessageBox.question(
