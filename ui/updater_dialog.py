@@ -42,8 +42,10 @@ class FetchWorker(QThread):
             logger.info(f"updater: check failed: {exc}")
             result = None
         except Exception:  # noqa: BLE001
-            self._err = traceback.format_exc().splitlines()[-1]
-            logger.warn(f"updater: unexpected check error: {self._err}")
+            logger.error("updater: unexpected check error:\n"
+                         f"{traceback.format_exc()}")
+            self._err = ("Update check failed unexpectedly. "
+                         "Please try again, or run the latest build manually.")
             result = None
         self.done.emit({"info": result, "error": self._err})
 
