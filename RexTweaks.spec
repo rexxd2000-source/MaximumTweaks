@@ -76,6 +76,7 @@ exe = EXE(
     a.datas,
     [],
     name=APP_NAME.replace(" ", ""),
+    icon=str(ROOT / "assets" / "rex_app.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
