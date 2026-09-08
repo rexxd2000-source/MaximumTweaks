@@ -1,4 +1,4 @@
-"""Maximum Tweaks global configuration and path helpers."""
+﻿"""Maximum Tweaks global configuration and path helpers."""
 from __future__ import annotations
 
 import getpass
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -102,7 +102,7 @@ def project_root() -> Path:
 
     In a frozen (PyInstaller) build the source tree lives in a temp extraction
     dir that is wiped on exit, so ROOT resolves to the folder that holds the
-    .exe â€” that is where Logs/ and data/ persist.
+    .exe Ã¢â‚¬â€ that is where Logs/ and data/ persist.
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -190,34 +190,34 @@ THEME = {
 
 
 ICONS = {
-    "dashboard": "\u25c8",   # â—†
-    "search": "\u2315",      # âŒ•
-    "windows": "\u26fa",     # â›º
-    "system": "\u2699",      # âš™
-    "cpu": "\u2b22",         # â¬¢
-    "gpu": "\u25c6",         # â—†
-    "ram": "\u2588",         # â–ˆ
-    "storage": "\u25b6",     # â–¶
-    "network": "\u2637",     # â˜·
-    "input": "\u21a8",       # â†¨
-    "mouse": "\u21a8",       # â†¨
-    "keyboard": "\u2328",    # âŒ¨
-    "aim": "\u2694",         # âš”
-    "performance": "\u26a1", # âš¡
-    "games": "\u2605",       # â˜…
-    "fortnite": "\u25c9",    # â—‰
-    "tweaks": "\u2630",      # â˜°
-    "gaming": "\u2605",      # â˜…
-    "services": "\u2693",    # âš“
-    "power": "\u26a1",       # âš¡
-    "tools": "\u26cf",       # â›
-    "profiles": "\u2654",    # â™”
-    "reports": "\u2711",     # âœ‘
-    "logs": "\u2709",        # âœ‰
-    "shield": "\u26d1",      # â›‘
-    "wrench": "\u26b8",      # âš¸
-    "flag": "\u2691",        # âš‘
-    "settings": "\u2699",    # âš™
+    "dashboard": "\u25c8",   # Ã¢â€”â€ 
+    "search": "\u2315",      # Ã¢Å’â€¢
+    "windows": "\u26fa",     # Ã¢â€ºÂº
+    "system": "\u2699",      # Ã¢Å¡â„¢
+    "cpu": "\u2b22",         # Ã¢Â¬Â¢
+    "gpu": "\u25c6",         # Ã¢â€”â€ 
+    "ram": "\u2588",         # Ã¢â€“Ë†
+    "storage": "\u25b6",     # Ã¢â€“Â¶
+    "network": "\u2637",     # Ã¢ËœÂ·
+    "input": "\u21a8",       # Ã¢â€ Â¨
+    "mouse": "\u21a8",       # Ã¢â€ Â¨
+    "keyboard": "\u2328",    # Ã¢Å’Â¨
+    "aim": "\u2694",         # Ã¢Å¡â€
+    "performance": "\u26a1", # Ã¢Å¡Â¡
+    "games": "\u2605",       # Ã¢Ëœâ€¦
+    "fortnite": "\u25c9",    # Ã¢â€”â€°
+    "tweaks": "\u2630",      # Ã¢ËœÂ°
+    "gaming": "\u2605",      # Ã¢Ëœâ€¦
+    "services": "\u2693",    # Ã¢Å¡â€œ
+    "power": "\u26a1",       # Ã¢Å¡Â¡
+    "tools": "\u26cf",       # Ã¢â€ºÂ
+    "profiles": "\u2654",    # Ã¢â„¢â€
+    "reports": "\u2711",     # Ã¢Å“â€˜
+    "logs": "\u2709",        # Ã¢Å“â€°
+    "shield": "\u26d1",      # Ã¢â€ºâ€˜
+    "wrench": "\u26b8",      # Ã¢Å¡Â¸
+    "flag": "\u2691",        # Ã¢Å¡â€˜
+    "settings": "\u2699",    # Ã¢Å¡â„¢
 }
 
 ADMIN_NOTE = (
@@ -242,6 +242,7 @@ LICENSE_API_URL = "https://maximumtweaks.onrender.com"
 # Offline grace after the session token expires (hours): lets an activated PC
 # keep running without internet for a while before the gate reappears.
 OFFLINE_GRACE_HOURS = 24
+
 
 
 
