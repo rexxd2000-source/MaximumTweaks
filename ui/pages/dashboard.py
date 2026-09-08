@@ -38,7 +38,28 @@ from ui.monitor_widgets import (
     TogglePill,
     threshold_color,
 )
+from ui import context
 from ui.widgets import IconTile, ToggleSwitch, chip, clear_layout, toast
+
+
+#: Rotating daily mini-quote shown under the dashboard welcome. Picked
+#: deterministically from the date so it changes once per day.
+DAILY_QUOTES = (
+    "Ready to boost your performance.",
+    "Every millisecond counts.",
+    "Squeeze every last frame.",
+    "Low latency, high frames.",
+    "Your PC deserves a tune-up.",
+    "Silky smooth or nothing.",
+    "Turn every setting up.",
+    "Fast, fluid, flawless.",
+    "Push your hardware harder.",
+    "Own the server, own the frame.",
+    "More frames, less excuses.",
+    "Small tweaks, big gains.",
+    "Maximum power, minimum fuss.",
+    "Stay ahead of the curve.",
+)
 
 
 class DashboardPage(QWidget):
@@ -52,25 +73,26 @@ class DashboardPage(QWidget):
         self._discord_worker = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(14)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(12)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         body = QWidget()
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(4, 0, 12, 0)
-        lay.setSpacing(14)
+        lay.setContentsMargins(4, 0, 10, 0)
+        lay.setSpacing(10)
 
         lay.addWidget(self._build_header())
+        lay.addWidget(self._build_system_bar())
 
         # ---- Main work area: asymmetric left telemetry / right utilities ----
         work = QGridLayout()
-        work.setSpacing(14)
+        work.setSpacing(10)
 
         left = QVBoxLayout()
-        left.setSpacing(14)
+        left.setSpacing(10)
         left.addWidget(self._build_telemetry_card())
         left.addWidget(self._build_chart_card())
         work.addLayout(left, 0, 0)
@@ -79,7 +101,7 @@ class DashboardPage(QWidget):
         right.setFixedWidth(324)
         rlay = QVBoxLayout(right)
         rlay.setContentsMargins(0, 0, 0, 0)
-        rlay.setSpacing(14)
+        rlay.setSpacing(10)
         rlay.addWidget(DiscordCommunityCard())
         rlay.addWidget(self._build_ultra_card())
         rlay.addStretch()
@@ -105,6 +127,7 @@ class DashboardPage(QWidget):
         self.ctx.state_changed.connect(self._refresh_profile_card)
         self.ctx.pfp_changed.connect(self._refresh_hw)
         self.ctx.discord_changed.connect(self._refresh_backend_block)
+        self.ctx.discord_changed.connect(self._refresh_welcome)
         self._refresh_hw()
         self._refresh_mode_card()
         self._refresh_profile_card()
@@ -115,12 +138,26 @@ class DashboardPage(QWidget):
 
     # ---------------- Header / brand ----------------
 
+    def _welcome_text(self):
+        name = context.DISCORD_USERNAME
+        if name:
+            return f"Welcome, {name}!"
+        return "Welcome, guest!"
+
+    def _refresh_welcome(self):
+        if getattr(self, "welcome_label", None) is not None:
+            self.welcome_label.setText(self._welcome_text())
+
+    def _daily_quote(self):
+        import datetime
+        return DAILY_QUOTES[datetime.date.today().toordinal() % len(DAILY_QUOTES)]
+
     def _build_header(self):
         hero = QFrame()
         hero.setObjectName("Hero")
         lay = QHBoxLayout(hero)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(18)
+        lay.setContentsMargins(20, 14, 20, 14)
+        lay.setSpacing(14)
 
         brand = QHBoxLayout()
         brand.setSpacing(12)
@@ -128,21 +165,15 @@ class DashboardPage(QWidget):
         brand.addWidget(self.dash_avatar)
         box = QVBoxLayout()
         box.setSpacing(3)
-        title = QLabel("Rex Tweaks Engine")
-        title.setStyleSheet("font-size: 28px; font-weight: 900; letter-spacing: 0.3px;")
-        sub = QLabel("Low Latency & High-Performance System Dashboard")
-        sub.setObjectName("PageSub")
-        box.addWidget(title)
-        box.addWidget(sub)
-        self.scan_status = QLabel("Scanning system...")
-        self.scan_status.setStyleSheet(
-            f"color: {T['accent']}; font-size: 11px; font-weight: 600;")
-        self.scan_status.hide()
-        box.addWidget(self.scan_status)
-        box.addSpacing(8)
-        self.header_chips = QHBoxLayout()
-        self.header_chips.setSpacing(8)
-        box.addLayout(self.header_chips)
+        self.welcome_label = QLabel(self._welcome_text())
+        self.welcome_label.setStyleSheet(
+            "font-size: 28px; font-weight: 900; letter-spacing: 0.3px;")
+        box.addWidget(self.welcome_label)
+        self.quote_label = QLabel(self._daily_quote())
+        self.quote_label.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 15px; font-weight: 600;"
+            " font-style: italic;")
+        box.addWidget(self.quote_label)
         box.addStretch()
         brand.addLayout(box, 1)
         lay.addLayout(brand, 1)
@@ -152,6 +183,23 @@ class DashboardPage(QWidget):
         self._refresh_backend_block()
         lay.addWidget(self.backend_block, 0, Qt.AlignVCenter)
         return hero
+
+    def _build_system_bar(self):
+        bar = QFrame()
+        bar.setObjectName("SysBar")
+        blay = QHBoxLayout(bar)
+        blay.setContentsMargins(12, 8, 12, 8)
+        blay.setSpacing(8)
+        self.scan_status = QLabel("Scanning system...")
+        self.scan_status.setStyleSheet(
+            f"color: {T['accent']}; font-size: 11px; font-weight: 600;")
+        self.scan_status.hide()
+        blay.addWidget(self.scan_status)
+        self.header_chips = QHBoxLayout()
+        self.header_chips.setSpacing(8)
+        blay.addLayout(self.header_chips)
+        blay.addStretch()
+        return bar
 
     def _refresh_backend_block(self):
         prof = discord_auth.session()
@@ -167,31 +215,38 @@ class DashboardPage(QWidget):
         clear_layout(self.header_chips)
         handle = state_mgr.get_handle()
         if handle:
-            self.header_chips.addWidget(chip(f"\u25cf {handle}", T["accent"]))
+            self.header_chips.addWidget(self._hw_chip(f"\u25cf {handle}"))
         if profile:
             self.scan_status.hide()
-            self.header_chips.addWidget(chip(
-                f"Windows {profile.get('win_version', '?')} \u00b7 build {profile.get('win_build', 0)}",
-                T["accent"]))
-            self.header_chips.addWidget(chip(
-                "Laptop" if profile.get("laptop") else "Desktop", T["text_dim"]))
+            self.header_chips.addWidget(self._hw_chip(
+                f"Windows {profile.get('win_version', '?')} \u00b7 build {profile.get('win_build', 0)}"))
+            self.header_chips.addWidget(self._hw_chip(
+                "Laptop" if profile.get("laptop") else "Desktop"))
             cpu = (profile.get("cpu_name") or "")[:34]
             if cpu:
-                self.header_chips.addWidget(chip(cpu, T["text_dim"]))
+                self.header_chips.addWidget(self._hw_chip(cpu))
             gpu = " / ".join(profile.get("gpu_names", []))
             if gpu:
-                self.header_chips.addWidget(chip(gpu, T["text_dim"]))
+                self.header_chips.addWidget(self._hw_chip(gpu))
         else:
             self.scan_status.show()
         self.header_chips.addStretch()
+
+    def _hw_chip(self, text):
+        lbl = chip(text)
+        fm = lbl.fontMetrics()
+        lbl.setText(fm.elidedText(text, Qt.ElideRight, 300))
+        lbl.setMaximumWidth(300)
+        lbl.setMinimumWidth(0)
+        return lbl
 
     # ---------------- Live telemetry bars ----------------
 
     def _build_telemetry_card(self):
         card = GlassCard()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(10)
 
         head = QHBoxLayout()
         head.setSpacing(10)
@@ -252,7 +307,7 @@ class DashboardPage(QWidget):
     def _build_chart_card(self):
         card = GlassCard()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setContentsMargins(16, 12, 16, 12)
         lay.setSpacing(10)
         head = QHBoxLayout()
         title = QLabel("Thermal & Clock Stability")
@@ -280,8 +335,8 @@ class DashboardPage(QWidget):
 
         content = QWidget(card)
         clay = QVBoxLayout(content)
-        clay.setContentsMargins(18, 16, 18, 16)
-        clay.setSpacing(10)
+        clay.setContentsMargins(16, 12, 16, 12)
+        clay.setSpacing(8)
 
         head = QHBoxLayout()
         head.setSpacing(8)
@@ -368,8 +423,8 @@ class DashboardPage(QWidget):
     def _build_storage_card(self):
         card = GlassCard()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
 
         head = QHBoxLayout()
         title = QLabel("System Storage")
@@ -415,8 +470,8 @@ class DashboardPage(QWidget):
     def _build_profile_card(self):
         card = GlassCard()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
 
         head = QHBoxLayout()
         head.addWidget(IconTile(ICONS["profiles"], T["accent"], size=30,

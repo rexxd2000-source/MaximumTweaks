@@ -282,6 +282,17 @@ class GateWindow(QWidget):
             self.error_label.setText("Verification returned no identity.")
             self.error_label.show()
             return
-        toast(f"Welcome, {profile.get('name', '')} \u2014 identity verified",
-              "success", self)
+        if profile and profile.get("verified"):
+            from ui import context
+            first = context.DISCORD_USERNAME is None
+            context.DISCORD_USERNAME = discord_auth.display_name(profile)
+            context.DISCORD_FIRST_VERIFY = first
+            toast(f"Welcome, {context.DISCORD_USERNAME} \u2014 identity verified",
+                  "success", self)
+        else:
+            from ui import context
+            context.DISCORD_USERNAME = None
+            context.DISCORD_FIRST_VERIFY = False
+            toast("Welcome, guest \u2014 Discord verification pending",
+                  "info", self)
         self.unlocked.emit(profile)

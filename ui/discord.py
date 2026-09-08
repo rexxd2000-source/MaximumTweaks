@@ -6,14 +6,65 @@ session (avatar, name, verified badge) and drive login/logout.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from config.app_config import THEME as T
 from engine import discord_auth, state as state_mgr
 from ui.widgets import Avatar, IconTile, clear_layout, initials, repolish, toast
 
 _ACCENT = T["accent"]
+
+
+def _publish_identity():
+    """Keep the ui.context identity globals in sync with the persisted
+    session: a verified Discord name, or guest (None) until verified."""
+    from ui import context
+    prof = discord_auth.session()
+    if prof and prof.get("verified"):
+        name = discord_auth.display_name(prof)
+        first = context.DISCORD_USERNAME is None
+        context.DISCORD_USERNAME = name
+        context.DISCORD_FIRST_VERIFY = first
+    else:
+        context.DISCORD_USERNAME = None
+        context.DISCORD_FIRST_VERIFY = False
+
+
+class _BlinkDot(QWidget):
+    """Small status dot that blinks on a timer (live indicator)."""
+
+    def __init__(self, size: int = 8, color=_ACCENT, interval: int = 450,
+                 parent=None):
+        super().__init__(parent)
+        self.setFixedSize(size, size)
+        self._color = QColor(color)
+        self._on = True
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._toggle)
+        self._timer.start(interval)
+
+    def _toggle(self):
+        self._on = not self._on
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        col = QColor(self._color)
+        col.setAlpha(255 if self._on else 70)
+        p.setBrush(col)
+        p.setPen(Qt.NoPen)
+        d = self.width()
+        p.drawEllipse(QRectF(0, 0, d, d))
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +120,7 @@ def validate_startup():
     prof = discord_auth.session()
     if not prof or _STARTUP_WORKER and _STARTUP_WORKER.isRunning():
         return
+    _publish_identity()
     _STARTUP_WORKER = DiscordValidateWorker()
     _STARTUP_WORKER.start()
 
@@ -154,6 +206,7 @@ class DiscordChip(QFrame):
         self._refresh()
 
     def _refresh(self):
+        _publish_identity()
         prof = discord_auth.session()
         self.avatar.set_letter(initials(discord_auth.display_name(prof) or "R"))
         self.avatar.set_avatar(state_mgr.discord_avatar_path())
@@ -165,18 +218,31 @@ class DiscordChip(QFrame):
                 f"QFrame#DiscordChip {{ background-color: #0B0F14;"
                 f" border: 1px solid {_ACCENT}55; border-radius: 16px; }}")
         elif prof:
-            name = discord_auth.display_name(prof)
-            self.text.setText(name)
             verified = prof.get("verified")
-            self.flag.setText("VERIFIED" if verified else "CONNECTED")
-            self.flag.setStyleSheet(
-                f"font-size: 9px; font-weight: 800; letter-spacing: 0.5px;"
-                f" color: {_ACCENT};"
-                f" background: {_ACCENT}1A; border: 1px solid {_ACCENT}44;"
-                " border-radius: 8px; padding: 2px 7px;")
-            self.setStyleSheet(
-                f"QFrame#DiscordChip {{ background-color: #0B1217;"
-                f" border: 1px solid {_ACCENT}66; border-radius: 16px; }}")
+            if verified:
+                name = discord_auth.display_name(prof)
+                self.text.setText(name)
+                self.flag.setText("VERIFIED")
+                self.flag.setStyleSheet(
+                    f"font-size: 9px; font-weight: 800; letter-spacing: 0.5px;"
+                    f" color: {_ACCENT};"
+                    f" background: {_ACCENT}1A; border: 1px solid {_ACCENT}44;"
+                    " border-radius: 8px; padding: 2px 7px;")
+                self.setStyleSheet(
+                    f"QFrame#DiscordChip {{ background-color: #0B1217;"
+                    f" border: 1px solid {_ACCENT}66; border-radius: 16px; }}")
+            else:
+                # Not yet verified -> always treated as a guest, never "CONNECTED".
+                self.text.setText("Guest")
+                self.flag.setText("NOT VERIFIED")
+                self.flag.setStyleSheet(
+                    "font-size: 9px; font-weight: 800; letter-spacing: 0.5px;"
+                    " color: #8A93A3; background: #10161D;"
+                    " border: 1px solid #2A323D; border-radius: 8px;"
+                    " padding: 2px 7px;")
+                self.setStyleSheet(
+                    "QFrame#DiscordChip { background-color: #10161D;"
+                    " border: 1px solid #2A323D; border-radius: 16px; }")
         else:
             if discord_auth.is_configured():
                 self.text.setText("\u25c9  Verify with Discord")
@@ -215,7 +281,7 @@ class SidebarDiscordCard(QFrame):
     def __init__(self, ctx, parent=None):
         super().__init__(parent)
         self.ctx = ctx
-        self.setObjectName("TweakCard")
+        self.setObjectName("SidebarDiscordCard")
         self._busy = False
         self._discord_worker = None
 
@@ -232,6 +298,7 @@ class SidebarDiscordCard(QFrame):
         self._rebuild()
 
     def _rebuild(self):
+        _publish_identity()
         clear_layout(self.root)
         lay = self.root
 
@@ -240,26 +307,12 @@ class SidebarDiscordCard(QFrame):
 
         head = QHBoxLayout()
         head.setSpacing(8)
-        head.addWidget(IconTile("\u25c9", _ACCENT, size=22, font_scale=0.5))
+        head.addStretch()
         t = QLabel("Discord Account")
         t.setStyleSheet("font-size: 12px; font-weight: 800;")
         head.addWidget(t)
+        head.addWidget(_BlinkDot(8))
         head.addStretch()
-
-        state = QLabel()
-        state.setStyleSheet(
-            f"color: {_ACCENT}; background: {_ACCENT}1A;"
-            f" border: 1px solid {_ACCENT}44; border-radius: 8px;"
-            " padding: 2px 8px; font-size: 9px; font-weight: 800;"
-            " letter-spacing: 0.5px;")
-        if self._busy:
-            state.setText("\u25cf WORKING")
-        elif prof:
-            state.setText("VERIFIED" if prof.get("verified")
-                          else "CONNECTED")
-        else:
-            state.setText("NOT VERIFIED")
-        head.addWidget(state)
         lay.addLayout(head)
 
         if self._busy:
@@ -291,7 +344,7 @@ class SidebarDiscordCard(QFrame):
 
             status = QLabel(
                 "Verified Discord member" if prof.get("verified")
-                else "Connected \u00b7 role not assigned")
+                else "Guest \u00b7 not yet verified")
             status.setStyleSheet(
                 f"color: {_ACCENT if prof.get('verified') else T['warning']};"
                 " font-size: 11px; font-weight: 700;")
@@ -349,6 +402,7 @@ class DiscordAccountCard(QFrame):
         self._rebuild()
 
     def _rebuild(self):
+        _publish_identity()
         # Fully clear every child (widgets + nested layouts) so no stale
         # identity elements survive after a disconnect and overlap the new
         # state.
@@ -376,7 +430,7 @@ class DiscordAccountCard(QFrame):
             state.setText("\u25cf WORKING")
         elif prof:
             state.setText("\u25cf VERIFIED" if prof.get("verified")
-                          else "\u25cf CONNECTED")
+                          else "\u25cf GUEST")
         else:
             state.setText("\u25cf NOT VERIFIED")
         head.addWidget(state)
@@ -405,7 +459,7 @@ class DiscordAccountCard(QFrame):
             box.addWidget(tag)
             status = QLabel(
                 "Verified Discord member" if prof.get("verified")
-                else "Connected \u00b7 role not assigned")
+                else "Guest \u00b7 not yet verified")
             status.setStyleSheet(
                 f"color: {_ACCENT if prof.get('verified') else T['warning']};"
                 " font-size: 12px; font-weight: 700;")

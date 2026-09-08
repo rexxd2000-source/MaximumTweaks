@@ -9,6 +9,14 @@ from engine.audit import StateAuditor
 from engine.recommender import evaluate_many
 
 
+#: Verified Discord display name (global_name or username), or None while the
+#: user is still a guest (no verified identity).
+DISCORD_USERNAME: str | None = None
+
+#: True when the verified identity was linked for the first time this session.
+DISCORD_FIRST_VERIFY: bool = False
+
+
 class AppContext(QObject):
     profile_changed = Signal()
     state_changed = Signal()

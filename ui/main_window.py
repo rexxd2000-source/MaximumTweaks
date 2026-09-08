@@ -40,7 +40,7 @@ from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
 from ui.pages.optimize import OptimizePage
-from ui.premium_widgets import ComingSoonPage
+from ui.premium_widgets import AssistantComingSoon, ComingSoonPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
 from ui.pages.tweaks import ALL_KEY, TweaksPage
@@ -70,7 +70,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        self.resize(1320, 840)
+        self.resize(1320, 900)
         self.setMinimumSize(1100, 700)
 
         self.ctx = AppContext(self)
@@ -216,21 +216,22 @@ class MainWindow(QWidget):
         side.setObjectName("Sidebar")
         side.setFixedWidth(244)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(14, 18, 14, 14)
-        lay.setSpacing(2)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(1)
 
         # Scrollable navigation (prevents overflow at small window sizes).
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
             "QScrollArea > QWidget > QWidget { background: transparent; }")
         nav = QWidget()
         nav_lay = QVBoxLayout(nav)
         nav_lay.setContentsMargins(0, 0, 0, 0)
-        nav_lay.setSpacing(2)
+        nav_lay.setSpacing(1)
 
         # Branding
         brand = QHBoxLayout()
@@ -300,6 +301,12 @@ class MainWindow(QWidget):
         nav_lay.addWidget(btn)
         self.nav_buttons["tools"] = btn
 
+        # ---- AI ASSISTANT
+        btn = self._nav_button("\u2728   AI Assistant")
+        btn.clicked.connect(lambda _=False: self.navigate("chat"))
+        nav_lay.addWidget(btn)
+        self.nav_buttons["chat"] = btn
+
         # ---- SETTINGS
         sec = QLabel("SYSTEM")
         sec.setObjectName("NavSection")
@@ -311,12 +318,13 @@ class MainWindow(QWidget):
 
         nav_lay.addStretch()
 
-        # Pinned Discord identity block card at the foot of the navigation.
-        self.sidebar_discord = SidebarDiscordCard(self.ctx)
-        nav_lay.addWidget(self.sidebar_discord)
-
         scroll.setWidget(nav)
         lay.addWidget(scroll, 1)
+
+        # Discord identity block pinned below the nav (outside the scroll area)
+        # so its rounded corners are never clipped by the sidebar viewport.
+        self.sidebar_discord = SidebarDiscordCard(self.ctx)
+        lay.addWidget(self.sidebar_discord)
 
         if GITHUB_URL and GITHUB_URL != "https://github.com":
             gh = QPushButton(f"{ICONS['flag']}   Open GitHub")
@@ -339,6 +347,7 @@ class MainWindow(QWidget):
         self.pages["profiles"] = ComingSoonPage("Game Profiles")
         self.pages["optimize"] = OptimizePage(self.ctx)
         self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
+        self.pages["chat"] = AssistantComingSoon("AI Assistant")
         self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
         self.pages["logs"] = LogsPage()
         for page in self.pages.values():

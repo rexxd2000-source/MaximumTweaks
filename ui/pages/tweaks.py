@@ -12,7 +12,7 @@ cards flip instantly and the UI never blocks.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QThread, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -147,6 +147,8 @@ class TweaksPage(QWidget):
             toolbar.setObjectName("search-bar-container")
             root.addWidget(toolbar)
             root.addSpacing(10)
+            self.opt_host = self._build_optimizer_bar()
+            root.addWidget(self.opt_host)
 
         # ---- Card grid (hugs its content; trailing stretch absorbs leftover
         # viewport space so there is no dead band below the cards)
@@ -204,15 +206,6 @@ class TweaksPage(QWidget):
         box.addWidget(self.title_lbl)
         box.addWidget(self.blurb_lbl)
         top.addLayout(box, 1)
-        self.btn_recommended = QPushButton("\u26a1  Apply Recommended for this System")
-        self.btn_recommended.setObjectName("Primary")
-        self.btn_recommended.setMinimumHeight(38)
-        self.btn_recommended.setCursor(Qt.PointingHandCursor)
-        self.btn_recommended.setToolTip(
-            "Deep-checks this PC, then applies the tweaks that fit it. "
-            "Everything applied here is fully revertable.")
-        self.btn_recommended.clicked.connect(self._open_recommended)
-        top.addWidget(self.btn_recommended, alignment=Qt.AlignVCenter)
         hl.addLayout(top)
         return head
 
@@ -288,6 +281,105 @@ class TweaksPage(QWidget):
 
         return bar
 
+    # ---------------- Category optimizer bar ----------------
+
+    def _build_optimizer_bar(self):
+        host = QWidget()
+        host.setObjectName("optimizer-bar")
+        self.opt_lay = QHBoxLayout(host)
+        self.opt_lay.setContentsMargins(0, 0, 0, 0)
+        self.opt_lay.setSpacing(8)
+        self.opt_facts = QLabel()
+        self.opt_facts.setObjectName("PageSub")
+        self.opt_facts.setWordWrap(True)
+        self.opt_lay.addWidget(self.opt_facts, 1)
+        self._facts_cache: dict = {}
+        self._scan_worker = None
+        return host
+
+    def _update_optimizer_bar(self):
+        if self.fixed_group or not hasattr(self, "opt_host"):
+            return
+        from engine.optimizer import BUTTON_LABELS, GROUP_OPTIMIZERS
+        clear_layout(self.opt_lay)
+        if not self.key or self.key == ALL_KEY:
+            self.opt_host.setVisible(False)
+            return
+        keys = GROUP_OPTIMIZERS.get(self.key)
+        if not keys:
+            self.opt_host.setVisible(False)
+            return
+        self.opt_host.setVisible(True)
+
+        scan = QPushButton("Scan")
+        scan.setObjectName("Secondary")
+        scan.setMinimumHeight(30)
+        scan.setCursor(Qt.PointingHandCursor)
+        scan.setToolTip("Re-detect this system's hardware for the active category.")
+        scan.clicked.connect(lambda: self._scan_group(self.key))
+        self.opt_lay.addWidget(scan)
+
+        btn = QPushButton(
+            f"Optimize {BUTTON_LABELS.get(self.key) or BUTTON_LABELS.get(keys[0], self.key)}")
+        btn.setObjectName("Primary")
+        btn.setMinimumHeight(30)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip(
+            "Scan, validate and apply the recommended tweaks for this "
+            "entire category \u2014 every change is verified against the "
+            "live system.")
+        btn.clicked.connect(lambda _=False: self._open_optimizer_group(self.key))
+        self.opt_lay.addWidget(btn)
+
+        self.opt_facts = QLabel()
+        self.opt_facts.setObjectName("PageSub")
+        self.opt_facts.setWordWrap(True)
+        self.opt_facts.setText(self._facts_text(self.key))
+        self.opt_lay.addWidget(self.opt_facts, 1)
+
+        if self.key not in self._facts_cache:
+            QTimer.singleShot(0, lambda: self._scan_group(self.key, silent=True))
+
+    def _facts_text(self, group) -> str:
+        facts = self._facts_cache.get(group) or {}
+        parts = []
+        for key, rows in facts.items():
+            for k, v in rows[:3]:
+                parts.append(f"{k}: {v}")
+        return "   \u00b7   ".join(parts)
+
+    def _scan_group(self, group, silent=False):
+        from engine.optimizer import GROUP_OPTIMIZERS, OPTIMIZERS
+        keys = GROUP_OPTIMIZERS.get(group)
+        if not keys:
+            return
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            return
+        if not silent and hasattr(self, "opt_facts"):
+            self.opt_facts.setText("Scanning\u2026")
+        opts = [OPTIMIZERS[k] for k in keys]
+        worker = _GroupScanWorker(opts, self)
+        self._scan_worker = worker
+        worker.done.connect(lambda w=worker: self._on_group_scanned(group, w))
+        worker.start()
+
+    def _on_group_scanned(self, group, worker):
+        self._facts_cache[group] = worker.facts
+        if not self.key or self.key == ALL_KEY or group != self.key:
+            return
+        if hasattr(self, "opt_facts"):
+            self.opt_facts.setText(self._facts_text(group))
+
+    def _open_optimizer_group(self, group):
+        from engine.optimizer import GROUP_OPTIMIZERS, OPTIMIZERS
+        from ui.optimize_dialog import OptimizeDialog
+        keys = GROUP_OPTIMIZERS.get(group)
+        if not keys:
+            return
+        opts = [OPTIMIZERS[k] for k in keys]
+        dlg = OptimizeDialog(self.ctx, opts, parent=self)
+        dlg.exec()
+
     # ---------------- Public API ----------------
 
     def select(self, key):
@@ -307,6 +399,7 @@ class TweaksPage(QWidget):
         self._filtered = self._visible_tweaks()
         self._set_toolbar()
         self._update_header()
+        self._update_optimizer_bar()
         self._schedule_relayout()
         self._request_audit()
 
@@ -333,20 +426,35 @@ class TweaksPage(QWidget):
         self._run_batch([tid], "revert")
 
     def _apply_all(self):
-        ids = [
-            t["id"] for t in self._visible_tweaks()
-            if self.ctx.state_of(t["id"]) not in ("incompatible", "not_for_you")
-            and not self.ctx.live_active(t["id"])
-        ]
+        from database.validation import gate as _gate
+        ids, skipped = [], []
+        for t in self._visible_tweaks():
+            if self.ctx.state_of(t["id"]) in ("incompatible", "not_for_you"):
+                continue
+            if self.ctx.live_active(t["id"]):
+                continue
+            ok, reason = _gate(t)
+            if ok:
+                ids.append(t["id"])
+            else:
+                skipped.append((t["id"], reason))
         if not ids:
-            toast("Nothing to apply \u2014 every visible tweak is already active "
-                  "on your system.", "info", self)
+            if skipped:
+                toast("Nothing to apply \u2014 every visible tweak is already active "
+                      "or blocked by validation status.", "info", self)
+            else:
+                toast("Nothing to apply \u2014 every visible tweak is already active "
+                      "on your system.", "info", self)
             return
+        block_note = ""
+        if skipped:
+            block_note = (f"\n\nSkipping {len(skipped)} blocked tweak(s) "
+                          "(invalid/placebo/outdated/conflicting).")
         if not self._confirm(
                 "Apply All",
                 f"Apply {len(ids)} visible compatible tweak(s) to your system?\n\n"
                 "This changes registry, services and power settings. Everything "
-                "can be reverted with Revert All."):
+                "can be reverted with Revert All." + block_note):
             return
         toast(f"Applying {len(ids)} tweaks\u2026", "info", self)
         self._run_batch(ids, "apply")
@@ -366,12 +474,6 @@ class TweaksPage(QWidget):
             return
         toast(f"Reverting {len(ids)} tweaks\u2026", "info", self)
         self._run_batch(ids, "revert")
-
-    def _open_recommended(self):
-        """Launch the deep-check 'Apply Recommended' wizard."""
-        from ui.recommend_wizard import RecommendWizard
-        wizard = RecommendWizard(self.ctx, self)
-        wizard.exec()
 
     @staticmethod
     def _confirm(title, text) -> bool:
@@ -614,3 +716,25 @@ class TweaksPage(QWidget):
         if obj is self.grid_host and event.type() == QEvent.Type.Resize and self.key:
             self._schedule_relayout()
         return super().eventFilter(obj, event)
+
+
+class _GroupScanWorker(QThread):
+    """Detects the hardware facts for every optimizer on a category page."""
+
+    done = Signal()
+
+    def __init__(self, optimizers, parent=None):
+        super().__init__(parent)
+        self.optimizers = optimizers
+        self.facts: dict = {}
+
+    def run(self):
+        for opt in self.optimizers:
+            try:
+                det = opt.detect(refresh=False)
+                self.facts[opt.key] = list(det.get("facts") or [])
+            except Exception as exc:  # noqa: BLE001
+                from rexlog import logger
+                logger.warn(f"group scan {opt.key}: {type(exc).__name__}: {exc}")
+                self.facts[opt.key] = []
+        self.done.emit()

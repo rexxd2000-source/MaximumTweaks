@@ -11,7 +11,7 @@ surface is clickable; the primary action runs the tool or opens the guide.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -79,6 +79,29 @@ def _has_cmd(tweak: dict) -> bool:
                for a in tweak.get("actions", []))
 
 
+class ToolRunner(QThread):
+    """Runs a tool/launcher in the background so a UAC prompt or console
+    wait never freezes the UI thread. Emits (ok, kind) when done."""
+
+    finished_ok = Signal(bool, str)
+
+    def __init__(self, item: dict, parent=None):
+        super().__init__(parent)
+        self.item = item
+        self.key = item["id"]
+
+    def run(self):
+        item = self.item
+        try:
+            if item.get("launch_key"):
+                ok, kind = launch_tool(item["launch_key"]), "run"
+            else:
+                ok, kind = run_tweak(item)
+        except Exception:
+            ok, kind = False, "run"
+        self.finished_ok.emit(ok, kind)
+
+
 class ToolCard(QFrame):
     """Card-style tool: icon, name, description, chips + run/guide button.
 
@@ -93,6 +116,7 @@ class ToolCard(QFrame):
         self.setObjectName("ActionCard")
         self.setCursor(Qt.PointingHandCursor)
         self._on_click = on_click
+        self.setToolTip(item.get("why") or item.get("desc") or item["name"])
 
         cat = item["category"]
         icon, color = TOOL_META.get(cat, ("\u2699", T["accent"]))
@@ -101,7 +125,7 @@ class ToolCard(QFrame):
         outer.setContentsMargins(16, 14, 16, 12)
         outer.setSpacing(8)
 
-        # ---- Head: icon tile + name + id
+        # ---- Head: icon tile + name
         head = QHBoxLayout()
         head.setSpacing(10)
         head.addWidget(IconTile(icon, color, size=40, font_scale=0.5,
@@ -112,9 +136,6 @@ class ToolCard(QFrame):
         name_lbl.setStyleSheet("font-size: 14px; font-weight: 800; color: #F2F5F9;")
         name_lbl.setWordWrap(True)
         box.addWidget(name_lbl)
-        id_lbl = QLabel(item["id"])
-        id_lbl.setStyleSheet(f"font-size: 10px; color: {T['text_faint']};")
-        box.addWidget(id_lbl)
         head.addLayout(box, 1)
         outer.addLayout(head)
 
@@ -130,7 +151,7 @@ class ToolCard(QFrame):
         chips.setSpacing(6)
         if item.get("admin"):
             chips.addWidget(chip("\u26a0 ADMIN", T["warning"]))
-        chips.addWidget(chip(cat, T["text_faint"]))
+        chips.addWidget(chip(cat, color))
         chips.addStretch()
         outer.addLayout(chips)
 
@@ -178,6 +199,7 @@ class ToolsPage(QWidget):
         self._cards: dict[str, ToolCard] = {}
         self._orig_text: dict[str, str] = {}
         self._relayout_pending = False
+        self._workers: list[ToolRunner] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -187,13 +209,13 @@ class ToolsPage(QWidget):
         root.addWidget(self._build_toolbar())
         root.addWidget(self._build_pills())
 
-        # ---- Card grid
+        # ---- Card grid (stretches so multiple rows fill the page height)
         self.grid_host = QWidget()
         self.grid_host.installEventFilter(self)
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(self.GAP)
-        root.addWidget(self.grid_host)
+        root.addWidget(self.grid_host, 1)
 
         # ---- Pager
         self.pager = QWidget()
@@ -203,7 +225,6 @@ class ToolsPage(QWidget):
         self.pager_lay.setContentsMargins(0, 10, 0, 0)
         self.pager_lay.setSpacing(6)
         root.addWidget(self.pager)
-        root.addStretch(1)
 
         QTimer.singleShot(0, self.refresh)
 
@@ -415,6 +436,12 @@ class ToolsPage(QWidget):
         self._rebuild_pager()
 
     def _rebuild_grid(self, cols, rows, per_page):
+        # Reset stale row/column stretches from the previous build so a
+        # leftover stretch row can never push cards around on a category switch.
+        for r in range(self.grid.rowCount()):
+            self.grid.setRowStretch(r, 0)
+        for c in range(self.grid.columnCount()):
+            self.grid.setColumnStretch(c, 0)
         clear_layout(self.grid)
         self._cards.clear()
         start = (self.page - 1) * per_page
@@ -497,15 +524,23 @@ class ToolsPage(QWidget):
         if card is None:
             return
         self._begin_busy(key, "Running\u2026")
-        launch_key = item.get("launch_key")
-        try:
-            if launch_key:
-                ok, kind = launch_tool(launch_key), "run"
-            else:
-                ok, kind = run_tweak(item)
-        except Exception:
-            ok, kind = False, "run"
-        QTimer.singleShot(450, lambda: self._finish_busy(key, ok, item, kind))
+        worker = ToolRunner(item)
+        # Bound methods (not lambdas): emitted from the worker thread, these
+        # are queued back onto the GUI thread where the widgets live.
+        worker.finished_ok.connect(self._finish_busy_slot)
+        worker.finished.connect(self._on_worker_finished)
+        self._workers.append(worker)
+        worker.start()
+
+    def _finish_busy_slot(self, ok, kind):
+        worker = self.sender()
+        if worker is None:
+            return
+        self._finish_busy(worker.key, ok, worker.item, kind)
+
+    def _on_worker_finished(self):
+        # Queued onto the GUI thread: drop workers that already returned.
+        self._workers = [w for w in self._workers if not w.isFinished()]
 
     def _finish_busy(self, key, ok, item, kind="run"):
         card = self._cards.get(key)
@@ -514,7 +549,10 @@ class ToolsPage(QWidget):
             card.btn.setText(self._orig_text.get(key, "Run"))
         name = item["name"]
         if not ok:
-            toast(f"Failed to launch {name}: Process execution error.", "error", self)
+            msg = f"Failed to launch {name}."
+            if item.get("admin"):
+                msg += " It needs administrator permission."
+            toast(msg, "error", self)
             return
         if kind == "guidance":
             self._show_guidance(item)
@@ -530,13 +568,24 @@ class ToolsPage(QWidget):
         card.btn.setText(text)
 
     def _show_guidance(self, tweak: dict):
+        """Show the actionable guide steps front and center (not hidden
+        behind a "Show Details" toggle)."""
+        text = ""
+        for action in tweak.get("actions", []):
+            if isinstance(action, (tuple, list)) and action and action[0] == "guidance":
+                text = action[1] if len(action) > 1 else ""
+                break
+        if not text:
+            text = tweak.get("desc", "")
         box = QMessageBox(self)
         box.setWindowTitle(tweak["name"])
         box.setIcon(QMessageBox.Icon.Information)
-        box.setText(tweak.get("desc", ""))
-        for action in tweak.get("actions", []):
-            if isinstance(action, (tuple, list)) and action and action[0] == "guidance":
-                box.setDetailedText(action[1] if len(action) > 1 else "")
-                break
+        box.setText(text)
+        desc = tweak.get("desc", "")
+        if desc and desc != text:
+            box.setInformativeText(desc)
+        why = tweak.get("why")
+        if why:
+            box.setDetailedText(f"Why it matters:\n{why}")
         box.setStandardButtons(QMessageBox.StandardButton.Ok)
         box.exec()

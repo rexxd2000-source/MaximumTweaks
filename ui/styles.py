@@ -75,7 +75,7 @@ QLabel#NavSection {{
     font-weight: 800;
     letter-spacing: 2px;
     color: {T["text_faint"]};
-    padding: 16px 8px 5px 8px;
+    padding: 10px 8px 4px 8px;
 }}
 #Nav {{
     background-color: transparent;
@@ -264,6 +264,11 @@ QProgressBar::chunk {{
 #DiscordCard:hover {{
     border-color: {accent_55};
 }}
+#SysBar {{
+    background-color: {T["card_alt"]};
+    border: 1px solid {T["border"]};
+    border-radius: 12px;
+}}
 #Card:hover, #ActionCard:hover, #PerfCard:hover {{
     border-color: #2A313C;
     background-color: {T["card_alt"]};
@@ -339,6 +344,11 @@ QProgressBar::chunk {{
 }}
 #GlassCard:hover {{
     border-color: #2E3742;
+}}
+#SidebarDiscordCard {{
+    background-color: {T["card"]};
+    border: 1px solid {accent_45};
+    border-radius: 14px;
 }}
 #GlassCardTitle {{
     font-size: 14px;
@@ -470,6 +480,46 @@ QLabel#StatChip {{
 
 /* ---------------- Pagination ---------------- */
 /* ---------------- Buttons ---------------- */
+
+/* ---------------- Scrollbars ---------------- */
+QScrollBar:vertical {{
+    background: transparent;
+    width: 6px;
+    margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: rgba(255, 255, 255, 40);
+    border-radius: 3px;
+    min-height: 20px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: rgba(255, 255, 255, 70);
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: transparent;
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 6px;
+    margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: rgba(255, 255, 255, 40);
+    border-radius: 3px;
+    min-width: 20px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background: rgba(255, 255, 255, 70);
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0;
+}}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: transparent;
+}}
 
 """
 

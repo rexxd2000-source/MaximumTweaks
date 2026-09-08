@@ -32,6 +32,7 @@ from PySide6.QtGui import (
     QLinearGradient,
     QPainter,
     QPen,
+    QPolygonF,
     QRadialGradient,
 )
 from PySide6.QtWidgets import QWidget
@@ -64,7 +65,7 @@ TOAST_DEFS = [
     ("[+]", "Loading Tweaks & System Hooks", "tweaks"),
 ]
 
-_dur = 15000
+_dur = 7000
 
 
 def _ease_out_cubic(t: float) -> float:
@@ -195,20 +196,6 @@ class CinematicSplash(QWidget):
         anim.finished.connect(_finish)
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    def skip(self):
-        if not self._started:
-            return
-        self._t0 = None
-        self._tick()
-
-    def keyPressEvent(self, event):
-        self.skip()
-        super().keyPressEvent(event)
-
-    def mousePressEvent(self, event):
-        self.skip()
-        super().mousePressEvent(event)
-
     # ---------------- animation driver ----------------
 
     def _tick(self):
@@ -306,65 +293,38 @@ class CinematicSplash(QWidget):
 
     def _draw_symbol(self, p: QPainter, w: int, h: int, t: float):
         cx, cy = w / 2, h * 0.42
-        r = 40
-        sweep = 360 * _ease_out_cubic(_clamp01((t - 250) / 1300.0))
-        alpha = _clamp01((t - 200) / 500.0)
+        a = _clamp01((t - 150) / 450.0)
+        if a <= 0:
+            return
 
-        # static faint ring
-        p.setBrush(Qt.NoBrush)
-        p.setPen(QPen(QColor(0, 242, 254, int(30 * alpha)), 1))
-        p.drawEllipse(QPointF(cx, cy), r, r)
+        # soft halo behind the mark
+        halo = QRadialGradient(cx, cy, 96)
+        halo.setColorAt(0.0, QColor(0, 242, 254, int(46 * a)))
+        halo.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(halo)
+        p.drawEllipse(QPointF(cx, cy), 96, 96)
 
-        # drawing arc trail
-        if sweep > 1:
-            pen = QPen(QColor(0, 242, 254, int(150 * alpha)), 1.6)
-            pen.setCapStyle(Qt.RoundCap)
-            p.setPen(pen)
-            p.drawArc(QRectF(cx - r, cy - r, r * 2, r * 2),
-                      int(90 * 16 - sweep * 16), int(sweep * 16))
+        # compact bolt tile that scales in (replaces the old self-drawing ring)
+        scale = 0.72 + 0.28 * _ease_out_cubic(a)
+        size = 52 * scale
+        rect = QRectF(cx - size / 2, cy - size / 2, size, size)
+        p.setBrush(QColor(9, 18, 26, int(232 * a)))
+        p.setPen(QPen(QColor(0, 242, 254, int(150 * a)), 1))
+        p.drawRoundedRect(rect, size * 0.26, size * 0.26)
 
-            # tip glow dot
-            ang = math.radians(90 - sweep)
-            tx = cx + r * math.cos(ang)
-            ty = cy - r * math.sin(ang)
-            glow = QRadialGradient(tx, ty, 14)
-            glow.setColorAt(0.0, QColor(180, 255, 255, 190))
-            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.setBrush(glow)
-            p.setPen(Qt.NoPen)
-            p.drawEllipse(QPointF(tx, ty), 14, 14)
-            p.setBrush(ACCENT)
-            p.drawEllipse(QPointF(tx, ty), 2.4, 2.4)
-
-        # short vertical tick under the ring — crisp anchor
-        k = _clamp01((t - 500) / 700.0) * alpha
-        if k > 0:
-            p.setPen(QPen(QColor(0, 242, 254, int(120 * k)), 1))
-            p.drawLine(QPointF(cx, cy + r + 10), QPointF(cx, cy + r + 16))
-
-        # accent glow graphic inside the ring once it has swept past ~35°
-        g = _clamp01((t - 450) / 800.0) * alpha
-        if g > 0 and sweep > 35:
-            ir = r * 0.40
-            glow = QRadialGradient(cx, cy, ir * 2.1)
-            glow.setColorAt(0.0, QColor(0, 242, 254, int(150 * g)))
-            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-            p.setPen(Qt.NoPen)
-            p.setBrush(glow)
-            p.drawEllipse(QPointF(cx, cy), ir * 2.1, ir * 2.1)
-
-            bolt = QColor(0, 242, 254, int(235 * g))
-            p.setPen(Qt.NoPen)
-            p.setBrush(bolt)
-            bx, by = cx, cy + ir * 0.10
-            p.drawEllipse(QPointF(bx, by), ir * 0.24, ir * 0.24)
-
-            sp = QPen(QColor(255, 255, 255, int(110 * g)), 1.6)
-            sp.setCapStyle(Qt.RoundCap)
-            p.setPen(sp)
-            d = ir * 0.62
-            p.drawLine(QPointF(bx - d, by), QPointF(bx - d, by + 7))
-            p.drawLine(QPointF(bx + d, by), QPointF(bx + d, by - 7))
+        s = size * 0.34
+        bolt = QColor(0, 242, 254, int(255 * a))
+        p.setBrush(bolt)
+        p.setPen(Qt.NoPen)
+        p.drawPolygon(QPolygonF([
+            QPointF(cx + s * 0.25, cy - s * 0.95),
+            QPointF(cx - s * 0.45, cy + s * 0.05),
+            QPointF(cx - s * 0.05, cy + s * 0.05),
+            QPointF(cx - s * 0.25, cy + s * 0.95),
+            QPointF(cx + s * 0.45, cy - s * 0.05),
+            QPointF(cx + s * 0.05, cy - s * 0.05),
+        ]))
 
     def _draw_wordmark(self, p: QPainter, w: int, h: int, t: float):
         cx = w / 2
@@ -423,7 +383,7 @@ class CinematicSplash(QWidget):
 
     def _draw_toasts(self, p: QPainter, w: int, h: int, t: float):
         """Rapid sequential hardware/system toasts, near-center, fade out fast."""
-        if t < 2400:
+        if t < 2200:
             return
         cx = w / 2
         base_y = h * 0.42 + 170
@@ -431,10 +391,10 @@ class CinematicSplash(QWidget):
         show = []
         # stagger the four toasts quickly; each pops in and fades out fast
         for i, (prefix, text, kind) in enumerate(TOAST_DEFS):
-            start = 2400 + i * 950
-            fade_in = 260
-            fade_out = 380
-            hold = 1550
+            start = 2200 + i * 780
+            fade_in = 220
+            fade_out = 320
+            hold = 1250
             end = start + fade_in + hold + fade_out
             if t < start or t > end:
                 continue
@@ -460,7 +420,7 @@ class CinematicSplash(QWidget):
             tw = fm.horizontalAdvance(text)
             pad = 14
             bw = tw + pad * 2
-            by = base_y + (start - 2400) // 950 * slot_h
+            by = base_y + (start - 2200) // 780 * slot_h
             rect = QRectF(cx - bw / 2, by - 14, bw, 28)
 
             if a < 1:

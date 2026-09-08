@@ -1539,3 +1539,203 @@ class ComingSoonPage(QWidget):
             p.drawEllipse(QPointF(dot_x, dot_y), 4, 4)
 
         p.end()
+
+
+class AssistantComingSoon(QWidget):
+    """Coming-soon placeholder for the AI Assistant.
+
+    Deliberately distinct from ``ComingSoonPage``: instead of the blurry
+    lock, it previews a mock chat with a glowing sparkle icon, a
+    purple/magenta gradient card, twinkling stars, and shimmering reply
+    bars — so it reads as an "AI / chat" surface, not a locked tool.
+    """
+
+    def __init__(self, title: str = "AI Assistant", parent=None):
+        super().__init__(parent)
+        self._title = title
+        self._pulse = 0.0
+
+        self._pulse_anim = QPropertyAnimation(self, b"pulseVal")
+        self._pulse_anim.setDuration(2200)
+        self._pulse_anim.setLoopCount(-1)
+        self._pulse_anim.setStartValue(0.0)
+        self._pulse_anim.setEndValue(1.0)
+
+        # Fixed twinkle field (seeded so it is stable, but unlike the lock page).
+        import random
+        random.seed(7)
+        self._stars = [
+            (random.uniform(0.03, 0.97), random.uniform(0.05, 0.95),
+             random.uniform(1.0, 2.6), random.uniform(0.0, 6.28))
+            for _ in range(42)
+        ]
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._pulse_anim.start()
+
+    def _get_pulse(self):
+        return self._pulse
+
+    def _set_pulse(self, val):
+        self._pulse = val
+        self.update()
+
+    pulseVal = Property(float, _get_pulse, _set_pulse)
+
+    @staticmethod
+    def _sparkle_path(cx: float, cy: float, r: float) -> QPainterPath:
+        """Four-point star used as the assistant's glowing icon."""
+        pts = []
+        for i in range(8):
+            ang = i * math.pi / 4.0
+            rr = r if i % 2 == 0 else r * 0.26
+            pts.append(QPointF(cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
+        path = QPainterPath()
+        path.moveTo(pts[0])
+        for pt in pts[1:]:
+            path.lineTo(pt)
+        path.closeSubpath()
+        return path
+
+    def _draw_bars(self, p, x, y, available, fractions, phase, right=False):
+        """Shimmering mock reply bars inside a chat bubble."""
+        bar_h, gap = 9, 7
+        for i, frac in enumerate(fractions):
+            width = max(10.0, available * frac)
+            bx = x + (available - width) if right else x
+            by = y + i * (bar_h + gap)
+            p.setBrush(QBrush(QColor(255, 255, 255, 26)))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(QRectF(bx, by, width, bar_h), 4, 4)
+            # Sweeping highlight.
+            sweep = (phase + i * 0.16) % 1.0
+            hl_w = 30.0
+            hl_x = bx - hl_w + sweep * (width + hl_w * 2)
+            p.setBrush(QBrush(QColor(255, 255, 255, 85)))
+            p.drawRoundedRect(QRectF(hl_x, by, hl_w, bar_h), 4, 4)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        t = self._pulse * math.tau
+
+        # Base.
+        p.fillRect(0, 0, w, h, QColor(11, 13, 18))
+
+        # Drifting purple/magenta glow orbs.
+        orbs = [
+            (0.22, 0.20, 240, (120, 76, 255)),
+            (0.80, 0.30, 200, (201, 76, 255)),
+            (0.65, 0.80, 260, (84, 64, 255)),
+            (0.15, 0.75, 180, (255, 76, 205)),
+        ]
+        for i, (ox, oy, rad, rgb) in enumerate(orbs):
+            gx = ox * w + math.sin(t * 0.5 + i * 1.7) * 14
+            gy = oy * h + math.cos(t * 0.4 + i * 2.1) * 10
+            grad = QRadialGradient(QPointF(gx, gy), rad)
+            grad.setColorAt(0.0, QColor(*rgb, 42))
+            grad.setColorAt(1.0, QColor(*rgb, 0))
+            p.setBrush(QBrush(grad))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QRectF(gx - rad, gy - rad, rad * 2, rad * 2))
+
+        # Twinkling stars.
+        for sx, sy, sr, ph in self._stars:
+            a = int(18 + 42 * (0.5 + 0.5 * math.sin(t * 0.8 + ph)))
+            p.setBrush(QBrush(QColor(210, 190, 255, a)))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QPointF(sx * w, sy * h), sr, sr)
+
+        cx, cy = w / 2, h / 2
+        card_w, card_h = 460, 400
+        card_x, card_y = cx - card_w / 2, cy - card_h / 2
+
+        # Card shadow.
+        p.setBrush(QBrush(QColor(0, 0, 0, 90)))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(QRectF(card_x + 4, card_y + 6, card_w, card_h), 22, 22)
+
+        # Gradient border + body.
+        glow = int(55 + 25 * math.sin(t))
+        border = QLinearGradient(card_x, card_y, card_x + card_w, card_y + card_h)
+        border.setColorAt(0.0, QColor(139, 92, 246, 200))
+        border.setColorAt(0.5, QColor(217, 70, 239, glow))
+        border.setColorAt(1.0, QColor(99, 102, 241, 200))
+        body = QLinearGradient(card_x, card_y, card_x, card_y + card_h)
+        body.setColorAt(0.0, QColor(24, 25, 40, 235))
+        body.setColorAt(1.0, QColor(16, 17, 28, 235))
+        p.setBrush(QBrush(body))
+        p.setPen(QPen(border, 1.5))
+        p.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), 22, 22)
+
+        # Glowing sparkle icon.
+        spark = self._sparkle_path(cx, card_y + 70, 20 + 3 * math.sin(t * 1.5))
+        p.setBrush(QBrush(QColor(196, 132, 255, 235)))
+        p.setPen(QPen(QColor(236, 217, 255, 200), 1))
+        p.drawPath(spark)
+
+        # Title.
+        p.setPen(QColor(T["text"]))
+        p.setFont(QFont("Segoe UI", 24, QFont.Bold))
+        p.drawText(QRectF(card_x, card_y + 100, card_w, 34), Qt.AlignCenter, self._title)
+
+        # "COMING SOON" pill badge.
+        pill_w, pill_h, pill_y = 168, 28, card_y + 146
+        pill_x = cx - pill_w / 2
+        pill_grad = QLinearGradient(pill_x, pill_y, pill_x + pill_w, pill_y + pill_h)
+        pill_grad.setColorAt(0.0, QColor(139, 92, 246, 45))
+        pill_grad.setColorAt(1.0, QColor(217, 70, 239, 45))
+        p.setBrush(QBrush(pill_grad))
+        p.setPen(QPen(QColor(196, 132, 255, 170), 1))
+        p.drawRoundedRect(QRectF(pill_x, pill_y, pill_w, pill_h), pill_h / 2, pill_h / 2)
+        p.setPen(QColor(216, 180, 254))
+        p.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        p.drawText(QRectF(pill_x, pill_y, pill_w, pill_h), Qt.AlignCenter, "COMING SOON")
+
+        # Subtitle.
+        p.setPen(QColor(T["text_dim"]))
+        p.setFont(QFont("Segoe UI", 11))
+        p.drawText(QRectF(card_x + 24, card_y + 182, card_w - 48, 46), Qt.AlignCenter,
+                   "A real chat assistant is being trained to\n"
+                   "answer questions about your PC.")
+
+        # Mock conversation: user bubble (right) + assistant bubble (left).
+        bubble_h, bubble_w = 52, 250
+        pad = 26
+        user_y = card_y + 238
+        user_x = card_x + card_w - pad - bubble_w
+
+        p.setPen(QColor(196, 132, 255))
+        p.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        p.drawText(QRectF(user_x, user_y, bubble_w, 16), Qt.AlignRight, "YOU")
+        u_grad = QLinearGradient(user_x, user_y, user_x + bubble_w, user_y + bubble_h)
+        u_grad.setColorAt(0.0, QColor(109, 40, 217, 175))
+        u_grad.setColorAt(1.0, QColor(162, 28, 175, 175))
+        p.setBrush(QBrush(u_grad))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(QRectF(user_x, user_y + 18, bubble_w, bubble_h - 18), 12, 12)
+        self._draw_bars(p, user_x + 18, user_y + 26, bubble_w - 36,
+                        [0.92, 0.92, 0.58], self._pulse, right=True)
+
+        asst_y = card_y + 298
+        asst_x = card_x + pad
+        p.setPen(QColor(167, 139, 250))
+        p.drawText(QRectF(asst_x, asst_y, bubble_w, 16), Qt.AlignLeft, "REX")
+        p.setBrush(QBrush(QColor(255, 255, 255, 9)))
+        p.setPen(QPen(QColor(139, 92, 246, 150), 1))
+        p.drawRoundedRect(QRectF(asst_x, asst_y + 18, bubble_w, bubble_h - 18), 12, 12)
+        self._draw_bars(p, asst_x + 18, asst_y + 26, bubble_w - 36,
+                        [1.0, 0.72, 0.5], self._pulse + 0.5, right=False)
+
+        # Pulsing dots.
+        dot_y = card_y + card_h - 34
+        for i in range(3):
+            phase = (self._pulse * 3 + i * 0.32) % 1.0
+            alpha = int(90 + 165 * math.sin(phase * 3.14))
+            p.setBrush(QBrush(QColor(196, 132, 255, alpha)))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(QPointF(cx - 26 + i * 26, dot_y), 4, 4)
+
+        p.end()

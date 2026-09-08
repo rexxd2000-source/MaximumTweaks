@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 
 from database import BY_ID, CATEGORIES, TWEAKS
 from database.executor import apply_tweak
@@ -23,6 +24,7 @@ REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, 
 
 
 def run_gui():
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
     from engine import auth_server, discord_auth
@@ -30,10 +32,10 @@ def run_gui():
     from ui.splash import CinematicSplash
     from ui.styles import build_qss
 
-    # Bring up the auth backend (OAuth/verification server) so the app can
-    # log users in without anyone having to run it separately. No-op if it is
-    # already reachable (e.g. a shared/hosted backend).
-    auth_server.start()
+    # Bring up the auth backend (OAuth/verification server) in the background
+    # so the splash appears instantly. A slow or missing backend must never
+    # block startup — login simply reports the failure if it never comes up.
+    threading.Thread(target=auth_server.start, daemon=True).start()
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
@@ -68,26 +70,32 @@ def run_gui():
         return win
 
     def on_finished():
-        # Verified? Go straight to the app. Otherwise block behind the gate
-        # so a fresh install cannot reach the app until an identity attaches.
-        if discord_auth.session():
-            reveal_window()
-            splash.fade_out(750)
-            return
-        from ui.gate import GateWindow
-        gate = GateWindow()
-        gate.setGeometry(screen)
-        gate.show()
+        # Fade the splash first, then hand off on the next event-loop pass.
+        # Revealing synchronously here freezes the loading screen whenever the
+        # main window takes a moment to build — the boot screen must always
+        # clear itself within the ~7s sequence.
+        splash.fade_out(700)
 
-        def unlock(_profile):
-            win = reveal_window()
-            gate.fade_out(600)
-            # The gate can be bypassed (owner dev build). If no identity was
-            # actually attached, park on the disconnect landing until verified.
-            if not discord_auth.session():
-                win.on_disconnect()
-        gate.unlocked.connect(unlock)
-        splash.fade_out(750)
+        def handoff():
+            if discord_auth.session():
+                reveal_window()
+                return
+            from ui.gate import GateWindow
+            gate = GateWindow()
+            gate.setGeometry(screen)
+            gate.show()
+
+            def unlock(_profile):
+                win = reveal_window()
+                gate.fade_out(600)
+                # The gate can be bypassed (owner dev build). If no identity
+                # was actually attached, park on the disconnect landing until
+                # verified.
+                if not discord_auth.session():
+                    win.on_disconnect()
+            gate.unlocked.connect(unlock)
+
+        QTimer.singleShot(0, handoff)
 
     splash.finished.connect(on_finished)
     sys.exit(app.exec())

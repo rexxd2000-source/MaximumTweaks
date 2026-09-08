@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -405,7 +406,7 @@ class LatencyChart(QWidget):
         self.mode = "cpu"
         self._hover: int | None = None
         self.setMouseTracking(True)
-        self.setMinimumHeight(240)
+        self.setMinimumHeight(180)
 
     # ---- data ----
 
@@ -687,7 +688,7 @@ class _CommunityArt(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(124)
+        self.setFixedHeight(96)
         self._logo = QPixmap(str(DIRS["assets"] / "discord_logo.png"))
 
     def paintEvent(self, event):
@@ -765,8 +766,8 @@ class DiscordCommunityCard(GlassCard):
     def __init__(self, parent=None):
         super().__init__(parent)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
 
         head = QHBoxLayout()
         title = QLabel("Official Discord Community")

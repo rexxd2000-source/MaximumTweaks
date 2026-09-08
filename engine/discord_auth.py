@@ -41,9 +41,11 @@ def session() -> dict | None:
 
 
 def display_name(prof: dict | None) -> str:
-    if not prof:
-        return ""
-    return prof.get("name") or prof.get("username") or ""
+    """Verified identity only: until a session is verified the user is
+    always 'guest' (verify-first guest strategy)."""
+    if not prof or not prof.get("verified"):
+        return "guest"
+    return prof.get("name") or prof.get("username") or "guest"
 
 
 def is_verified(prof: dict | None) -> bool:

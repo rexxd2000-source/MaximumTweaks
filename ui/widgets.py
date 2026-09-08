@@ -108,11 +108,20 @@ def badge(text, color, filled=False):
 def chip(text, color=None):
     lbl = QLabel(text)
     lbl.setObjectName("Badge")
-    lbl.setStyleSheet(
-        "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
-        "border: 1px solid rgba(0, 242, 254, 0.25);"
-        "border-radius: 8px; padding: 2px 8px; font-size: 12px;"
-        "font-weight: 500; letter-spacing: 0.5px;")
+    if color:
+        qc = QColor(color)
+        lbl.setStyleSheet(
+            f"color: {color};"
+            f"background-color: rgba({qc.red()}, {qc.green()}, {qc.blue()}, 26);"
+            f"border: 1px solid rgba({qc.red()}, {qc.green()}, {qc.blue()}, 90);"
+            "border-radius: 8px; padding: 2px 8px; font-size: 12px;"
+            "font-weight: 500; letter-spacing: 0.5px;")
+    else:
+        lbl.setStyleSheet(
+            "color: #00F2FE; background-color: rgba(0, 242, 254, 0.08);"
+            "border: 1px solid rgba(0, 242, 254, 0.25);"
+            "border-radius: 8px; padding: 2px 8px; font-size: 12px;"
+            "font-weight: 500; letter-spacing: 0.5px;")
     return lbl
 
 
@@ -179,11 +188,18 @@ def game_name(tweak) -> str:
 
 
 def clear_layout(layout):
-    """Remove and immediately destroy every item in a layout."""
+    """Remove and immediately destroy every item in a layout.
+
+    Widgets are hidden before being reparented so a repaint can never catch
+    them mid-teardown as visible top-level windows overlapping the new
+    content (the old clear_layout left them visible until the deferred
+    delete ran, which showed stale cards on top of a freshly rebuilt grid).
+    """
     while layout.count():
         item = layout.takeAt(0)
         w = item.widget()
         if w is not None:
+            w.hide()
             w.setParent(None)
             w.deleteLater()
         else:
