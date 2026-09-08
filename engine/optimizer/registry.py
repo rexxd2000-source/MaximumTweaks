@@ -24,7 +24,7 @@ class CpuOptimizer(Optimizer):
     subtitle = ("CPU scheduling, power management and Windows processor "
                 "optimizations that match this CPU.")
     probe_name = "cpu"
-    categories = ("CPU", "Scheduling")
+    categories = ("CPU", "Scheduling", "Game Process")
 
 
 class GpuOptimizer(Optimizer):

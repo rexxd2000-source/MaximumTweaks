@@ -158,7 +158,7 @@ TWEAKS = validate_module("power", [
       revert=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling", "PowerThrottlingOff", 0, "DWORD")],
       why="Power Throttling duty-cycles background threads to conserve energy; disabling it keeps work finishing promptly on AC.",
       changes="Sets PowerThrottlingOff=1 in the PowerThrottling control key.",
-      risk="low", impact="moderate", recommended="recommended", admin=True,
+      risk="low", impact="moderate", recommended="optional", admin=True,
       tags=["throttling", "power", "background"]),
     T("power-022", "Disable Lazy Mode",
       "Turns off CPU lazy idle mode so cores transition out of idle states immediately instead of waiting.",

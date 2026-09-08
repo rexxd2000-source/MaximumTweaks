@@ -136,7 +136,7 @@ CATEGORY_GROUPS = {
         "logo": "cpu",
         "color": "#3FDC98",
         "blurb": "Processor scheduling, power management and Windows CPU optimizations.",
-        "db": ["CPU", "Scheduling"],
+        "db": ["CPU", "Scheduling", "Game Process"],
     },
     "gpu": {
         "key": "gpu",
@@ -258,9 +258,8 @@ CATEGORY_GROUPS = {
         "icon": "\u2605",
         "logo": "games",
         "color": "#3FDC98",
-        "blurb": "Game Mode, DVR, Game Bar, per-process CPU tuning and general "
-                "gaming performance settings.",
-        "db": ["Gaming", "Game Process"],
+        "blurb": "Game Mode, DVR, Game Bar and general gaming performance settings.",
+        "db": ["Gaming"],
     },
     "profiles": {
         "key": "profiles",
