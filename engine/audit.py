@@ -10,7 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QThread, Signal
 
 from engine import state_checker
-from rexlog import logger
+from maxlog import logger
 
 
 class AuditWorker(QThread):

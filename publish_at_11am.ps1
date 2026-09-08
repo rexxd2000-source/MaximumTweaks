@@ -5,8 +5,8 @@
 # SECURITY: the publish token is read from a locked file OUTSIDE the repo
 # (created by the operator). It is never stored in the repo or committed.
 $ErrorActionPreference = "Stop"
-$root = "C:\Users\Admin\Documents\Default Project\RexTweaks"
-$log  = "C:\Users\Admin\Documents\Default Project\RexTweaks\publish_log.txt"
+$root = "C:\Users\Admin\Documents\Default Project\MaximumTweaks"
+$log  = "C:\Users\Admin\Documents\Default Project\MaximumTweaks\publish_log.txt"
 $tokenFile = "$env:USERPROFILE\.maximumtweaks\publish_token.txt"
 
 # Scheduled tasks get a bare PATH - make sure the real Python (and its Scripts)

@@ -3,7 +3,7 @@
 Every dashboard visual is painted directly with QPainter so the widgets stay
 crisp at any DPI and keep the signature neon-cyan identity. Includes the
 animated neon stat bars, the dual-axis thermal/clock stability chart, the
-Rex logo mark, the pulsing live status badge, the segmented disk bar and the
+App logo mark, the pulsing live status badge, the segmented disk bar and the
 Official Discord community card. QSS only supplies the card surface.
 """
 from __future__ import annotations
@@ -237,10 +237,10 @@ class LinkLabel(QLabel):
 # Maximum logo mark — the official dashboard brand tile
 # --------------------------------------------------------------------------
 
-class RexLogo(QWidget):
+class AppLogo(QWidget):
     """Brand mark: the Maximum app artwork on a frosted cyan-edged tile.
 
-    Renders the official ``assets/rex_logo.png`` artwork cover-fitted into the
+    Renders the official ``assets/logo.png`` artwork cover-fitted into the
     tile; falls back to the glowing 'R' monogram painter if that file is
     missing.
     """
@@ -249,7 +249,7 @@ class RexLogo(QWidget):
         super().__init__(parent)
         self.setFixedSize(size, size)
         self._image_path = image_path or str(
-            (DIRS["assets"] / "rex_logo.png").resolve())
+            (DIRS["assets"] / "logo.png").resolve())
         self._pixmap = QPixmap(self._image_path)
         if self._pixmap.isNull():
             self._pixmap = QPixmap()  # fall back to the painted 'R'

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import psutil
 
-from rexlog import logger
+from maxlog import logger
 
 
 def _ps(script: str, timeout: int = 30) -> str:

@@ -39,7 +39,7 @@ import re
 import subprocess
 import threading
 
-from rexlog import logger
+from maxlog import logger
 
 from . import reg_util
 

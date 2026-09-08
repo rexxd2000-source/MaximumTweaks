@@ -1297,7 +1297,7 @@ class _GroupScanWorker(QThread):
                 det = opt.detect(refresh=False)
                 self.facts[opt.key] = list(det.get("facts") or [])
             except Exception as exc:  # noqa: BLE001
-                from rexlog import logger
+                from maxlog import logger
                 logger.warn(f"group scan {opt.key}: {type(exc).__name__}: {exc}")
                 self.facts[opt.key] = []
         self.done.emit()

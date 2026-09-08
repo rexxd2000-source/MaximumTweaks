@@ -8,7 +8,7 @@ import threading
 import time
 from contextlib import contextmanager
 
-from rexlog import logger
+from maxlog import logger
 from config.app_config import ROOT
 
 

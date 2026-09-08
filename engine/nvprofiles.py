@@ -23,7 +23,7 @@ import time
 from engine import activity
 from engine import nvprofile as nv
 from engine import state as state_mgr
-from rexlog import logger
+from maxlog import logger
 
 # --------------------------------------------------------------------------
 # Setting catalog

@@ -23,7 +23,7 @@ import subprocess
 
 import psutil
 
-from rexlog import logger
+from maxlog import logger
 
 
 def _ps(script, timeout=40):

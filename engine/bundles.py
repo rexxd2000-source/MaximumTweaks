@@ -6,7 +6,7 @@ with a warning so a stale preset can never crash the app.
 from __future__ import annotations
 
 from database import BY_ID
-from rexlog import logger
+from maxlog import logger
 
 BALANCED = {
     "id": "balanced",

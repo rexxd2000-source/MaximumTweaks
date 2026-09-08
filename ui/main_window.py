@@ -36,10 +36,10 @@ from config.app_config import (
     UPDATE_MANIFEST_URL,
 )
 from engine import activity
-from rexlog import logger
+from maxlog import logger
 from ui.categories import logo_path
 from ui.context import AppContext
-from ui.monitor_widgets import RexLogo
+from ui.monitor_widgets import AppLogo
 from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
@@ -340,7 +340,7 @@ class MainWindow(QWidget):
         brand = QHBoxLayout()
         brand.setSpacing(12)
         brand.setContentsMargins(8, 6, 8, 22)
-        mark = RexLogo(size=38)
+        mark = AppLogo(size=38)
         brand.addWidget(mark)
         bbox = QVBoxLayout()
         bbox.setSpacing(2)

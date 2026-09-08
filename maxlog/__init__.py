@@ -47,7 +47,7 @@ def _make_logger() -> logging.Logger:
     return logger
 
 
-class RexLogger:
+class MaxLogger:
     """Thin facade over the standard logging module with GUI sink support."""
 
     def __init__(self):
@@ -77,4 +77,4 @@ class RexLogger:
         self.info(f"OPERATION      | {op} | {detail}")
 
 
-logger = RexLogger()
+logger = MaxLogger()

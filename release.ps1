@@ -107,7 +107,7 @@ function Publish-Release {
 
     Write-Host "[5/5] Creating GitHub Release $tag ..." -ForegroundColor Cyan
     $body = @{ tag_name = $tag; name = "Maximum Tweaks v$Version"; body = "Maximum Tweaks v$Version - see the in-app changelog for details." } | ConvertTo-Json -Compress
-    $bodyFile = Join-Path $env:TEMP "rexrelease_$Version.json"
+    $bodyFile = Join-Path $env:TEMP "release_$Version.json"
     [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
     $release = curl.exe -s -X POST $api -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Accept: application/vnd.github+json" --data-binary "@$bodyFile" | ConvertFrom-Json
     if (-not $release.id) {

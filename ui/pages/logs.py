@@ -8,7 +8,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
 from config.app_config import LOG_FILE
-from rexlog import register_ui_sink
+from maxlog import register_ui_sink
 
 
 class LogsPage(QWidget):

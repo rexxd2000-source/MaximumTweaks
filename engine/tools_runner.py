@@ -20,7 +20,7 @@ import os
 import re
 import subprocess
 
-from rexlog import logger
+from maxlog import logger
 
 # key -> executable / shell document opened via ShellExecute (os.startfile).
 SHELL_TOOLS = {

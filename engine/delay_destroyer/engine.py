@@ -25,7 +25,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from rexlog import logger
+from maxlog import logger
 from engine.delay_destroyer.scanner import SystemScanner, ScanResult, _is_admin
 from engine.delay_destroyer.baseline import Baseline, measure_baseline, capture_snapshot
 from engine.delay_destroyer.diagnoser import Diagnoser, Finding

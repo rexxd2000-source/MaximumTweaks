@@ -767,7 +767,7 @@ class CinematicSplash(QWidget):
         # 2) otherwise the official Maximum logo so we never show the bare "M".
         if pm is None or pm.isNull():
             try:
-                logo = DIRS["assets"] / "rex_logo.png"
+                logo = DIRS["assets"] / "logo.png"
                 if logo.is_file():
                     pm = QPixmap(str(logo))
             except Exception:  # noqa: BLE001

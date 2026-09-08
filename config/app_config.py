@@ -133,7 +133,7 @@ DIRS = {
     "profiles": ROOT / "profiles",
     "tools": ROOT / "tools",
     "backups": ROOT / "backups",
-    "rexlog": ROOT / "rexlog",
+    "maxlog": ROOT / "maxlog",
     "logs": ROOT / "Logs",
     "assets": _assets_dir(),
     "config": ROOT / "config",

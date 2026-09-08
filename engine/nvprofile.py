@@ -28,7 +28,7 @@ import ctypes
 import ctypes.wintypes as w
 import os
 
-from rexlog import logger
+from maxlog import logger
 
 NVAPI_OK = 0
 NVAPI_ERROR = -1

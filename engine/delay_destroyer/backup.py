@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rexlog import logger
+from maxlog import logger
 
 
 BACKUP_DIR = Path(os.environ.get("LOCALAPPDATA", "")) / "MaximumTweaks" / "dd_backups"

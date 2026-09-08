@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
 
 from config.app_config import THEME as T
 from engine.optimizer import BUTTON_LABELS, merge_reports
-from rexlog import logger
+from maxlog import logger
 from ui.widgets import BatchWorker, clear_layout, toast
 
 # ---- reference palette (optimize_system_flow.html) ----

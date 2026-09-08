@@ -69,7 +69,7 @@ def run_gui():
     # packaging icon rather than PySide's default.
     try:
         from config.app_config import DIRS as _DIRS
-        _ico = _DIRS["assets"] / "rex_app.ico"
+        _ico = _DIRS["assets"] / "app.ico"
         if _ico.is_file():
             app.setWindowIcon(QIcon(str(_ico)))
     except Exception:  # noqa: BLE001
@@ -102,7 +102,7 @@ def run_gui():
                 elif not (int(k["creationflags"]) & _CNW):
                     k["creationflags"] = int(k["creationflags"]) | _CNW
                 try:
-                    from rexlog import logger as _lg
+                    from maxlog import logger as _lg
                     key = _sp_desc(a)
                     if key not in _seen_cmds:
                         _seen_cmds.add(key)
@@ -119,7 +119,7 @@ def run_gui():
     # exceptions on the main thread instead of letting Qt terminate the process.
     def _excepthook(exc_type, exc_value, exc_tb):
         import traceback
-        from rexlog import logger
+        from maxlog import logger
         logger.error(f"Unhandled exception: {exc_type.__name__}: {exc_value}\n"
                      + "".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
     sys.excepthook = _excepthook
@@ -590,7 +590,7 @@ def cmd_verify(target: str) -> int:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="rex", description=__doc__)
+    parser = argparse.ArgumentParser(prog="maximum-tweaks", description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="preview actions without executing")
     parser.add_argument("--cli", action="store_true", help="run in terminal mode instead of GUI")
     sub = parser.add_subparsers(dest="command")

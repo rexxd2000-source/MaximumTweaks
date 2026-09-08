@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from config.app_config import DIRS
-from rexlog import logger
+from maxlog import logger
 
 
 BACKUP_DIR = DIRS["backups"] / "debloat"

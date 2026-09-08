@@ -26,7 +26,7 @@ from engine.state import (
     save_netadp_backups,
     clear_netadp_backups,
 )
-from rexlog import logger
+from maxlog import logger
 
 # Advanced-property DisplayName substrings whose low-power states add
 # per-packet latency (matched case-insensitively).

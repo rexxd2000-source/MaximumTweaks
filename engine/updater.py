@@ -36,7 +36,7 @@ from config.app_config import (
     UPDATE_EXE_NAME,
     UPDATE_MANIFEST_URL,
 )
-from rexlog import logger
+from maxlog import logger
 
 
 class UpdaterError(Exception):

@@ -21,7 +21,7 @@ from engine.debloat.protected import (
     EXCLUDED_SERVICES, KNOWN_DEPENDENCIES,
 )
 from engine.debloat.backup import BackupManager
-from rexlog import logger
+from maxlog import logger
 
 
 def _apply_protection(

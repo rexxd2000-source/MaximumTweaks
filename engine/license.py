@@ -30,7 +30,7 @@ import urllib.request
 
 from config.app_config import LICENSE_API_URL
 from engine import state as state_mgr
-from rexlog import logger
+from maxlog import logger
 
 SESSION_KEY = "license"
 _HTTP_TIMEOUT = 20.0
@@ -97,12 +97,12 @@ def dev_bypass_enabled() -> bool:
     NEVER active in the frozen EXE: the app is a PyInstaller build, so the
     ``frozen`` attribute is always set there and this returns False no matter
     what. Even when running from source it additionally requires the
-    ``REX_DEV_BYPASS=1`` environment variable, so a normal ``python main.py``
+    ``MAX_DEV_BYPASS=1`` environment variable, so a normal ``python main.py``
     still enforces the license.
     """
     if getattr(sys, "frozen", False):
         return False
-    return os.environ.get("REX_DEV_BYPASS", "") == "1"
+    return os.environ.get("MAX_DEV_BYPASS", "") == "1"
 
 
 def _license_expired(sess: dict) -> bool:

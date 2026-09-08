@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 import psutil
 
-from rexlog import logger
+from maxlog import logger
 
 
 @dataclass

@@ -22,7 +22,7 @@ import re
 import time
 import winreg
 
-from rexlog import logger
+from maxlog import logger
 
 from .detector import _csv_rows, _ps, _gpu_vendor, _gpu_is_integrated, _chassis_is_laptop
 

@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from rexlog import logger
+from maxlog import logger
 
 
 class GameConfig:

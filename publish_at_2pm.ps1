@@ -2,8 +2,8 @@
 # Pushes the latest commit to origin/main, then builds + tags and
 # publishes the GitHub Release so clients can update.
 $ErrorActionPreference = "Stop"
-$root = "C:\Users\Admin\Documents\Default Project\RexTweaks"
-$log  = "C:\Users\Admin\Documents\Default Project\RexTweaks\publish_log.txt"
+$root = "C:\Users\Admin\Documents\Default Project\MaximumTweaks"
+$log  = "C:\Users\Admin\Documents\Default Project\MaximumTweaks\publish_log.txt"
 
 # Scheduled tasks get a bare PATH - make sure the real Python (and its Scripts)
 # resolve so release.ps1 can run the PyInstaller build.

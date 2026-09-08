@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import APP_NAME, APP_VERSION, UPDATE_EXE_NAME
-from rexlog import logger
+from maxlog import logger
 
 # ---------------------------------------------------------------------------
 # Palette — copied verbatim from update_dialog_v2.html :root

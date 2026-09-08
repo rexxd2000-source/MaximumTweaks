@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from config.app_config import THEME as T
 from engine import nvprofiles
 from engine import state as state_mgr
-from rexlog import logger
+from maxlog import logger
 
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets" / "profiles"
 _LOGOS_DIR = Path(__file__).resolve().parents[2] / "assets" / "game_logos"

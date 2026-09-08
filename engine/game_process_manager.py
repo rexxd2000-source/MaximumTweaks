@@ -27,7 +27,7 @@ from engine.state import (
     save_process_backups,
     clear_process_backups,
 )
-from rexlog import logger
+from maxlog import logger
 
 # ── Win32 access rights (minimum required per spec) ──────────────────────
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000

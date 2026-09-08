@@ -41,7 +41,7 @@ from config.app_config import (
 from database import BY_ID, TWEAKS
 from engine import activity, state as state_mgr
 from engine import state_checker
-from rexlog import logger
+from maxlog import logger
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +337,8 @@ def build_system_prompt(profile: dict) -> str:
     """System context injected ahead of every request (demo and LLM paths)."""
     return (
         f"You are {BOT_NAME}, the assistant inside Maximum Tweaks. You are "
-        "like ChatGPT \u2014 a general-purpose assistant that knows the world "
-        "\u2014 and you're also an expert on this PC and how to tune it.\n\n"
+        "a general-purpose assistant that knows the world \u2014 and you're "
+        "also an expert on this PC and how to tune it.\n\n"
         "Talk exactly like a real person texting you: casual, warm, and "
         "direct. Use short sentences and contractions (\u201cI'm\u201d, "
         "\u201cyou're\u201d, \u201ccan't\u201d). NEVER sound like a help "

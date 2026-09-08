@@ -14,7 +14,7 @@ from typing import Callable
 
 from database import BY_ID
 from database.executor import apply_tweak
-from rexlog import logger
+from maxlog import logger
 
 from . import activity, state as state_mgr
 from . import state_checker
