@@ -66,7 +66,6 @@ STATUS_SEQ = [
     "ARMING SAFETY NET",
     "INITIALIZING TELEMETRY",
     "CALIBRATING HARDWARE",
-    "CHECKING FOR UPDATES",
     "SYSTEM READY",
 ]
 
@@ -372,6 +371,13 @@ class CinematicSplash(QWidget):
         self._toast_values: dict = {}
         self._probe: "_ProbeThread" | None = None
 
+        # Boot phase (spec-detection toasts + boot bar) finishes first, then —
+        # only if the update check is still unresolved — the splash switches to
+        # a dedicated update loading screen so the two never overlap.
+        self._update_phase = False
+        self._entered_phase = False
+        self._pending_panel = None  # callable shown once the update phase starts
+
         # Update flow state. "held" parks the progress bar and blocks
         # `finished` while a network decision is pending on the splash.
         self._update_state = "idle"
@@ -392,6 +398,9 @@ class CinematicSplash(QWidget):
         self._done_emitted = False
         self._build_emitted = False
         self._started = True
+        self._update_phase = False
+        self._entered_phase = False
+        self._pending_panel = None
         self._t0 = None
         self._timer.start()
         self._start_probe()
@@ -419,6 +428,25 @@ class CinematicSplash(QWidget):
         self._panel.hide()
         self.update()
 
+    def _enter_update_phase(self):
+        """Boot/detection is done — switch to the dedicated update screen.
+
+        Only entered when the update check is still unresolved (its result was
+        deferred) or needs a decision. If the check already finished as "ok"
+        during the boot phase there is nothing left to show and the app simply
+        proceeds.
+        """
+        fn = self._pending_panel
+        self._pending_panel = None
+        if fn is not None:
+            self._update_phase = True
+            fn()
+        elif self._update_state == "checking":
+            self._update_phase = True
+            self._held = True
+            self.update()
+        # else: "ok" — no separate screen needed
+
     def update_ok(self):
         """No update (or user skipped): mark done and continue into the app."""
         self._update_state = "ok"
@@ -430,8 +458,15 @@ class CinematicSplash(QWidget):
     def update_available(self, current: str, new: str, notes: str = ""):
         """A newer build exists — show the inline install card and wait."""
         self._update_state = "available"
-        self._panel.show_info(current, new, notes)
-        self._show_panel()
+        if self._update_phase:
+            self._panel.show_info(current, new, notes)
+            self._show_panel()
+        else:
+            # Still in the boot phase: hold and reveal the card on its own
+            # screen once the spec detection finishes.
+            self._held = True
+            self._pending_panel = lambda: (
+                self._panel.show_info(current, new, notes), self._show_panel())
 
     def update_progress(self, frac: float):
         """Download progress, 0..1."""
@@ -452,8 +487,13 @@ class CinematicSplash(QWidget):
     def update_error(self, message: str):
         """Update check/download failed — show retry on the splash."""
         self._update_state = "error"
-        self._panel.show_error(message)
-        self._show_panel()
+        if self._update_phase:
+            self._panel.show_error(message)
+            self._show_panel()
+        else:
+            self._held = True
+            self._pending_panel = lambda: (
+                self._panel.show_error(message), self._show_panel())
         self.update()
 
     def _show_panel(self):
@@ -502,6 +542,9 @@ class CinematicSplash(QWidget):
         t = now - self._t0
         if self._ok_hold_until is not None and now >= self._ok_hold_until:
             self._ok_hold_until = None
+        if t >= self._dur_ms and not self._entered_phase:
+            self._entered_phase = True
+            self._enter_update_phase()
         if t >= self._dur_ms and not self._done_emitted \
                 and not self._held and self._ok_hold_until is None:
             self._done_emitted = True
@@ -527,21 +570,26 @@ class CinematicSplash(QWidget):
         u = _clamp01(t / self._dur_ms)
         pct = int(round(_ease_out_cubic(u) * 100))
 
-        # Update flow overrides the natural progress.
-        if self._update_state == "downloading":
-            pct = int(round(self._download_frac * 100))
-        elif self._update_state == "installing":
-            pct = 100
-        elif self._held:
-            pct = max(pct, HOLD_PCT)
+        # Update flow overrides the natural progress, but only on the dedicated
+        # update screen; the boot bar runs its own 0-100% cycle.
+        if self._update_phase:
+            if self._update_state == "downloading":
+                pct = int(round(self._download_frac * 100))
+            elif self._update_state == "installing":
+                pct = 100
+            elif self._held:
+                pct = max(pct, HOLD_PCT)
 
         self._draw_stage(p, w, h, t)
         self._draw_aurora(p, w, h, t)
         self._draw_scanline(p, w, h, t)
         self._draw_corners(p, w, h, t)
-        self._draw_symbol(p, w, h, t)
-        self._draw_wordmark(p, w, h, t)
-        self._draw_toasts(p, w, h, t)
+        if self._update_phase:
+            self._draw_update_screen(p, w, h, t)
+        else:
+            self._draw_symbol(p, w, h, t)
+            self._draw_wordmark(p, w, h, t)
+            self._draw_toasts(p, w, h, t)
         self._draw_progress(p, w, h, t, pct)
         self._draw_footer(p, w, h)
         p.end()
@@ -689,6 +737,8 @@ class CinematicSplash(QWidget):
 
     def _draw_toasts(self, p: QPainter, w: int, h: int, t: float):
         """Rapid sequential hardware/system toasts, near-center, fade out fast."""
+        if self._update_phase:
+            return
         if self._panel is not None and self._panel.isVisible():
             return
         if t < 2200:
@@ -746,8 +796,72 @@ class CinematicSplash(QWidget):
             p.drawText(rect.adjusted(pad, 0, 0, 0),
                        Qt.AlignLeft | Qt.AlignVCenter, text)
 
+    def _draw_update_screen(self, p: QPainter, w: int, h: int, t: float):
+        """Dedicated update loading screen (post-boot).
+
+        Shown only when the update check is still pending after the boot /
+        spec-detection phase finishes, so update status never overlaps the
+        hardware toasts. A spinner ring while checking, a check mark once the
+        check reports "ok"; an available / error outcome shows the panel.
+        """
+        cx = w / 2
+        cy = h * 0.44
+        r = 30
+        # available / downloading / installing / error all use the panel card;
+        # only checking (spinner) and ok (check) are drawn here.
+        if self._panel.isVisible():
+            return
+        if self._update_state == "checking":
+            p.setPen(QPen(QColor(0, 242, 254, 36), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(QPointF(cx, cy), r, r)
+            pen = QPen(QColor(0, 242, 254, 220), 4)
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            start_angle = int((-t / 700.0) * 360 * 16)
+            p.drawArc(QRectF(cx - r, cy - r, r * 2, r * 2), start_angle, 100 * 16)
+            heading = "CHECKING FOR UPDATES"
+            sub = "Verifying the latest build\u2026"
+        else:  # "ok"
+            pen = QPen(QColor(0, 242, 254, 230), 4)
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawLine(QPointF(cx - 14, cy + 2), QPointF(cx - 3, cy + 13))
+            p.drawLine(QPointF(cx - 3, cy + 13), QPointF(cx + 15, cy - 11))
+            heading = "UPDATES OK"
+            sub = "You are running the latest build"
+
+        f = QFont(self.font())
+        f.setPixelSize(13)
+        f.setBold(True)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 2.5)
+        p.setFont(f)
+        fm = p.fontMetrics()
+        tw = fm.horizontalAdvance(heading)
+        col = QColor(0, 242, 254) if self._update_state == "ok" \
+            else QColor(230, 238, 244)
+        col.setAlpha(235)
+        p.setPen(col)
+        p.drawText(QRectF(cx - tw / 2, cy + r + 46, tw, 18), Qt.AlignCenter,
+                   heading)
+
+        f2 = QFont(self.font())
+        f2.setPixelSize(11)
+        f2.setLetterSpacing(QFont.AbsoluteSpacing, 1)
+        p.setFont(f2)
+        fm2 = p.fontMetrics()
+        sw = fm2.horizontalAdvance(sub)
+        p.setPen(QColor(124, 147, 166))
+        p.drawText(QRectF(cx - sw / 2, cy + r + 70, sw, 16), Qt.AlignCenter,
+                   sub)
+
     def _draw_progress(self, p: QPainter, w: int, h: int, t: float, pct: int):
         if t < 900:
+            return
+        # The update screen and the inline update panel each own their progress
+        # display; the bottom boot bar only belongs to the boot phase.
+        if self._update_phase or self._panel.isVisible():
             return
         cx = w / 2
         y = h - 74
@@ -790,7 +904,8 @@ class CinematicSplash(QWidget):
         fm = p.fontMetrics()
 
         st = self._update_state
-        if st in ("checking", "ok", "downloading", "installing", "error"):
+        if self._update_phase and st in ("checking", "ok", "downloading",
+                                         "installing", "error"):
             shown = {
                 "checking": "CHECKING FOR UPDATES",
                 "ok": "UPDATES OK",
