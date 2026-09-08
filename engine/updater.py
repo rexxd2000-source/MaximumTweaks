@@ -148,6 +148,7 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
             raise UpdaterError("The release has no version tag.")
         version = tag
         notes = str(data.get("body") or "")
+        url = ""
 
     if not is_newer(version, APP_VERSION):
         logger.info(f"updater: up to date (latest is v{version})")
