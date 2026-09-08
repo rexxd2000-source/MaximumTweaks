@@ -39,9 +39,14 @@ Tweak fields:
 """
 from __future__ import annotations
 
+import datetime as _dt
 import re
 
 ALLOWED_HIVES = {"HKLM", "HKCU", "HKCR", "HKU"}
+
+# A tweak is shown as "NEW" on its card when its ``added`` date is within this
+# many days of today.  Set ``added="YYYY-MM-DD"`` on a newly added tweak.
+NEW_WINDOW_DAYS = 30
 ALLOWED_VTYPES = {"DWORD", "QWORD", "STRING", "EXPAND_STRING", "BINARY", "MULTI_STRING"}
 ALLOWED_RISK = ("safe", "low", "moderate", "advanced")
 ALLOWED_IMPACT = ("very low", "low", "moderate", "high", "extreme")
@@ -143,7 +148,7 @@ def make_T(category, win_default="7,8,10,11"):
     def T(tid, name, desc, actions=None, revert=None, why=None, changes=None,
           risk="low", impact="moderate", recommended="recommended", win=None,
           admin=False, confirm=False, warn=None, when=None, tags=None,
-          crafted_for=None, sub_category=None,
+          crafted_for=None, sub_category=None, added=None,
           status="VALID", evidence="UNKNOWN", target="WINDOWS", verdict="SHIP",
           **extra):
         if not tid or not isinstance(tid, str):
@@ -183,6 +188,7 @@ def make_T(category, win_default="7,8,10,11"):
             "when": _normalize_when(when),
             "tags": list(tags or []),
             "crafted_for": crafted_for,
+            "added": added,
             "status": status,
             "evidence": evidence,
             "target": target,
@@ -191,6 +197,23 @@ def make_T(category, win_default="7,8,10,11"):
         }
 
     return T
+
+
+def is_new_tweak(tweak, today=None):
+    """True when the tweak's ``added`` date falls inside NEW_WINDOW_DAYS.
+
+    ``added`` is an ISO "YYYY-MM-DD" string set on newly added tweaks. Omitted
+    or unparsable dates are never treated as new.
+    """
+    added = (tweak or {}).get("added")
+    if not added:
+        return False
+    try:
+        added_dt = _dt.date.fromisoformat(str(added))
+    except (TypeError, ValueError):
+        return False
+    today = today or _dt.date.today()
+    return (today - added_dt).days <= NEW_WINDOW_DAYS
 
 
 def validate_module(module_name, tweaks):

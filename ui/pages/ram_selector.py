@@ -1,4 +1,10 @@
-"""RAM Size Selector — optimize Windows memory management based on installed RAM."""
+"""RAM Tweaks — optimize Windows memory management based on installed RAM.
+
+The category page's RAM selector now mirrors the reference "RAM Tweaks"
+dashboard: a module strip with live specs, a "Select your installed RAM size"
+section label, and a 3-column grid of tier cards with mono sizing, check
+boxes, progress bars and a Recommended badge.
+"""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -7,13 +13,13 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from config.app_config import THEME as T
 from database import BY_ID
 from ui.widgets import ProgressDialog
 
@@ -23,7 +29,7 @@ RAM_TIERS = {
         "ram_gb": 4,
         "label": "4 GB",
         "desc": "Entry-level systems",
-        "color": "#EF4444",
+        "color": "#FF6F6F",
         "tweaks": [
             "ram-059",  # Disable Paging Executive
             "ram-058",  # Io Page Lock Limit auto
@@ -42,7 +48,7 @@ RAM_TIERS = {
         "ram_gb": 8,
         "label": "8 GB",
         "desc": "Standard gaming",
-        "color": "#F59E0B",
+        "color": "#FFB454",
         "tweaks": [
             "ram-059",  # Disable Paging Executive
             "ram-058",  # Io Page Lock Limit auto
@@ -121,7 +127,7 @@ RAM_TIERS = {
         "ram_gb": 64,
         "label": "64 GB",
         "desc": "Workstation / content creation",
-        "color": "#8B5CF6",
+        "color": "#8B6BFF",
         "tweaks": [
             "ram-059",  # Disable Paging Executive
             "ram-058",  # Io Page Lock Limit auto
@@ -197,37 +203,181 @@ RAM_TIERS = {
 }
 
 
-class RamTierCard(QFrame):
-    """Clickable card representing one RAM size tier."""
+# Reference-tier metadata: second line of description + progress-bar width.
+TIER_SUB = {
+    "4GB": "Minimal footprint, aggressive paging",
+    "8GB": "Balanced for everyday titles",
+    "16GB": "Sweet spot for modern gaming",
+    "32GB": "Headroom for capture and overlays",
+    "64GB": "Large caches, heavy multitasking",
+    "128GB": "Large VMs, in-memory datasets",
+}
+TIER_BAR_PCT = {
+    "4GB": 31,
+    "8GB": 44,
+    "16GB": 53,
+    "32GB": 65,
+    "64GB": 79,
+    "128GB": 100,
+}
 
-    def __init__(self, tier_key, tier, ctx, parent=None):
+# RAM selector accent, matching the reference dashboard rather than the
+# sidebar's pink RAM chip.
+RAM_VIOLET = "#8B7CF6"
+RAM_VIOLET_SOFT = "#C3B8FC"
+
+
+def recommended_ram_key(profile: dict | None) -> str:
+    """Pick the tier that matches the machine's total installed RAM."""
+    if not profile:
+        return "16GB"
+    gb = profile.get("ram_gb") or 0
+    if not gb:
+        return "16GB"
+    return min(
+        RAM_TIERS,
+        key=lambda k: abs(RAM_TIERS[k]["ram_gb"] - gb),
+    )
+
+
+class RamTierCard(QFrame):
+    """Clickable tier card matching the RAM Tweaks reference dashboard."""
+
+    def __init__(self, tier_key, tier, ctx, parent=None,
+                 recommended=False, sub=None, bar_pct=None):
         super().__init__(parent)
         self.ctx = ctx
         self.tier_key = tier_key
         self.tier = tier
         self.selected = False
-        self.setObjectName("Card")
+        self.recommended = recommended
+        self.setObjectName("RamTierCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(90)
+        self.setFixedHeight(118)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 14, 18, 14)
-        outer.setSpacing(4)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
+        # 3px left accent bar (violet when selected, like the reference).
+        self.accent = QLabel()
+        self.accent.setFixedWidth(3)
+        self.accent.setObjectName("RamAccent")
+        root.addWidget(self.accent)
+
+        inner = QVBoxLayout()
+        inner.setContentsMargins(16, 15, 16, 13)
+        inner.setSpacing(4)
+        root.addLayout(inner, 1)
+
+        # top row: mono size + Recommended badge + check box
         top = QHBoxLayout()
-        lbl = QLabel(tier["label"])
-        lbl.setStyleSheet(
-            f"font-size: 20px; font-weight: 800; color: {tier['color']};")
-        top.addWidget(lbl)
+        top.setSpacing(8)
+        top.setAlignment(Qt.AlignVCenter)
+        self.size_lbl = QLabel(tier["label"])
+        self.size_lbl.setObjectName("RamSize")
+        self.size_lbl.setStyleSheet(
+            f"font-family: 'JetBrains Mono', monospace; "
+            f"font-size: 21px; font-weight: 600; color: #EFF0F4;")
+        top.addWidget(self.size_lbl)
         top.addStretch()
-        count = QLabel(f"{len(tier['tweaks'])} optimizations")
-        count.setStyleSheet(f"color: {T['text_dim']}; font-size: 12px;")
-        top.addWidget(count)
-        outer.addLayout(top)
+        self.badge_lbl = QLabel("Recommended")
+        self.badge_lbl.setObjectName("RamRecBadge")
+        self.badge_lbl.setVisible(self.recommended)
+        top.addWidget(self.badge_lbl)
+        self.check_lbl = QLabel("\u2713")
+        self.check_lbl.setObjectName("RamCheck")
+        self.check_lbl.setFixedSize(19, 19)
+        self.check_lbl.setAlignment(Qt.AlignCenter)
+        top.addWidget(self.check_lbl)
+        inner.addLayout(top)
 
-        desc = QLabel(tier["desc"])
-        desc.setStyleSheet(f"color: {T['text']}; font-size: 13px;")
-        outer.addWidget(desc)
+        self.label_lbl = QLabel(tier["desc"])
+        self.label_lbl.setObjectName("RamTierLabel")
+        self.label_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #EFF0F4;")
+        inner.addWidget(self.label_lbl)
+
+        self.desc_lbl = QLabel(sub if sub is not None else TIER_SUB.get(tier_key, ""))
+        self.desc_lbl.setObjectName("RamTierDesc")
+        self.desc_lbl.setStyleSheet("font-size: 11.5px; color: #9399A9;")
+        self.desc_lbl.setWordWrap(True)
+        inner.addWidget(self.desc_lbl)
+
+        bl = QHBoxLayout()
+        bl.setSpacing(8)
+        bl.setAlignment(Qt.AlignVCenter)
+        self.bar = QProgressBar()
+        self.bar.setObjectName("RamBar")
+        self.bar.setRange(0, 100)
+        self.bar.setValue(bar_pct if bar_pct is not None else TIER_BAR_PCT.get(tier_key, 0))
+        self.bar.setTextVisible(False)
+        self.bar.setFixedHeight(4)
+        bl.addWidget(self.bar, 1)
+        count = QLabel(f"{len(tier['tweaks'])} tweaks")
+        count.setObjectName("RamCount")
+        count.setStyleSheet(
+            "font-family: 'JetBrains Mono', monospace; "
+            "font-size: 11px; color: #575C6B;")
+        bl.addWidget(count)
+        inner.addLayout(bl)
+
+        self._apply_style()
+
+    # ---------------- Styling ----------------
+
+    def _apply_style(self):
+        sel = self.selected
+        violet, soft = RAM_VIOLET, RAM_VIOLET_SOFT
+
+        border = f"1px solid {violet};" if sel else "1px solid rgba(255, 255, 255, 0.055);"
+        bg = (f"qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+              f"stop:0 rgba(139,124,246,0.14), stop:1 rgba(255,255,255,0.032));"
+              if sel else "rgba(255, 255, 255, 0.032);")
+        card = (
+            f"QFrame#RamTierCard {{ background: {bg}; border: {border}; "
+            f"border-radius: 13px; }}"
+            f"QFrame#RamTierCard:hover {{ border-color: "
+            f"{soft if sel else 'rgba(255,255,255,0.24)'}; }}"
+        )
+        accent = (
+            f"QLabel#RamAccent {{ background: {violet}; border-radius: 2px; "
+            f"border-top-left-radius: 12px; border-bottom-left-radius: 12px; }}"
+            if sel else "QLabel#RamAccent { background: transparent; }"
+        )
+        size_color = soft if sel else "#EFF0F4"
+        size = f"QLabel#RamSize {{ color: {size_color}; }}"
+        check_fill = (
+            f"background: {violet}; border: 1px solid {violet};"
+            if sel else "background: transparent; border: 1.5px solid rgba(255,255,255,0.28);"
+        )
+        check_icon = "#08090C" if sel else "transparent"
+        check = (
+            f"QLabel#RamCheck {{ {check_fill} border-radius: 6px; color: {check_icon}; "
+            f"font-size: 12px; font-weight: 700; }}"
+        )
+        badge = (
+            f"QLabel#RamRecBadge {{ font-size: 9.5px; font-weight: 700; color: {soft}; "
+            f"background: rgba(139,124,246,0.15); border: 1px solid rgba(139,124,246,0.4); "
+            f"border-radius: 100px; padding: 3px 8px; }}"
+        )
+        bar_fill = violet if sel else "rgba(255,255,255,0.22)"
+        bar = (
+            f"QProgressBar#RamBar {{ background: rgba(255,255,255,0.06); "
+            f"border: none; border-radius: 3px; }}"
+            f"QProgressBar#RamBar::chunk {{ background: {bar_fill}; "
+            f"border-radius: 3px; }}"
+        )
+        self.setStyleSheet(card + accent + size + check + badge + bar)
+
+    def set_selected(self, selected: bool):
+        self.selected = bool(selected)
+        self._apply_style()
+
+    def set_recommended(self, recommended: bool, sub: str | None = None):
+        self.recommended = bool(recommended)
+        self.badge_lbl.setVisible(self.recommended)
+        if sub is not None:
+            self.desc_lbl.setText(sub)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -271,9 +421,10 @@ class RamSelectorPage(QWidget):
         grid.setSpacing(14)
 
         keys = list(RAM_TIERS.keys())
+        rec_key = recommended_ram_key(ctx.profile)
         for i, key in enumerate(keys):
             tier = RAM_TIERS[key]
-            card = RamTierCard(key, tier, ctx)
+            card = RamTierCard(key, tier, ctx, recommended=(key == rec_key))
             card._on_click = self._select_tier
             grid.addWidget(card, i // 2, i % 2)
             self._cards[key] = card
@@ -311,16 +462,7 @@ class RamSelectorPage(QWidget):
     def _select_tier(self, key):
         self._selected = key
         for k, card in self._cards.items():
-            card.setStyleSheet(
-                card.styleSheet().replace("border: 2px solid " + T["accent"], "")
-                if k != key else card.styleSheet()
-            )
-        # Highlight selected
-        card = self._cards[key]
-        card.setStyleSheet(
-            f"QFrame#Card {{ border: 2px solid {T['accent']}; border-radius: 12px; "
-            f"background: {T['card']}; }}"
-        )
+            card.set_selected(k == key)
         tier = RAM_TIERS[key]
         self._status.setText(
             f"<b>{tier['label']} ({tier['desc']})</b> — "
@@ -343,4 +485,11 @@ class RamSelectorPage(QWidget):
         self._refresh_status()
 
     def _refresh_status(self):
-        pass
+        profile = self.ctx.profile or {}
+        gb = profile.get("ram_gb") or 0
+        rec_key = recommended_ram_key(profile)
+        for key, card in self._cards.items():
+            if gb and key == rec_key:
+                card.set_recommended(True, f"Matches your installed {gb:g} GB")
+            else:
+                card.set_recommended(False)

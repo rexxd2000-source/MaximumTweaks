@@ -52,24 +52,74 @@ def _csv_rows(script):
         return []
 
 
+# PCI-SIG vendor ids used to identify a GPU adapter from its hardware id.
+# This is authoritative — it does not rely on vendor name heuristics and stays
+# correct for future GPU generations whose marketing name differs.
+_VEN_MAP = {
+    "10de": "nvidia",   # NVIDIA
+    "1002": "amd",      # AMD / ATI
+    "1022": "amd",      # AMD (APU / integrated from CPU vendor id)
+    "8086": "intel",    # Intel
+}
+_MS_VEN = "1414"  # Microsoft Basic Display Adapter
+
+
+def _vendor_from_pnp(pnp: str) -> str | None:
+    """Resolve the GPU vendor from a PNPDeviceID (VEN_xxxx)."""
+    m = re.search(r"VEN_([0-9A-Fa-f]{4})", pnp or "")
+    if not m:
+        return None
+    return _VEN_MAP.get(m.group(1).lower())
+
+
+def _dev_from_pnp(pnp: str) -> str | None:
+    m = re.search(r"DEV_([0-9A-Fa-f]{4})", pnp or "")
+    return m.group(1).lower() if m else None
+
+
 def _gpu_vendor(name):
     n = name.lower()
     if any(k in n for k in ("nvidia", "geforce", "quadro", "tesla")):
         return "nvidia"
-    if any(k in n for k in ("radeon", "amd", "ati", "firepro", "rx ")):
+    if any(k in n for k in ("radeon", "amd", "ati", "firepro", "rx")):
         return "amd"
-    if any(k in n for k in ("intel arc", "arc a", "arc b")):
-        return "intel"
-    if any(k in n for k in ("intel", "iris", "uhd", "hd graphics")):
+    if any(k in n for k in ("intel", "iris", "uhd", "hd graphics", "arc")):
         return "intel"
     return "unknown"
 
 
-def _gpu_is_integrated(name):
+def _gpu_is_integrated(name, pnp: str | None = None):
+    """Integrated vs dedicated.
+
+    Integ gutter heuristics for name; when a PCI hardware id is available it is
+    authoritative: an Intel VEN_8086 device is integrated unless it is an Arc
+    discrete GPU; an AMD VEN_1002/1022 device is integrated only when its name
+    carries the "Graphics"/iGPU markers and no discrete model token.
+    """
     n = name.lower()
+    ven = _vendor_from_pnp(pnp or "")
+    dev = _dev_from_pnp(pnp or "")
+
+    if ven == "amd":
+        is_apu = "graphics" in n or "igpu" in n or "vega" in n
+        discrete = any(t in n for t in ("rx", "ryzen", "series", "xt", "pro", "radeon hd", "radeon r9", "firepro", "radeon vii", "w6000", "w7000", "w5000"))
+        if is_apu and not discrete:
+            return True
+        if not is_apu and discrete:
+            return False
+        # no clear marker — fall through to name heuristics
+
+    if ven == "intel":
+        # Arc is discrete; anything else from Intel is integrated.
+        if "arc" in n:
+            return False
+        return True
+
+    if ven == "nvidia":
+        return False
+
     return any(k in n for k in (
         "iris", "uhd", "hd graphics", "igp", "integrated",
-        # Intel iGPU families (non-Arc)
         "iris xe", "iris plus", "iris xeon",
     ))
 
@@ -99,10 +149,14 @@ def detect() -> dict:
         "gpu": [],
         "gpu_names": [],
         "gpu_vendors": [],
+        "gpu_types": [],
         "gpu_dedicated": [],
         "gpu_integrated": [],
         "gpu_vram_gb": 0,
         "gpu_driver_version": "",
+        "gpu_driver_versions": {},
+        "gpu_driver_dates": {},
+        "gpu_vram_gb_by_name": {},
         "ram_gb": round(psutil.virtual_memory().total / (1024 ** 3), 1),
         "ram_channels": 0,
         "ram_mtps": 0,
@@ -192,6 +246,9 @@ def _registry_gpu_vram() -> dict[str, int]:
 
     The WMI AdapterRAM field is a 32-bit value that clamps at ~4GB.
     The registry qwMemorySize is the accurate 64-bit value.
+    Returns a dict keyed by the adapter's PNP MatchingDeviceId (e.g.
+    "P C I \\VEN_10DE&DEV_2504..."), which matches the WMI PNPDeviceID and is
+    far more reliable than matching by display name string.
     """
     import re as _re
     result = {}
@@ -214,15 +271,20 @@ def _registry_gpu_vram() -> dict[str, int]:
                             return v
                         except OSError:
                             return None
-                    desc = str(_qv("DriverDesc") or "").strip()
+                    devid = str(_qv("MatchingDeviceId") or "").strip()
                     vram = _qv("HardwareInformation.qwMemorySize")
-                    if desc:
-                        result[desc.lower()] = int(vram) if vram else 0
+                    if devid and vram:
+                        result[_norm_pnp(devid)] = int(vram)
             except OSError:
                 continue
     except (OSError, ImportError):
         pass
     return result
+
+
+def _norm_pnp(devid: str) -> str:
+    """Normalise a PNP/MatchingDeviceId for reliable prefix matching."""
+    return re.sub(r"\s+", "", devid or "").upper()
 
 
 def _detect_gpu(p):
@@ -247,17 +309,32 @@ def _detect_gpu(p):
         name = (row.get("Name") or "Unknown Video Controller").strip()
         if not name or "microsoft" in name.lower():
             continue
-        vendor = _gpu_vendor(name)
-        integrated = _gpu_is_integrated(name)
+        pnp = (row.get("PNPDeviceID") or "").strip()
+        # The PNP hardware id is authoritative for vendor and integrated/dedicated.
+        vendor = _vendor_from_pnp(pnp) or _gpu_vendor(name)
+        integrated = _gpu_is_integrated(name, pnp)
         p["gpu_names"].append(name)
         if vendor not in p["gpu"]:
             p["gpu"].append(vendor)
         if vendor not in p["gpu_vendors"]:
             p["gpu_vendors"].append(vendor)
+        gpu_type = "integrated" if integrated else "dedicated"
+        if gpu_type not in p["gpu_types"]:
+            p["gpu_types"].append(gpu_type)
         if integrated:
             p["gpu_integrated"].append(name)
         else:
             p["gpu_dedicated"].append(name)
+
+        # Driver version / date for every adapter (WMI always provides it).
+        drv = (row.get("DriverVersion") or "").strip()
+        if drv:
+            p.setdefault("gpu_driver_versions", {})[name] = drv
+            if not p.get("gpu_driver_version"):
+                p["gpu_driver_version"] = drv
+        ddate = (row.get("DriverDate") or "").strip()
+        if ddate:
+            p.setdefault("gpu_driver_dates", {})[name] = ddate
 
         dedicated_mb = 0
         detection_method = "none"
@@ -273,12 +350,16 @@ def _detect_gpu(p):
                         p["gpu_driver_version"] = ngpu["driver_version"]
                     break
 
-        # Method 2: Registry qwMemorySize (64-bit, all vendors)
-        if dedicated_mb <= 0:
-            reg_vram_bytes = reg_vram.get(name.lower(), 0)
-            if reg_vram_bytes > 0:
-                dedicated_mb = int(reg_vram_bytes / (1024 * 1024))
-                detection_method = "registry"
+        # Method 2: Registry qwMemorySize matched by hardware id (64-bit, all vendors)
+        if dedicated_mb <= 0 and pnp:
+            npnp = _norm_pnp(pnp)
+            # Match by the pci root id prefix: "PCI\VEN_xxxx&DEV_xxxx&..."
+            for match_id, vram_bytes in reg_vram.items():
+                if match_id == npnp or (npnp and match_id.startswith(npnp.split("\\")[0])):
+                    if match_id == npnp or match_id.split("\\")[0] == npnp.split("\\")[0]:
+                        dedicated_mb = int(vram_bytes / (1024 * 1024))
+                        detection_method = "registry"
+                        break
 
         # Method 3: WMI AdapterRAM (fallback, may be wrong for >4GB)
         if dedicated_mb <= 0:
@@ -292,6 +373,8 @@ def _detect_gpu(p):
 
         dedicated_gb = round(dedicated_mb / 1024, 1)
         p["gpu_vram_gb"] = max(p["gpu_vram_gb"], dedicated_gb)
+        if dedicated_gb > 0:
+            p.setdefault("gpu_vram_gb_by_name", {})[name] = dedicated_gb
 
         # Flag potential detection issues
         if detection_method == "wmi" and 0 < dedicated_gb <= 4 and not integrated:
@@ -304,6 +387,8 @@ def _detect_gpu(p):
 
     if not p["gpu"]:
         p["gpu"] = ["unknown"]
+    if not p["gpu_types"]:
+        p["gpu_types"] = ["dedicated"]
 
 
 def _detect_memory(p):

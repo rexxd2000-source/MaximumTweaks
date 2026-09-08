@@ -37,7 +37,7 @@ class LogsPage(QWidget):
         self.view = QPlainTextEdit()
         self.view.setReadOnly(True)
         self.view.setMaximumBlockCount(20000)
-        font = QFont("Consolas")
+        font = QFont("JetBrains Mono")
         font.setPointSize(10)
         self.view.setFont(font)
         root.addWidget(self.view, 1)

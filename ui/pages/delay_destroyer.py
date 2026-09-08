@@ -62,9 +62,9 @@ class DelayDestroyerPage(QWidget):
         w = QLabel(text)
         base = "font-family:'Segoe UI',sans-serif;"
         styles = {
-            "title": f"{base}font-size:22px;font-weight:900;color:{T['text']};letter-spacing:3px;",
+            "title": f"{base}font-size:22px;font-weight:700;color:{T['text']};letter-spacing:3px;",
             "sub": f"{base}font-size:12px;color:{T['text_dim']};letter-spacing:1px;",
-            "section": f"{base}font-size:14px;font-weight:800;color:{T['text']};letter-spacing:2px;",
+            "section": f"{base}font-size:14px;font-weight:700;color:{T['text']};letter-spacing:2px;",
             "section_sub": f"{base}font-size:11px;color:{T['text_faint']};letter-spacing:1px;",
             "empty": f"{base}font-size:13px;color:{T['text_faint']};letter-spacing:1px;",
         }

@@ -1,4 +1,4 @@
-"""Premium visual widgets for Maximum Tweaks — scan overlay, custom painted
+﻿"""Premium visual widgets for Maximum Tweaks â€” scan overlay, custom painted
 cards, glass dropdowns, preset bar, changes preview, and micro-interaction
 components.
 
@@ -29,10 +29,12 @@ from PySide6.QtGui import (
     QFont,
     QBrush,
     QPolygonF,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -45,37 +47,38 @@ from PySide6.QtWidgets import (
     QItemDelegate,
 )
 
-from config.app_config import THEME as T
+from config.app_config import DIRS, THEME as T
+from ui.widgets import tint_pixmap
 
 
-# ──────────────────────────────────────────────────────────────
-# Game icon data — local fallback art for all 12 games
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Game icon data â€” local fallback art for all 12 games
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 GAME_ICONS: dict[str, dict] = {
     "gp-001": {"initials": "FN", "color": "#818cf8", "shape": "shield",
                "platform": "EPIC GAMES", "platform_color": "#818cf8"},
     "gp-002": {"initials": "VA", "color": "#f87171", "shape": "crosshair",
                "platform": "RIOT", "platform_color": "#f87171"},
-    "gp-003": {"initials": "CS", "color": "#fbbf24", "shape": "target",
+    "gp-003": {"initials": "CS", "color": "#FFB454", "shape": "target",
                "platform": "STEAM", "platform_color": "#60a5fa"},
-    "gp-004": {"initials": "CD", "color": "#8b5cf6", "shape": "bolt",
+    "gp-004": {"initials": "CD", "color": "#8B6BFF", "shape": "bolt",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
     "gp-005": {"initials": "AP", "color": "#f472b6", "shape": "diamond",
                "platform": "STEAM", "platform_color": "#60a5fa"},
     "gp-006": {"initials": "OW", "color": "#fb923c", "shape": "circle",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
     "gp-007": {"initials": "MC", "color": "#d946ef", "shape": "cube",
-               "platform": "MICROSOFT", "platform_color": "#38bdf8"},
-    "gp-008": {"initials": "RL", "color": "#38bdf8", "shape": "ring",
+               "platform": "MICROSOFT", "platform_color": "#4BE8D8"},
+    "gp-008": {"initials": "RL", "color": "#4BE8D8", "shape": "ring",
                "platform": "EPIC GAMES", "platform_color": "#818cf8"},
-    "gp-009": {"initials": "LO", "color": "#c084fc", "shape": "star",
+    "gp-009": {"initials": "LO", "color": "#C9C0FF", "shape": "star",
                "platform": "RIOT", "platform_color": "#f87171"},
-    "gp-010": {"initials": "RS", "color": "#94a3b8", "shape": "skull",
+    "gp-010": {"initials": "RS", "color": "#928AAD", "shape": "skull",
                "platform": "STEAM", "platform_color": "#60a5fa"},
     "gp-011": {"initials": "EF", "color": "#fb7185", "shape": "exclamation",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
-    "gp-012": {"initials": "WZ", "color": "#a78bfa", "shape": "wave",
+    "gp-012": {"initials": "WZ", "color": "#9C80FF", "shape": "wave",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
 }
 
@@ -83,7 +86,7 @@ GAME_ICONS: dict[str, dict] = {
 def _draw_game_icon(painter: QPainter, rect: QRectF, game_id: str,
                     size: float = 40):
     """Draw a stylized game icon using QPainter paths."""
-    icon = GAME_ICONS.get(game_id, {"initials": "?", "color": "#94a3b8", "shape": "circle"})
+    icon = GAME_ICONS.get(game_id, {"initials": "?", "color": "#928AAD", "shape": "circle"})
     cx, cy = rect.center().x(), rect.center().y()
     r = size / 2 - 2
 
@@ -202,9 +205,9 @@ def _draw_game_icon(painter: QPainter, rect: QRectF, game_id: str,
     painter.drawText(rect, Qt.AlignCenter, icon["initials"])
 
 
-# ──────────────────────────────────────────────────────────────
-# ScanOverlay — animated glassmorphic scanning overlay
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ScanOverlay â€” animated glassmorphic scanning overlay
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ScanOverlay(QWidget):
     """Full-screen glassmorphic overlay with 3-phase scan animation."""
@@ -325,6 +328,7 @@ class ScanOverlay(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         p.setOpacity(self._opacity)
         w, h = self.width(), self.height()
 
@@ -415,9 +419,9 @@ class ScanOverlay(QWidget):
         p.end()
 
 
-# ──────────────────────────────────────────────────────────────
-# LoadingCard — glassmorphic centered loading overlay
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# LoadingCard â€” glassmorphic centered loading overlay
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class LoadingCard(QWidget):
     """Full-area glassmorphic loading card with spinner and 10-second timer."""
@@ -496,6 +500,7 @@ class LoadingCard(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         p.setOpacity(self._opacity)
         w, h = self.width(), self.height()
 
@@ -556,9 +561,9 @@ class LoadingCard(QWidget):
         p.end()
 
 
-# ──────────────────────────────────────────────────────────────
-# GameListItem — premium compact card for master list
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# GameListItem â€” premium compact card for master list
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class GameListItem(QFrame):
     """Premium game card with custom-painted gradient border, glow, icon,
@@ -643,6 +648,7 @@ class GameListItem(QFrame):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         r = 12
         hover = self._hover_progress
@@ -735,9 +741,9 @@ class GameListItem(QFrame):
         p.end()
 
 
-# ──────────────────────────────────────────────────────────────
-# GlassComboBox — premium custom dropdown
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# GlassComboBox â€” premium custom dropdown
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class GlassComboBox(QComboBox):
     """Custom styled dropdown with glassmorphism appearance."""
@@ -794,9 +800,9 @@ class GlassComboBox(QComboBox):
         """)
 
 
-# ──────────────────────────────────────────────────────────────
-# GlassCheckbox — premium checkbox with animated indicator
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# GlassCheckbox â€” premium checkbox with animated indicator
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class GlassCheckbox(QWidget):
     """Premium checkbox with animated toggle indicator."""
@@ -852,6 +858,7 @@ class GlassCheckbox(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         box_size = 16
         box_y = (h - box_size) / 2
@@ -876,9 +883,9 @@ class GlassCheckbox(QWidget):
         p.end()
 
 
-# ──────────────────────────────────────────────────────────────
-# ProfilePresetBar — quick one-click mode switcher
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ProfilePresetBar â€” quick one-click mode switcher
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ProfilePresetBar(QWidget):
     """Horizontal bar with 3 preset buttons: Max Perf, Balanced, Custom."""
@@ -957,9 +964,9 @@ class ProfilePresetBar(QWidget):
         return self._active
 
 
-# ──────────────────────────────────────────────────────────────
-# ResolutionPicker — inline W x H with aspect ratio presets
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ResolutionPicker â€” inline W x H with aspect ratio presets
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ResolutionPicker(QWidget):
     """Inline resolution picker with W x H inputs and preset buttons."""
@@ -1043,9 +1050,9 @@ class ResolutionPicker(QWidget):
         return self._w, self._h
 
 
-# ──────────────────────────────────────────────────────────────
-# SystemInfoBadge — GPU/driver info pill
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# SystemInfoBadge â€” GPU/driver info pill
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SystemInfoBadge(QFrame):
     """Displays GPU name, driver version, and NvAPI status."""
@@ -1094,26 +1101,35 @@ class SystemInfoBadge(QFrame):
         self._nvapi_lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 700; background: transparent; border: none;")
 
 
-# ──────────────────────────────────────────────────────────────
-# NvapiFlagsAccordion — expandable key-value grid
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# NvapiFlagsAccordion â€” expandable key-value grid
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class NvapiFlagsAccordion(QWidget):
     """Expandable accordion showing NvAPI driver flags in a 2-column grid."""
 
     FLAGS = [
-        ("OGL_THREAD_CONTROL", "ENABLED"),
-        ("SET_POWER_THROTTLE_FOR_PCI_E_GPU", "OFF"),
-        ("SLI_PRE_RENDER_LIMIT", "1"),
         ("Power management mode", "Prefer maximum performance"),
-        ("Threaded optimization", "Auto (On)"),
-        ("Vertical Sync", "Force Off"),
-        ("Shader Cache", "Enabled"),
-        ("Texture filtering - Quality", "High Performance"),
-        ("Ambient Occlusion", "Off"),
-        ("FXAA", "Off"),
-        ("Antialiasing - Mode", "Off"),
         ("Maximum pre-rendered frames", "1"),
+        ("Low Latency Mode", "Ultra"),
+        ("Vertical Sync", "Force Off"),
+        ("Triple buffering", "Off"),
+        ("Threaded optimization", "Auto (On)"),
+        ("Texture filtering - Quality", "High Performance"),
+        ("Tex filter - Aniso optimization", "On"),
+        ("Tex filter - Aniso sample opt", "On"),
+        ("Tex filter - Trilinear optimization", "On"),
+        ("Tex filter - Negative LOD bias", "Allow"),
+        ("Anisotropic filtering mode", "App-controlled"),
+        ("Antialiasing - Mode", "Off"),
+        ("FXAA", "Off"),
+        ("Ambient Occlusion", "Off"),
+        ("MFAA", "Off"),
+        ("Shader Cache", "Enabled"),
+        ("Shader Disk Cache Max Size", "10240 MB"),
+        ("G-SYNC", "Off"),
+        ("CUDA Force P2 state", "Off"),
+        ("Image Sharpening", "Off"),
     ]
 
     def __init__(self, parent=None):
@@ -1146,14 +1162,14 @@ class NvapiFlagsAccordion(QWidget):
             row = QHBoxLayout()
             row.setSpacing(8)
             k_lbl = QLabel(key)
-            k_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 11px; font-family: 'Consolas', monospace; background: transparent; border: none;")
+            k_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 11px; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
             k_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
             row.addWidget(k_lbl, 1)
             arrow = QLabel("\u279c")
             arrow.setStyleSheet(f"color: {T['text_faint']}; background: transparent; border: none;")
             row.addWidget(arrow)
             v_lbl = QLabel(value)
-            v_lbl.setStyleSheet(f"color: {T['accent']}; font-size: 11px; font-weight: 600; font-family: 'Consolas', monospace; background: transparent; border: none;")
+            v_lbl.setStyleSheet(f"color: {T['accent']}; font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
             v_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
             row.addWidget(v_lbl, 1)
             grid.addLayout(row)
@@ -1167,9 +1183,9 @@ class NvapiFlagsAccordion(QWidget):
         self._header.setText(f"{arrow}  Advanced NvAPI Flags")
 
 
-# ──────────────────────────────────────────────────────────────
-# ChangesPreviewDialog — code-editor overlay showing changes
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ChangesPreviewDialog â€” code-editor overlay showing changes
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ChangesPreviewDialog(QDialog):
     """Sleek code-editor overlay showing exact NvAPI + config changes."""
@@ -1192,7 +1208,7 @@ class ChangesPreviewDialog(QDialog):
 
         # Title.
         title = QLabel("Pending System Changes")
-        title.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {T['text']};")
+        title.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {T['text']};")
         lay.addWidget(title)
 
         sub = QLabel("The following driver and file modifications will be applied:")
@@ -1202,7 +1218,7 @@ class ChangesPreviewDialog(QDialog):
         # Code preview.
         code = QTextEdit()
         code.setReadOnly(True)
-        code.setFont(QFont("Consolas", 11))
+        code.setFont(QFont("JetBrains Mono", 11))
         code.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {T['bg_alt']};
@@ -1277,9 +1293,9 @@ class ChangesPreviewDialog(QDialog):
         return "\n".join(lines)
 
 
-# ──────────────────────────────────────────────────────────────
-# AnimatedToast — premium notification
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# AnimatedToast â€” premium notification
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class AnimatedToast(QWidget):
     """Premium toast notification with slide-in animation and auto-dismiss."""
@@ -1357,6 +1373,7 @@ class AnimatedToast(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
 
         p.setBrush(QBrush(QColor(21, 27, 36)))
@@ -1396,9 +1413,9 @@ def toast(message: str, style: str = "success", parent: QWidget = None):
     return t
 
 
-# ──────────────────────────────────────────────────────────────
-# ComingSoonPage — blurry locked placeholder
-# ──────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ComingSoonPage â€” blurry locked placeholder
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ComingSoonPage(QWidget):
     """Blurry locked placeholder for features coming soon."""
@@ -1448,9 +1465,10 @@ class ComingSoonPage(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
 
-        # Blurry background — layered translucent dark panels.
+        # Blurry background â€” layered translucent dark panels.
         import random
         random.seed(42)
         for _ in range(12):
@@ -1547,7 +1565,7 @@ class AssistantComingSoon(QWidget):
     Deliberately distinct from ``ComingSoonPage``: instead of the blurry
     lock, it previews a mock chat with a glowing sparkle icon, a
     purple/magenta gradient card, twinkling stars, and shimmering reply
-    bars — so it reads as an "AI / chat" surface, not a locked tool.
+    bars â€” so it reads as an "AI / chat" surface, not a locked tool.
     """
 
     def __init__(self, title: str = "AI Assistant", parent=None):
@@ -1618,6 +1636,7 @@ class AssistantComingSoon(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         w, h = self.width(), self.height()
         t = self._pulse * math.tau
 
@@ -1739,3 +1758,435 @@ class AssistantComingSoon(QWidget):
             p.drawEllipse(QPointF(cx - 26 + i * 26, dot_y), 4, 4)
 
         p.end()
+
+
+
+class NetworkRouteComingSoon(QWidget):
+    """Cinematic coming-soon page for Route Analyzer.
+
+    Full-page network intelligence showcase with animated topology,
+    data packets, pulsing nodes, and premium dark styling.
+    All text uses QLabel (no QPainter text rendering).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tick = 0.0
+        self._particles: list[list] = []
+        self._packets: list[list] = []
+        self._init_particles()
+        self._init_packets()
+
+        self._anim = QTimer(self)
+        self._anim.setInterval(33)
+        self._anim.timeout.connect(self._on_tick)
+        self._anim.start()
+        self.setMinimumSize(800, 600)
+        self._build_ui()
+
+    def _init_particles(self):
+        import random
+        random.seed(77)
+        self._particles = []
+        for _ in range(40):
+            self._particles.append([
+                random.uniform(0, 1),
+                random.uniform(0, 1),
+                random.uniform(0.2, 0.8),
+                random.uniform(0.3, 1.0),
+            ])
+
+    def _init_packets(self):
+        import random
+        random.seed(99)
+        self._packets = []
+        for i in range(5):
+            self._packets.append([
+                random.uniform(0, 0.3),
+                i,
+                random.uniform(0.6, 1.4),
+            ])
+
+    def _on_tick(self):
+        self._tick += 0.016
+        for p in self._particles:
+            p[0] += 0.0003 * p[2]
+            if p[0] > 1.05:
+                p[0] = -0.05
+            p[1] += 0.0001 * p[3]
+            if p[1] > 1.05:
+                p[1] = -0.05
+        for pkt in self._packets:
+            pkt[0] += 0.002 * pkt[2]
+            if pkt[0] > 1.1:
+                pkt[0] = -0.1
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        w, h = float(self.width()), float(self.height())
+
+        p.fillRect(0, 0, w, h, QColor(8, 10, 14))
+
+        # Subtle grid
+        grid_pen = QPen(QColor(255, 255, 255, 6), 0.5)
+        p.setPen(grid_pen)
+        gs = 60.0
+        x = 0.0
+        while x < w:
+            p.drawLine(QPointF(x, 0), QPointF(x, h))
+            x += gs
+        y = 0.0
+        while y < h:
+            p.drawLine(QPointF(0, y), QPointF(w, y))
+            y += gs
+
+        # Scan lines
+        for sy in range(0, int(h), 3):
+            alpha = 3 + int(2 * math.sin(sy * 0.03 + self._tick * 0.8))
+            p.setPen(QPen(QColor(255, 255, 255, alpha), 1))
+            p.drawLine(QPointF(0, sy), QPointF(w, sy))
+
+        # Particles
+        for pt in self._particles:
+            px, py = pt[0] * w, pt[1] * h
+            alpha = int(20 + 30 * math.sin(self._tick * 1.5 + pt[2] * 6))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(139, 92, 246, alpha)))
+            p.drawEllipse(QPointF(px, py), 1.5, 1.5)
+
+        # Network topology nodes
+        topo_y = h * 0.22
+        labels = ["YOUR PC", "LOCAL NETWORK", "ISP", "TRANSIT",
+                  "INTERNATIONAL", "DESTINATION"]
+        n = len(labels)
+        node_xs = []
+        spread = w * 0.12
+        for i in range(n):
+            nx = w * 0.15 + (w * 0.7) * i / (n - 1)
+            # Slight vertical wave
+            ny = topo_y + 18 * math.sin(i * 0.9 + self._tick * 0.4)
+            node_xs.append((nx, ny))
+
+        # Connections between nodes
+        for i in range(n - 1):
+            x1, y1 = node_xs[i]
+            x2, y2 = node_xs[i + 1]
+            # Animated dash offset
+            dash_pen = QPen(QColor(139, 92, 246, 50), 1.2)
+            dash_pen.setStyle(Qt.CustomDashLine)
+            dash_pen.setDashPattern([4.0, 6.0])
+            dash_pen.setDashOffset(self._tick * 20 + i * 10)
+            p.setPen(dash_pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+            # Thin connecting line underneath
+            p.setPen(QPen(QColor(139, 92, 246, 18), 1.0))
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+        # Data packets traveling along connections
+        for pkt in self._packets:
+            seg = int(pkt[1]) % (n - 1)
+            t = pkt[0]
+            x1, y1 = node_xs[seg]
+            x2, y2 = node_xs[seg + 1]
+            px = x1 + (x2 - x1) * t
+            py = y1 + (y2 - y1) * t
+            # Packet glow
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(139, 92, 246, 30)))
+            p.drawEllipse(QPointF(px, py), 6, 6)
+            p.setBrush(QBrush(QColor(200, 180, 255, 140)))
+            p.drawEllipse(QPointF(px, py), 2.5, 2.5)
+
+        # Node circles + labels
+        for i, (nx, ny) in enumerate(node_xs):
+            # Outer glow
+            phase = (self._tick * 0.8 + i * 0.5) % 1.0
+            glow_a = int(15 + 25 * math.sin(phase * 3.14))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(139, 92, 246, glow_a)))
+            p.drawEllipse(QPointF(nx, ny), 16, 16)
+
+            # Inner node
+            p.setPen(QPen(QColor(139, 92, 246, 120), 1.0))
+            p.setBrush(QBrush(QColor(18, 20, 28, 200)))
+            p.drawEllipse(QPointF(nx, ny), 8, 8)
+
+            # Center dot
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(139, 92, 246, 180)))
+            p.drawEllipse(QPointF(nx, ny), 3, 3)
+
+        p.end()
+
+    def _build_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}")
+        body = QWidget()
+        body.setStyleSheet("background:transparent;")
+        lay = QVBoxLayout(body)
+        lay.setContentsMargins(60, 40, 60, 40)
+        lay.setSpacing(0)
+
+        _icon_dir = DIRS["assets"] / "icons"
+        _hero_pm = tint_pixmap(QPixmap(str(_icon_dir / "route_analyzer.png")), T["accent"])
+        hero_icon = QLabel()
+        hero_icon.setPixmap(_hero_pm.scaled(
+            48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        hero_icon.setStyleSheet("background:transparent;")
+        hero_icon.setAlignment(Qt.AlignCenter)
+        lay.addWidget(hero_icon)
+        lay.addSpacing(8)
+
+        hero_title = QLabel("ROUTE ANALYZER")
+        hero_title.setStyleSheet(
+            f"font-size:32px;font-weight:700;color:{T['text']};"
+            f"letter-spacing:6px;background:transparent;")
+        hero_title.setAlignment(Qt.AlignCenter)
+        lay.addWidget(hero_title)
+        lay.addSpacing(6)
+
+        hero_badge = QLabel("COMING SOON")
+        hero_badge.setStyleSheet(
+            f"font-size:14px;font-weight:700;color:{T['accent']};"
+            f"background:rgba(139,92,246,0.15);padding:6px 24px;"
+            f"border-radius:14px;letter-spacing:3px;")
+        hero_badge.setAlignment(Qt.AlignCenter)
+        lay.addWidget(hero_badge, 0, Qt.AlignCenter)
+        lay.addSpacing(4)
+
+        hero_sub = QLabel(
+            "Advanced network intelligence is coming to Maximum.")
+        hero_sub.setStyleSheet(
+            f"font-size:12px;color:{T['text_faint']};background:transparent;"
+            f"letter-spacing:1px;")
+        hero_sub.setAlignment(Qt.AlignCenter)
+        lay.addWidget(hero_sub)
+        lay.addSpacing(8)
+
+        status_row = QHBoxLayout()
+        status_row.setAlignment(Qt.AlignCenter)
+        status_row.setSpacing(8)
+        dot = QLabel("\u25cf")
+        dot.setStyleSheet(
+            f"font-size:8px;color:#3DDC97;background:transparent;")
+        status_row.addWidget(dot)
+        status_lbl = QLabel("FEATURE IN DEVELOPMENT")
+        status_lbl.setStyleSheet(
+            f"font-size:10px;font-weight:700;color:{T['text_faint']};"
+            f"background:transparent;letter-spacing:1.5px;")
+        status_row.addWidget(status_lbl)
+        lay.addLayout(status_row)
+
+        lay.addSpacing(340)
+
+        lay.addWidget(self._section_header("HOW ROUTE ANALYZER WORKS"))
+        lay.addSpacing(16)
+
+        steps = [
+            ("01", "DISCOVER",
+             "Maximum identifies the active game/network connections and "
+             "determines which traffic is relevant to the selected application."),
+            ("02", "MAP",
+             "The system analyzes the network path and builds a route from "
+             "your device through your ISP and upstream networks toward the "
+             "destination."),
+            ("03", "ANALYZE",
+             "Maximum evaluates latency, packet loss, route changes and other "
+             "network conditions across the path."),
+            ("04", "OPTIMIZE",
+             "Maximum can compare the current route against available routing "
+             "paths and identify opportunities for a more efficient connection."),
+            ("05", "MONITOR",
+             "The route can be monitored over time so changes, instability and "
+             "unexpected routing behavior can be detected."),
+        ]
+        for idx, (num, title, desc) in enumerate(steps):
+            row = QHBoxLayout()
+            row.setSpacing(16)
+            num_lbl = QLabel(num)
+            num_lbl.setFixedSize(40, 40)
+            num_lbl.setStyleSheet(
+                f"font-size:16px;font-weight:700;color:{T['accent']};"
+                f"background:rgba(139,92,246,0.1);"
+                f"border:1px solid rgba(139,92,246,0.2);"
+                f"border-radius:8px;")
+            num_lbl.setAlignment(Qt.AlignCenter)
+            row.addWidget(num_lbl, 0, Qt.AlignTop)
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            t = QLabel(title)
+            t.setStyleSheet(
+                f"font-size:12px;font-weight:700;color:{T['text']};"
+                f"letter-spacing:2px;background:transparent;")
+            col.addWidget(t)
+            d = QLabel(desc)
+            d.setStyleSheet(
+                f"font-size:11px;color:{T['text_dim']};background:transparent;"
+                f"line-height:1.5;")
+            d.setWordWrap(True)
+            col.addWidget(d)
+            row.addLayout(col, 1)
+            lay.addLayout(row)
+            if idx < len(steps) - 1:
+                lay.addSpacing(8)
+                arrow = QLabel("    \u2193")
+                arrow.setStyleSheet(
+                    f"font-size:12px;color:rgba(139,92,246,60);"
+                    f"background:transparent;")
+                arrow.setAlignment(Qt.AlignCenter)
+                lay.addWidget(arrow)
+                lay.addSpacing(8)
+            else:
+                lay.addSpacing(12)
+
+        lay.addWidget(self._section_header("ROUTE INTELLIGENCE"))
+        lay.addSpacing(16)
+
+        cards_data = [
+            ("latency", "LATENCY ANALYSIS",
+             "Identify where latency increases along the route."),
+            ("route_map", "ROUTE MAPPING",
+             "Visualize the path your connection takes across different networks."),
+            ("packet_loss", "PACKET LOSS",
+             "Detect instability and packet loss across the route."),
+            ("route_changes", "ROUTE CHANGES",
+             "Detect when your connection suddenly takes a different path."),
+            ("diagnostics", "NETWORK DIAGNOSTICS",
+             "Turn complicated networking information into easy to understand data."),
+            ("optimized", "OPTIMIZED ROUTING",
+             "Compare routing paths and identify potentially better routes."),
+        ]
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        for idx, (icon, title, desc) in enumerate(cards_data):
+            card = QFrame()
+            card.setStyleSheet(
+                f"QFrame{{background:rgba(14,17,24,0.8);"
+                f"border:1px solid rgba(139,92,246,25);"
+                f"border-radius:10px;}}")
+            card.setFixedHeight(110)
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(16, 14, 16, 14)
+            cl.setSpacing(4)
+            ci = QLabel()
+            ci_pm = tint_pixmap(QPixmap(str(_icon_dir / f"{icon}.png")), T["accent"])
+            ci.setPixmap(ci_pm.scaled(
+                22, 22, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            ci.setStyleSheet("background:transparent;")
+            cl.addWidget(ci)
+            ct = QLabel(title)
+            ct.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{T['text']};"
+                f"letter-spacing:1.5px;background:transparent;")
+            cl.addWidget(ct)
+            cd = QLabel(desc)
+            cd.setStyleSheet(
+                f"font-size:10px;color:{T['text_dim']};background:transparent;"
+                f"line-height:1.4;")
+            cd.setWordWrap(True)
+            cl.addWidget(cd, 1)
+            grid.addWidget(card, idx // 3, idx % 3)
+        lay.addLayout(grid)
+
+        lay.addSpacing(30)
+
+        cs_card = QFrame()
+        cs_card.setStyleSheet(
+            f"QFrame{{background:rgba(14,17,24,0.9);"
+            f"border:1px solid rgba(139,92,246,30);"
+            f"border-radius:12px;}}")
+        cs_lay = QVBoxLayout(cs_card)
+        cs_lay.setContentsMargins(32, 20, 32, 20)
+        cs_lay.setSpacing(6)
+        cs_status = QHBoxLayout()
+        cs_status.setSpacing(8)
+        cs_status.setAlignment(Qt.AlignCenter)
+        cs_dot = QLabel("\u25cf")
+        cs_dot.setStyleSheet(
+            f"font-size:8px;color:#3DDC97;background:transparent;")
+        cs_status.addWidget(cs_dot)
+        cs_lbl = QLabel("FEATURE IN DEVELOPMENT")
+        cs_lbl.setStyleSheet(
+            f"font-size:10px;font-weight:700;color:{T['text_faint']};"
+            f"background:transparent;letter-spacing:1.5px;")
+        cs_status.addWidget(cs_lbl)
+        cs_lay.addLayout(cs_status)
+        cs_big = QLabel("COMING SOON")
+        cs_big.setStyleSheet(
+            f"font-size:24px;font-weight:700;color:{T['accent']};"
+            f"background:transparent;letter-spacing:4px;")
+        cs_big.setAlignment(Qt.AlignCenter)
+        cs_lay.addWidget(cs_big)
+        cs_sub = QLabel(
+            "Advanced network intelligence is coming to Maximum.")
+        cs_sub.setStyleSheet(
+            f"font-size:11px;color:{T['text_dim']};background:transparent;")
+        cs_sub.setAlignment(Qt.AlignCenter)
+        cs_lay.addWidget(cs_sub)
+        lay.addWidget(cs_card)
+
+        lay.addSpacing(30)
+
+        lay.addWidget(self._section_header("BUILT FOR NETWORK INTELLIGENCE"))
+        lay.addSpacing(10)
+        footer_desc = QLabel(
+            "Route Analyzer is being designed to give Maximum users a deeper "
+            "understanding of how their connection reaches online game servers "
+            "\u2014 from the first hop to the final destination.")
+        footer_desc.setStyleSheet(
+            f"font-size:11px;color:{T['text_dim']};background:transparent;"
+            f"line-height:1.5;")
+        footer_desc.setWordWrap(True)
+        lay.addWidget(footer_desc)
+        lay.addSpacing(16)
+
+        pipe_row = QHBoxLayout()
+        pipe_row.setAlignment(Qt.AlignCenter)
+        pipe_row.setSpacing(0)
+        pipe_labels = ["DISCOVER", "MAP", "ANALYZE", "OPTIMIZE", "MONITOR"]
+        for i, lbl_text in enumerate(pipe_labels):
+            plbl = QLabel(lbl_text)
+            plbl.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{T['accent']};"
+                f"background:rgba(139,92,246,0.1);padding:6px 14px;"
+                f"border-radius:6px;letter-spacing:1px;")
+            plbl.setAlignment(Qt.AlignCenter)
+            pipe_row.addWidget(plbl)
+            if i < len(pipe_labels) - 1:
+                arrow = QLabel("  \u2192  ")
+                arrow.setStyleSheet(
+                    f"font-size:12px;color:rgba(139,92,246,80);"
+                    f"background:transparent;")
+                arrow.setAlignment(Qt.AlignCenter)
+                pipe_row.addWidget(arrow)
+        lay.addLayout(pipe_row)
+
+        lay.addSpacing(40)
+
+        scroll.setWidget(body)
+        root.addWidget(scroll, 1)
+
+    def _section_header(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"font-size:11px;font-weight:700;color:{T['text_faint']};"
+            f"letter-spacing:2px;background:transparent;padding-bottom:4px;")
+        return lbl
+
+    def eventFilter(self, obj, event):
+        return False
+
+

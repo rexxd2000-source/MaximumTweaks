@@ -43,7 +43,7 @@ class BundleCard(QFrame):
 
         head = QHBoxLayout()
         name = QLabel(self.bundle["name"])
-        name.setStyleSheet("font-size: 18px; font-weight: 800;")
+        name.setStyleSheet("font-size: 18px; font-weight: 700;")
         head.addWidget(name)
         head.addWidget(risk_badge(self.bundle["risk"]))
         head.addStretch()

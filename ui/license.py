@@ -85,6 +85,7 @@ class _BlinkDot(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
         col = QColor(self._color)
         col.setAlpha(255 if self._on else 70)
         p.setBrush(col)
@@ -232,7 +233,7 @@ class SidebarLicenseCard(QFrame):
         head.addWidget(IconTile(ICONS.get("shield", "\u26d1"), _ACCENT,
                                 size=30, font_scale=0.5))
         t = QLabel("License")
-        t.setStyleSheet("font-size: 12px; font-weight: 800;")
+        t.setStyleSheet("font-size: 12px; font-weight: 700;")
         head.addWidget(t)
         head.addStretch()
         head.addWidget(_BlinkDot(8))
@@ -256,7 +257,7 @@ class SidebarLicenseCard(QFrame):
             box = QVBoxLayout()
             box.setSpacing(0)
             nm = QLabel(license_mgr.owner_name(sess))
-            nm.setStyleSheet("font-size: 13px; font-weight: 800;")
+            nm.setStyleSheet("font-size: 13px; font-weight: 700;")
             box.addWidget(nm)
             tag = QLabel(plan_label(sess))
             tag.setStyleSheet(f"color: {T['text_dim']}; font-size: 10px;")
@@ -333,7 +334,7 @@ class LicenseAccountCard(QFrame):
         head.addWidget(IconTile(ICONS.get("shield", "\u26d1"), _ACCENT,
                                 size=32, font_scale=0.5))
         t = QLabel("License")
-        t.setStyleSheet("font-size: 13px; font-weight: 800;"
+        t.setStyleSheet("font-size: 13px; font-weight: 700;"
                         " letter-spacing: 0.4px;")
         head.addWidget(t)
         head.addStretch()
@@ -358,7 +359,7 @@ class LicenseAccountCard(QFrame):
             box = QVBoxLayout()
             box.setSpacing(0)
             nm = QLabel(license_mgr.owner_name(sess))
-            nm.setStyleSheet("font-size: 15px; font-weight: 800;")
+            nm.setStyleSheet("font-size: 15px; font-weight: 700;")
             box.addWidget(nm)
             sub = QLabel(plan_label(sess))
             sub.setStyleSheet(
@@ -370,7 +371,7 @@ class LicenseAccountCard(QFrame):
 
             status = QLabel("\u25cf LICENSED")
             status.setStyleSheet(
-                f"color: {_ACCENT}; font-size: 10px; font-weight: 800;"
+                f"color: {_ACCENT}; font-size: 10px; font-weight: 700;"
                 " letter-spacing: 0.8px;")
             lay.addWidget(status)
         elif not license_mgr.is_configured():

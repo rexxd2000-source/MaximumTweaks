@@ -169,7 +169,7 @@ TWEAKS = validate_module("delay_destroyer", [
     T("dd-013", "Optimize TCP ACK Frequency",
       "Disables delayed ACKs so TCP acknowledgments are sent immediately.",
       actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces",
+          ("regall", "HKLM", r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces",
            "TcpAckFrequency", 1, "DWORD"),
       ],
       revert=[

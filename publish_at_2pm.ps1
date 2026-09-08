@@ -20,17 +20,12 @@ function Log([string]$msg) {
     Write-Host $line
 }
 
-# Load the update token from config\_secrets.py (gitignored).
-$secrets = Join-Path $root "config\_secrets.py"
-$token = $null
-if (Test-Path $secrets) {
-    $content = Get-Content $secrets -Raw
-    if ($content -match 'GITHUB_TOKEN\s*=\s*"([^"]+)"') {
-        $token = $Matches[1]
-    }
-}
+# Load the update token from the ENVIRONMENT (set by the operator when
+# scheduling this task). SECURITY: never read from any config file or ship a
+# token in the repo/build — a publish token must not be extractable.
+$token = $env:GITHUB_TOKEN
 if (-not $token) {
-    Log "FATAL: GITHUB_TOKEN not found in config\_secrets.py"
+    Log "FATAL: GITHUB_TOKEN environment variable is not set"
     exit 1
 }
 

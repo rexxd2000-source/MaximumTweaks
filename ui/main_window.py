@@ -4,16 +4,25 @@ from __future__ import annotations
 import ctypes
 import sys
 
+import math
+
 from PySide6.QtCore import (
-    QSize,
+    QPoint,
+    QPointF,
+    QRectF,
     Qt,
 )
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import (
+    QColor,
+    QLinearGradient,
+    QPainter,
+    QPixmap,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QStackedWidget,
     QVBoxLayout,
@@ -24,27 +33,28 @@ from config.app_config import (
     APP_NAME,
     APP_VERSION,
     GITHUB_REPO,
-    ICONS,
     UPDATE_MANIFEST_URL,
 )
 from engine import activity
 from rexlog import logger
-from ui.categories import SIDEBAR_TWEAKS, logo_path
+from ui.categories import logo_path
 from ui.context import AppContext
+from ui.monitor_widgets import RexLogo
 from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
+from ui.widgets import NavDot, NavRow, nav_icon_pixmap
 from ui.pages.optimize import OptimizePage
 from ui.pages.chat import ChatPage
 from ui.premium_widgets import ComingSoonPage
+from ui.pages.route_coming_soon import RouteComingSoonPage
+from ui.pages.route_analyzer import RouteAnalyzerPage
 from ui.pages.delay_destroyer import DelayDestroyerPage
 from ui.pages.debloat import DebloatPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
 from ui.pages.tweaks import ALL_KEY, TweaksPage
-from ui.monitor_widgets import RexLogo
 from ui.space import SpaceBackground
-from ui.widgets import repolish
 
 
 def is_admin() -> bool:
@@ -63,6 +73,64 @@ def relaunch_as_admin() -> None:
             subprocess.Popen(cmd, shell=True, creationflags=0x08000000)
         except Exception as exc:  # noqa: BLE001
             logger.warn(f"relaunch as admin failed: {exc}")
+
+
+class _SidebarBackdrop(QWidget):
+    """sidebar-background-fix.html layers: violet glow top-left, cyan glow
+    bottom-left, a 28px dot grid faded at both ends (kept a bit lighter than
+    the reference 0.5 opacity), and a hairline seam of light on the right
+    border."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setGeometry(parent.rect())
+        parent.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.parent() and event.type() == event.Type.Resize:
+            self.setGeometry(obj.rect())
+        return False
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        w, h = self.width(), self.height()
+        # .sb-glow.top — 280px orb, center at (50, 20), rgba(139,107,255,.16)
+        g1 = QRadialGradient(QPointF(50, 20), 196)
+        g1.setColorAt(0.0, QColor(139, 107, 255, 41))
+        g1.setColorAt(1.0, QColor(139, 107, 255, 0))
+        p.fillRect(self.rect(), g1)
+        # .sb-glow.bottom — 240px orb, center at (60, h-20), cyan .08
+        g2 = QRadialGradient(QPointF(60, h - 20), 168)
+        g2.setColorAt(0.0, QColor(75, 232, 216, 20))
+        g2.setColorAt(1.0, QColor(75, 232, 216, 0))
+        p.fillRect(self.rect(), g2)
+        # .sb-dots — 28px grid, vertical fade; a bit lighter than reference
+        y = 14.0
+        while y < h:
+            frac = y / max(1, h)
+            if frac < 0.18:
+                m = frac / 0.18
+            elif frac > 0.75:
+                m = max(0.0, (1.0 - frac) / 0.25)
+            else:
+                m = 1.0
+            a = int(28 * m)          # reference peaks ~45 — lighter per request
+            if a > 3:
+                p.setPen(QColor(200, 190, 240, a))
+                x = 14.0
+                while x < w:
+                    p.drawPoint(QPointF(x, y))
+                    x += 28.0
+            y += 28.0
+        # .sb-edge — right-border seam: rgba(150,130,235,.35) 30-70%
+        seam = QLinearGradient(0, 0, 0, h)
+        seam.setColorAt(0.0, QColor(150, 130, 235, 0))
+        seam.setColorAt(0.30, QColor(150, 130, 235, 89))
+        seam.setColorAt(0.70, QColor(150, 130, 235, 89))
+        seam.setColorAt(1.0, QColor(150, 130, 235, 0))
+        p.fillRect(QRectF(w - 1.0, 0, 1.0, h), seam)
+        p.end()
 
 
 class MainWindow(QWidget):
@@ -140,25 +208,119 @@ class MainWindow(QWidget):
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
 
-    # ---------------- Sidebar ----------------
+# ---------------- Sidebar ----------------
 
-    def _nav_button(self, text, obj="Nav"):
-        btn = QPushButton(text)
-        btn.setObjectName(obj)
-        btn.setProperty("active", "false")
-        btn.setCursor(Qt.PointingHandCursor)
-        return btn
+    # Category accent colors (matching the color-coded sidebar reference).
+    CAT_INK = "#928AAD"
+    CAT_FPS = "#3FDC98"
+    CAT_SYSTEM = "#6C93FF"
+    CAT_INPUT = "#FF6F6F"
+    CAT_TOOLS = "#FFB454"
+    CAT_DIAG = "#4BE8D8"
+    CAT_PROFILES = "#E879C9"
+    CAT_META = "#9AA5D1"
+
+    def _cat_color(self, cat):
+        return {
+            "fps": self.CAT_FPS,
+            "system": self.CAT_SYSTEM,
+            "input": self.CAT_INPUT,
+            "tools": self.CAT_TOOLS,
+            "diag": self.CAT_DIAG,
+            "profiles": self.CAT_PROFILES,
+            "meta": self.CAT_META,
+        }[cat]
+
+    def _nav_row(self, label, color, icon_key=None, nav_key=None,
+                 target=None, badge=None, line_only=False):
+        """Create a NavRow. Icons are pre-colored glossy assets (PNG, bundled),
+        each already tinted to its category color; lucide renderer is only a
+        fallback in case an asset is missing. line_only=True forces the lucide
+        line icon (tinted to this row's category color) — used where the
+        glossy asset's baked color doesn't match the section (Diagnostics)."""
+        row = NavRow(label)
+        pm = QPixmap()
+        if icon_key is not None and not line_only:
+            path = logo_path(icon_key)
+            if path.is_file():
+                pm = QPixmap(str(path))
+        if pm.isNull() and icon_key is not None:
+            pm = nav_icon_pixmap(icon_key, color=color, size=16)
+        row.set_icon_pm(pm)
+        if badge:
+            row.add_badge(badge)
+        dest = nav_key if target is None else target
+        row.clicked.connect(lambda k=dest: self.navigate(k))
+        if nav_key is not None:
+            self.nav_buttons[nav_key] = row
+        return row
+
+    def _nav_line(self):
+        line = QFrame()
+        line.setObjectName("NavLine")
+        line.setFixedHeight(1)
+        return line
+
+    def _nav_header(self, title, cat):
+        header = QWidget()
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(10, 2, 10, 10)
+        hl.setSpacing(7)
+        dot = NavDot(self._cat_color(cat))
+        dot.setObjectName("NavDot")
+        hl.addWidget(dot)
+        lbl = QLabel(title)
+        lbl.setObjectName("NavSectionLabel")
+        hl.addWidget(lbl)
+        hl.addStretch()
+        header.setCursor(Qt.PointingHandCursor)
+        return header
+
+    def _add_nav_section(self, parent, title, cat, items, badges=None,
+                         line_only=False):
+        """Collapsible group: divider, header (colored dot + uppercase label),
+        then the item rows. *items* are (nav_key, label, icon_key)."""
+        badges = badges or {}
+        parent.addSpacing(12)
+        parent.addWidget(self._nav_line())
+        parent.addSpacing(18)
+
+        container = QWidget()
+        cl = QVBoxLayout(container)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(1)
+        for nav_key, label, icon_key in items:
+            row = self._nav_row(
+                label, self._cat_color(cat), icon_key=icon_key,
+                nav_key=nav_key, badge=badges.get(nav_key),
+                line_only=line_only)
+            cl.addWidget(row)
+
+        header = self._nav_header(title, cat)
+        header.mousePressEvent = (
+            lambda _e, t=title: self._toggle_section(t))
+        parent.addWidget(header)
+        parent.addWidget(container)
+        self._sections[title] = container
+        return container
 
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(244)
+        side.setFixedWidth(272)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(1)
+        lay.setContentsMargins(16, 24, 16, 18)
+        lay.setSpacing(0)
+
+        # sidebar-background-fix.html layers: violet glow top + cyan glow
+        # bottom + dot grid (kept a touch lighter than the 0.5 reference
+        # opacity) + hairline edge seam on the right border.
+        self._sb_back = _SidebarBackdrop(side)
+        self._sb_back.lower()
 
         # Scrollable navigation (prevents overflow at small window sizes).
         scroll = QScrollArea()
+        self._nav_scroll = scroll
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -167,127 +329,120 @@ class MainWindow(QWidget):
             "QScrollArea { background: transparent; border: none; }"
             "QScrollArea > QWidget > QWidget { background: transparent; }")
         nav = QWidget()
+        nav.setMaximumWidth(240)
         nav_lay = QVBoxLayout(nav)
         nav_lay.setContentsMargins(0, 0, 0, 0)
         nav_lay.setSpacing(1)
 
-        # Branding
+        self._sections = {}   # title -> container widget
+
+        # ---- Branding ----
         brand = QHBoxLayout()
-        brand.setSpacing(10)
-        self.avatar = RexLogo(36)
-        brand.addWidget(self.avatar)
+        brand.setSpacing(12)
+        brand.setContentsMargins(8, 6, 8, 22)
+        mark = RexLogo(size=38)
+        brand.addWidget(mark)
         bbox = QVBoxLayout()
-        bbox.setSpacing(0)
+        bbox.setSpacing(2)
         btitle = QLabel(APP_NAME)
         btitle.setObjectName("BrandTitle")
         bbox.addWidget(btitle)
+        bsub = QLabel("Performance Suite")
+        bsub.setObjectName("BrandSub")
+        bbox.addWidget(bsub)
         brand.addLayout(bbox)
         brand.addStretch()
         nav_lay.addLayout(brand)
-        nav_lay.addSpacing(10)
 
-        # ---- MAIN
-        sec = QLabel("MAIN")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button("Dashboard")
-        logo = logo_path("home")
-        if logo.is_file():
-            btn.setIcon(QIcon(str(logo)))
-            btn.setIconSize(QSize(15, 15))
-        btn.clicked.connect(lambda _=False: self.navigate("dashboard"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["dashboard"] = btn
+        # ---- Dashboard ----
+        nav_lay.addSpacing(16)
+        nav_lay.addWidget(self._nav_row(
+            "Dashboard", self.CAT_INK, icon_key="home",
+            nav_key="dashboard", target="dashboard"))
 
-        nav_lay.addWidget(btn)
+        # ---- FPS (collapsible) ----
+        self._add_nav_section(nav_lay, "FPS", "fps", [
+            ("tweak:cpu", "CPU", "cpu"),
+            ("tweak:gpu", "GPU", "gpu"),
+            ("tweak:ram", "RAM", "ram"),
+            ("tweak:games", "Games", "games"),
+            ("tweak:fpsboost", "FPS boost", "fpsboost"),
+        ])
 
-        # ---- TWEAKS (collapsible section with sub-categories)
-        tweak_header = QPushButton("TWEAKS  \u25be")
-        tweak_header.setObjectName("NavSectionBtn")
-        tweak_header.setCursor(Qt.PointingHandCursor)
-        tweak_header.clicked.connect(lambda: self._toggle_section("tweaks"))
-        nav_lay.addWidget(tweak_header)
-        self._section_headers = {"tweaks": tweak_header}
+        # ---- SYSTEM TWEAKS (collapsible) ----
+        self._add_nav_section(nav_lay, "System tweaks", "system", [
+            ("tweak:system", "Windows / system", "system"),
+            ("tweak:storage", "Storage", "storage"),
+            ("tweak:audio", "Audio", "audio"),
+            ("tweak:network", "Network", "network"),
+            ("qos", "Network QoS", "network"),
+        ])
 
-        self.tweak_sub = QWidget()
-        tweak_sub_lay = QVBoxLayout(self.tweak_sub)
-        tweak_sub_lay.setContentsMargins(0, 0, 0, 0)
-        tweak_sub_lay.setSpacing(1)
-        btn = self._nav_button(f"{ICONS['tweaks']}   Tweaks")
-        btn.clicked.connect(lambda _=False: self.navigate("tweaks"))
-        tweak_sub_lay.addWidget(btn)
-        self.nav_buttons["tweaks"] = btn
-        for cat_key, label in SIDEBAR_TWEAKS:
-            sub_btn = self._nav_button(label, "NavSub")
-            logo = logo_path(cat_key)
-            if logo.is_file():
-                sub_btn.setIcon(QIcon(str(logo)))
-                sub_btn.setIconSize(QSize(15, 15))
-            nav_key = f"tweak:{cat_key}"
-            sub_btn.clicked.connect(
-                lambda _=False, k=cat_key: self.navigate(f"tweak:{k}"))
-            tweak_sub_lay.addWidget(sub_btn)
-            self.nav_buttons[nav_key] = sub_btn
-        nav_lay.addWidget(self.tweak_sub)
-        self._sections = {"tweaks": self.tweak_sub}
+        # ---- INPUT DELAY (collapsible) ----
+        self._add_nav_section(nav_lay, "Input delay", "input", [
+            ("tweak:keyboard", "Keyboard", "keyboard"),
+            ("tweak:mouse", "Mouse", "mouse"),
+            ("tweak:input", "Input", "input"),
+        ])
 
-        # ---- PROFILES
-        sec = QLabel("PROFILES")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button("Game Profiles")
-        logo = logo_path("profiles")
-        if logo.is_file():
-            btn.setIcon(QIcon(str(logo)))
-            btn.setIconSize(QSize(15, 15))
-        btn.clicked.connect(lambda _=False: self.navigate("profiles"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["profiles"] = btn
+        # ---- TOOLS (collapsible) ----
+        self._add_nav_section(nav_lay, "Tools", "tools", [
+            ("tools", "Tools", "tools"),
+            ("controller", "Controller overclock", "controller"),
+            ("delay_destroyer", "Delay destroyer", "delay_destroyer"),
+            ("debloat", "Smart debloater", "debloat"),
+            ("route_analyzer", "Route analyzer", "route_analyzer"),
+        ], badges={"route_analyzer": "SOON"})
 
-        # ---- TOOLS
-        sec = QLabel("TOOLS")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['tools']}   Tools")
-        btn.clicked.connect(lambda _=False: self.navigate("tools"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["tools"] = btn
+        # ---- DIAGNOSTICS: one entry; every test/scan lives on the page ----
+        nav_lay.addSpacing(12)
+        nav_lay.addWidget(self._nav_line())
+        nav_lay.addSpacing(18)
+        nav_lay.addWidget(self._nav_row(
+            "Diagnostics", self.CAT_DIAG, icon_key="route_analyzer",
+            nav_key="diagnostics", target="diagnostics"))
 
-        btn = self._nav_button("\u26a1   Delay Destroyer")
-        btn.clicked.connect(lambda _=False: self.navigate("delay_destroyer"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["delay_destroyer"] = btn
+        # ---- PROFILES (collapsible) ----
+        self._add_nav_section(nav_lay, "Profiles", "profiles", [
+            ("profiles", "Game profiles", "profiles"),
+            ("tweak:fortnite", "Fortnite settings", "fortnite"),
+            ("chat", "AI assistant", "chat"),
+        ])
 
-        btn = self._nav_button("\u2702   Smart Debloater")
-        btn.clicked.connect(lambda _=False: self.navigate("debloat"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["debloat"] = btn
-
-        # ---- AI ASSISTANT
-        btn = self._nav_button("\u2728   AI Assistant")
-        btn.clicked.connect(lambda _=False: self.navigate("chat"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["chat"] = btn
-
-        # ---- SETTINGS
-        sec = QLabel("SYSTEM")
-        sec.setObjectName("NavSection")
-        nav_lay.addWidget(sec)
-        btn = self._nav_button(f"{ICONS['settings']}   Settings")
-        btn.clicked.connect(lambda _=False: self.navigate("settings"))
-        nav_lay.addWidget(btn)
-        self.nav_buttons["settings"] = btn
+        # ---- SYSTEM (collapsible) ----
+        self._add_nav_section(nav_lay, "System", "meta", [
+            ("settings", "Settings", "settings"),
+        ])
 
         nav_lay.addStretch()
 
         scroll.setWidget(nav)
         lay.addWidget(scroll, 1)
 
+        # ---- Footer ----
+        lay.addSpacing(10)
+        lay.addWidget(self._nav_line())
+        foot = QHBoxLayout()
+        foot.setContentsMargins(12, 14, 12, 4)
+        foot.setSpacing(0)
         ver = QLabel(f"v{APP_VERSION} \u00b7 Maximum Engine")
         ver.setObjectName("Tag")
-        lay.addWidget(ver, alignment=Qt.AlignHCenter)
+        foot.addWidget(ver)
+        foot.addStretch()
+        plan = QLabel("PRO")
+        plan.setObjectName("PlanPill")
+        foot.addWidget(plan)
+        lay.addLayout(foot)
 
         return side
+
+    # ---- Collapsible sidebar helpers ----
+
+    def _toggle_section(self, title):
+        container = self._sections.get(title)
+        if container is None:
+            return
+        container.setVisible(not container.isVisible())
 
     # ---------------- Pages ----------------
 
@@ -295,12 +450,20 @@ class MainWindow(QWidget):
         self.pages["dashboard"] = DashboardPage(self.ctx, self.navigate)
         self.pages["detect"] = DetectPage(self.ctx)
         self.pages["tweaks"] = TweaksPage(self.ctx)
-        self.pages["profiles"] = ComingSoonPage("Game Profiles")
+        from ui.pages.profiles import ProfilesPage
+        self.pages["profiles"] = ProfilesPage(self.ctx)
         self.pages["optimize"] = OptimizePage(self.ctx)
         self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
         self.pages["chat"] = ChatPage(self.ctx)
         self.pages["delay_destroyer"] = DelayDestroyerPage(self.ctx)
         self.pages["debloat"] = DebloatPage(self.ctx)
+        from ui.pages.controller import ControllerPage
+        self.pages["controller"] = ControllerPage(self.ctx)
+        from ui.pages.qos import QosPage
+        self.pages["qos"] = QosPage(self.ctx)
+        from ui.pages.diagnostics import DiagnosticsPage
+        self.pages["diagnostics"] = DiagnosticsPage(self.ctx)
+        self.pages["route_analyzer"] = RouteComingSoonPage(self.ctx, self.navigate)
         self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
         self.pages["logs"] = LogsPage()
         for page in self.pages.values():
@@ -314,21 +477,14 @@ class MainWindow(QWidget):
             # Sidebar sub-category: show the Tweaks master view pre-filtered.
             self.pages["tweaks"].select(key[len("tweak:"):])
             page_key = "tweaks"
+        elif key.startswith("diagnostics:"):
+            # Sidebar test: open Diagnostics and pulse the matching card.
+            self.pages["diagnostics"].focus_card(key.split(":", 1)[1])
+            page_key = "diagnostics"
         if page_key not in self.pages:
             return
         self.stack.setCurrentWidget(self.pages[page_key])
         self._mark_active(key)
-
-    def _toggle_section(self, name):
-        container = self._sections.get(name)
-        if container is None:
-            return
-        visible = not container.isVisible()
-        container.setVisible(visible)
-        header = self._section_headers.get(name)
-        if header is not None:
-            header.setText(f"TWEAKS  {'\u25be' if visible else '\u25b8'}")
-        container.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -351,8 +507,16 @@ class MainWindow(QWidget):
         super().closeEvent(event)
 
     def _mark_active(self, key):
-        for k, btn in self.nav_buttons.items():
-            active = (k == key)
-            if btn.property("active") != active:
-                btn.setProperty("active", "true" if active else "false")
-                repolish(btn)
+        active = None
+        for k, row in self.nav_buttons.items():
+            on = (k == key)
+            row.set_active(on)
+            if on:
+                active = row
+        # keep the clicked row visible in the scrollable nav
+        if active is not None:
+            sb = self._nav_scroll.verticalScrollBar()
+            y = active.mapTo(self._nav_scroll.widget(), QPoint(0, 0)).y()
+            vh = self._nav_scroll.viewport().height()
+            if y < sb.value() or y + active.height() > sb.value() + vh:
+                sb.setValue(max(0, y - vh // 2))

@@ -8,25 +8,55 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.0.18"
+APP_VERSION = "2.2.0"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
 
+# ---- AI Assistant keys (env var, else <KEY>.txt next to the exe, else
+# offline demo router) ------------------------------------------------------
+# SECURITY: secrets are NEVER embedded in the frozen EXE. No client config
+# file (_secrets.py or similar) is ever read, and nothing under sys._MEIPASS
+# is consulted. Values come only from the process environment or a runtime
+# sidecar file the operator places next to the exe AFTER install (that file
+# is not shipped and cannot be extracted from the download).
+def _load_secret(name: str) -> str:
+    token = os.environ.get(name, "").strip()
+    if token:
+        return token
+    try:  # drop a file named GEMINI_API_KEY.txt next to the exe (runtime-only)
+        exe_dir = Path(sys.executable).resolve().parent
+        side = exe_dir / (name + ".txt")
+        if side.is_file():
+            return side.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
 # ---- AI Assistant (Groq) ---------------------------------------------------
 # The Maximum chat bot calls Groq's OpenAI-compatible endpoint. Set the
-# GROQ_API_KEY environment variable (leave empty for the offline demo router).
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+# GROQ_API_KEY environment variable or _secrets.py (leave empty for the
+# offline demo router).
+GROQ_API_KEY = _load_secret("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ---- AI Assistant (Gemini fallback) ----------------------------------------
 # Google's Gemini free tier (get a key at https://aistudio.google.com/apikey)
 # has much higher daily limits than Groq, so it acts as the primary provider
-# when set. Leave the GEMINI_API_KEY environment variable empty to use Groq only.
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# when set. Leave empty to use Groq only.
+GEMINI_API_KEY = _load_secret("GEMINI_API_KEY")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 GEMINI_MODEL = "gemini-3.5-flash"
+
+# ---- AI Assistant (Cerebras primary) ---------------------------------------
+# Cerebras' free tier (no card, cloud.cerebras.ai) allows ~30 req/min and
+# ~14,400 req/day — effectively unlimited for a personal assistant. OpenAI
+# compatible; used first, Gemini/Groq act as automatic fallbacks.
+CEREBRAS_API_KEY = _load_secret("CEREBRAS_API_KEY")
+CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+CEREBRAS_MODEL = "gpt-oss-120b"
 
 # Launch countdown target (local time). The dashboard shows a countdown to
 # this moment; the update goes live here too.
@@ -38,28 +68,14 @@ GITHUB_URL = "https://github.com/rexxd2000-source/MaximumTweaks"
 # Repo owner/repo for update checks (used by build scripts/README only).
 GITHUB_REPO = "rexxd2000-source/MaximumTweaks"
 
-# Update auth token: read from the GITHUB_TOKEN env var, else from the
-# build-time generated config/_secrets.py (gitignored, embedded into the exe).
-# Required to read GitHub Releases / download assets from a PRIVATE repo.
+# Update auth token: read from the GITHUB_TOKEN env var ONLY. It is never
+# read from any file (_secrets.py or otherwise) and never embedded in the EXE,
+# because a private/repo token must not be extractable by anyone who downloads
+# the app. With a PUBLIC repo (the default) release reads/downloads work with
+# no token at all; set GITHUB_TOKEN in the running environment only if you
+# deliberately host updates on a PRIVATE repo.
 def _load_github_token() -> str:
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    if token:
-        return token
-    meipass = getattr(sys, "_MEIPASS", None)
-    candidates = []
-    if meipass:
-        candidates.append(Path(meipass) / "config" / "_secrets.py")
-    candidates.append(Path(__file__).resolve().parent / "_secrets.py")
-    for path in candidates:
-        try:
-            if path.is_file():
-                for line in path.read_text(encoding="utf-8").splitlines():
-                    text = line.strip()
-                    if text.startswith("GITHUB_TOKEN"):
-                        return text.split("=", 1)[1].strip().strip('"').strip("'")
-        except OSError:
-            continue
-    return ""
+    return os.environ.get("GITHUB_TOKEN", "").strip()
 
 
 GITHUB_TOKEN = _load_github_token()
@@ -156,35 +172,38 @@ WINDOWS_VERSIONS = ("7", "8", "10", "11")
 
 # Active theme values used by the UI.
 THEME = {
-    "accent": "#8B5CF6",
-    "accent2": "#C484FF",
-    "accent_hover": "#A78BFA",
-    "accent_press": "#6D28D9",
-    "accent_dark": "#140D26",
-    "success": "#A78BFA",
-    "green": "#A78BFA",
-    "red": "#F87979",
-    "amber": "#F0B54D",
-    "orange": "#F0B54D",
-    "purple": "#C484FF",
-    "info": "#C484FF",
-    "bg": "#0B0D12",
-    "bg_alt": "#101320",
-    "sidebar": "#080A0F",
-    "card": "#141724",
-    "card_alt": "#191D2E",
-    "card_hover": "#1E2336",
-    "border": "#2A2340",
-    "border_soft": "#201A33",
-    "text": "#F2F4FA",
-    "text_dim": "#A7A9C9",
-    "text_faint": "#5F6178",
-    "danger": "#F87979",
-    "warning": "#F0B54D",
-    "glow_green": "rgba(139, 92, 246, 0.10)",
-    "glow_red": "rgba(248, 121, 121, 0.08)",
-    "glow_accent": "rgba(139, 92, 246, 0.10)",
-    "glow": "rgba(167, 139, 250, 0.15)",
+    "accent": "#8B6BFF",
+    "accent2": "#C9C0FF",
+    "accent_hover": "#9C80FF",
+    "accent_press": "#6D4FE0",
+    "accent_dark": "#0B0814",
+    "success": "#3DDC97",
+    "green": "#3DDC97",
+    "red": "#FF6F6F",
+    "amber": "#FFB454",
+    "orange": "#FFB454",
+    "purple": "#C9C0FF",
+    "info": "#4BE8D8",
+    "blue": "#6C93FF",
+    "pink": "#E879C9",
+    "cyan": "#4BE8D8",
+    "bg": "#08060F",
+    "bg_alt": "#0B0814",
+    "sidebar": "#090711",
+    "card": "#0C0A16",
+    "card_alt": "#12101F",
+    "card_hover": "#171428",
+    "border": "#1D1B28",
+    "border_soft": "#141120",
+    "text": "#F6F4FC",
+    "text_dim": "#928AAD",
+    "text_faint": "#514A70",
+    "danger": "#FF6F6F",
+    "warning": "#FFB454",
+    "glow_green": "rgba(61, 220, 151, 0.10)",
+    "glow_red": "rgba(255, 111, 111, 0.08)",
+    "glow_accent": "rgba(139, 107, 255, 0.10)",
+    "glow": "rgba(139, 107, 255, 0.15)",
 }
 
 

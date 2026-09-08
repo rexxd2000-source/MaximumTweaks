@@ -43,6 +43,14 @@ POWER_SETTINGS = {
         "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
         "fbd9aa66-9553-4097-ba44-ed6e9d65eab8",          # Adaptive display brightness
     ),
+    "display_brightness": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",
+        "aded5e82-b909-4619-9949-f5d71dac0bcb",          # Display brightness
+    ),
+    "display_brightness_dim": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",
+        "f1fbfde2-a960-4165-9f88-50667911ce96",          # Dimmed display brightness
+    ),
     "display_timeout": (
         "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
         "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",          # Turn off display after
@@ -57,6 +65,18 @@ POWER_SETTINGS = {
         "238c9fa8-0aad-41ed-83f4-97be242c8f20",
         "29f6c1db-86da-48c5-9fdb-f2b67b1f44da",          # Sleep after
     ),
+    "away_mode": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "25dfa149-5dd1-4736-b5ab-e8a37b5b8187",          # Allow away mode policy
+    ),
+    "hybrid_sleep": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "94ac6d29-73ce-41a6-809f-6363ba21b47e",          # Allow hybrid sleep
+    ),
+    "wake_timers": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d",          # Allow wake timers
+    ),
     "hibernate_timeout": (
         "238c9fa8-0aad-41ed-83f4-97be242c8f20",
         "9d7815a6-7ee4-497e-8888-515a05f02364",          # Hibernate after
@@ -65,6 +85,10 @@ POWER_SETTINGS = {
     "lid_action": (
         "4f971e89-eebd-4455-a8de-9e59040e7347",          # Power buttons subgroup
         "5ca83367-6e45-459f-a27b-476b1d01c936",          # Lid close action
+    ),
+    "pcie_aspm": (
+        "501a4d13-42af-4429-9fd1-a8218c268e20",          # PCI Express subgroup
+        "ee12f906-d277-404b-b6da-e5fa1a576df5",          # Link State Power Management
     ),
     "usb_selective": (
         "2a737441-1930-4402-8d77-b2bebba308a3",          # USB settings subgroup
@@ -90,6 +114,14 @@ POWER_SETTINGS = {
     "perf_decrease_threshold": (
         "54533251-82be-4824-96c1-47b60b740d00",
         "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6",
+    ),
+    "proc_freq_max": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "75b0ae3f-bce0-45a7-8c89-c9611c25e100",          # Maximum processor frequency
+    ),
+    "sys_cooling_pol": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "94d3a615-a899-4ac5-ae2b-e4d8f634367f",          # System cooling policy (0 Passive, 1 Active)
     ),
     "idle_disable": (
         "54533251-82be-4824-96c1-47b60b740d00",
@@ -1053,7 +1085,7 @@ def _create_scheme(op, *args):
     ``("powerscheme", "duplicate", base_guid, name)`` clones the base plan
     and renames the copy (no activation).  ``("powerscheme", "create",
     base_guid, name)`` does the same and then activates the new plan, which is
-    what the MAXimum Premium Power Plan tweak needs: it is built from a base
+    what the Maximum Power Plan tweak needs: it is built from a base
     plan with every deep setting explicitly overridden afterwards.
 
     Re-applying is idempotent: if a plan for ``name`` already exists it is

@@ -26,6 +26,7 @@ TWEAKS = validate_module("performance", [
           "more frequently, reducing input latency in games.",
       changes="Enables global timer resolution requests for lower latency.",
       risk="safe", impact="moderate", recommended="recommended",
+      admin=True,
       tags=["timer", "latency", "input"]),
 
     # ── Game Mode ──────────────────────────────────────────────────
@@ -110,6 +111,7 @@ TWEAKS = validate_module("performance", [
           "This adds CPU overhead with minimal benefit on modern systems.",
       changes="Disables Windows page combining.",
       risk="safe", impact="low", recommended="optional",
+      admin=True,
       tags=["memory", "page", "combining"]),
 
     # ── Fast Startup ───────────────────────────────────────────────
@@ -127,6 +129,7 @@ TWEAKS = validate_module("performance", [
           "gives cleaner boots and avoids potential driver state issues.",
       changes="Disables Windows Fast Startup.",
       risk="safe", impact="low", recommended="optional",
+      admin=True,
       tags=["startup", "boot", "power"]),
 
     # ── Hibernation ────────────────────────────────────────────────
@@ -164,6 +167,7 @@ TWEAKS = validate_module("performance", [
           "network lag and disk I/O spikes during gaming.",
       changes="Configures Windows Update to notify before downloading.",
       risk="safe", impact="moderate", recommended="recommended",
+      admin=True,
       tags=["update", "network", "background"]),
 
     # ── Visual Effects ─────────────────────────────────────────────
@@ -234,6 +238,7 @@ TWEAKS = validate_module("performance", [
           "own memory, reducing CPU overhead and improving frame rates.",
       changes="Enables Hardware-Accelerated GPU Scheduling.",
       risk="safe", impact="moderate", recommended="recommended",
+      admin=True,
       tags=["gpu", "scheduling", "hags"]),
 
     # ── Game DVR ───────────────────────────────────────────────────
@@ -255,6 +260,7 @@ TWEAKS = validate_module("performance", [
           "CPU, GPU, and disk resources. Disabling it improves performance.",
       changes="Disables Windows Game DVR.",
       risk="safe", impact="moderate", recommended="recommended",
+      admin=True,
       tags=["game", "dvr", "recording"]),
 
 
@@ -276,6 +282,7 @@ TWEAKS = validate_module("performance", [
           "operations get CPU attention promptly.",
       changes="Optimizes interrupt priority for lower latency.",
       risk="safe", impact="low", recommended="optional",
+      admin=True,
       tags=["interrupt", "irq", "latency"]),
 
     # ── MSI Mode ───────────────────────────────────────────────────
@@ -407,7 +414,7 @@ TWEAKS = validate_module("performance", [
       actions=[
           ("reg", "HKLM",
            r"SYSTEM\CurrentControlSet\Control\PriorityControl",
-           "Win32PrioritySeparation", 26, "DWORD"),
+           "Win32PrioritySeparation", 38, "DWORD"),
       ],
       revert=[
           ("regdel", "HKLM",
@@ -550,6 +557,7 @@ TWEAKS = validate_module("performance", [
           "adding CPU overhead with minimal benefit on modern gaming systems.",
       changes="Disables Windows page combining via registry.",
       risk="safe", impact="low", recommended="optional",
+      admin=True,
       tags=["memory", "page", "combining"]),
 
     # ── MMCSS Network Throttling ─────────────────────────────────

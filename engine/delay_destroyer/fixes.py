@@ -62,7 +62,7 @@ def apply_fix(fix: Fix) -> Tuple[bool, str]:
         try:
             result = subprocess.run(
                 action.cmd, shell=True, capture_output=True,
-                text=True, timeout=30)
+                text=True, timeout=30, creationflags=0x08000000)
             if result.returncode != 0:
                 return False, f"Command failed: {result.stderr}"
         except subprocess.TimeoutExpired:
@@ -80,7 +80,7 @@ def verify_fix(fix: Fix) -> Tuple[bool, str]:
         try:
             result = subprocess.run(
                 action.verify_cmd, shell=True, capture_output=True,
-                text=True, timeout=15)
+                text=True, timeout=15, creationflags=0x08000000)
             if action.verify_expected.lower() not in result.stdout.lower():
                 return False, f"Verification failed"
         except Exception as e:

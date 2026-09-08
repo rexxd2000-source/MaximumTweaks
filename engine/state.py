@@ -360,14 +360,26 @@ def get_active_profile() -> str | None:
 
 def set_active_profile(name: str) -> None:
     state = _load()
+    if state.get("active_profile") != name:
+        state["active_profile_at"] = time.time()
     state["active_profile"] = name
     _save(state)
     logger.info(f"state: active profile set to {name}")
 
 
+def active_profile_elapsed() -> float | None:
+    """Seconds since the active profile was engaged, or None."""
+    st = _load()
+    if not st.get("active_profile"):
+        return None
+    at = st.get("active_profile_at")
+    return max(0.0, time.time() - float(at)) if at else None
+
+
 def clear_active_profile() -> None:
     state = _load()
     state.pop("active_profile", None)
+    state.pop("active_profile_at", None)
     _save(state)
     logger.info("state: active profile cleared")
 

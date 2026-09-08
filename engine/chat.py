@@ -28,6 +28,9 @@ import httpx
 
 from config.app_config import (
     BOT_NAME,
+    CEREBRAS_API_KEY,
+    CEREBRAS_BASE_URL,
+    CEREBRAS_MODEL,
     GEMINI_API_KEY,
     GEMINI_BASE_URL,
     GEMINI_MODEL,
@@ -362,8 +365,9 @@ def build_system_prompt(profile: dict) -> str:
 
 
 def llm_configured() -> bool:
-    """True when at least one AI provider (Gemini or Groq) has a key set."""
-    return bool((GROQ_API_KEY or "").strip()
+    """True when at least one AI provider has a key set."""
+    return bool((CEREBRAS_API_KEY or "").strip()
+                or (GROQ_API_KEY or "").strip()
                 or (GEMINI_API_KEY or "").strip())
 
 
@@ -525,6 +529,16 @@ def _chat(base_url: str, api_key: str, model: str,
         round_num += 1
     return {"text": "Maximum hit the tool-call limit \u2014 try a simpler question.",
             "tools": tools_used}
+
+
+def respond_with_cerebras(question: str, history: list[dict],
+                          profile: dict | None = None,
+                          max_tool_rounds: int = 6) -> dict:
+    """Run one turn through Cerebras (OpenAI-compatible, huge free tier)."""
+    return _chat(
+        CEREBRAS_BASE_URL or "https://api.cerebras.ai/v1",
+        CEREBRAS_API_KEY, CEREBRAS_MODEL, question, history, profile,
+        max_tool_rounds)
 
 
 def respond_with_gemini(question: str, history: list[dict],
@@ -697,6 +711,8 @@ class ChatAssistant:
             return {"text": "Ask me anything about your PC.", "tools": []}
         if llm_configured():
             providers = []
+            if (CEREBRAS_API_KEY or "").strip():
+                providers.append(("cerebras", respond_with_cerebras))
             if (GEMINI_API_KEY or "").strip():
                 providers.append(("gemini", respond_with_gemini))
             if (GROQ_API_KEY or "").strip():

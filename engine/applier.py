@@ -325,16 +325,13 @@ def _verify_revert(tid: str, tweak: dict, pre_backups: dict) -> bool | None:
 
 def _verify_reg_backup(entry: dict) -> bool | None:
     """Check if a registry value now matches its backup."""
-    hive, path, name, expected_data = (
-        entry["hive"], entry["path"], entry["name"], entry["data"])
+    hive, path, name = entry["hive"], entry["path"], entry["name"]
     from . import state_checker
-    # If backup was "missing", verify value is absent
-    if entry.get("missing"):
-        current = state_checker._reg_data(hive, path, name)
-        if current is not None:  # value exists — bad
-            return False
-        return True  # value absent — good
-    # If backup existed, verify value matches
+    # Value was absent before the tweak ran -> verify it is absent again.
+    if not entry.get("existed", True) or entry.get("missing"):
+        return state_checker._reg_data(hive, path, name) is None
+    # Value existed before -> verify it now matches the backup.
+    expected_data = entry["data"]
     current = state_checker._reg_data(hive, path, name)
     if current is None:
         return False  # value missing — bad

@@ -6,11 +6,16 @@ overlap with Performance, CPU, Power, Gaming, NVIDIA, AMD, or Intel modules.
 """
 from __future__ import annotations
 
-from ._base import make_T, validate_module
+from ._base import make_T, validate_module, plan_guid
 
 T = make_T("FPS Boost", win_default="10,11")
 
 CATEGORY = "FPS Boost"
+
+# Deterministic GUID the Maximum Power Plan is created under (shared with the
+# Power Plans module so both tweaks target the same plan).
+MAX_PLAN_NAME = "Maximum Power Plan"
+MAX_PLAN_GUID = plan_guid(MAX_PLAN_NAME)
 
 WARNING_VBS = (
     "This disables Virtualization-Based Security which is a Windows security "
@@ -64,29 +69,6 @@ TWEAKS = validate_module("fps_boost", [
         admin=True, confirm=True, warn=WARNING_VBS,
         win="10,11",
         tags=["vbs", "hvci", "hypervisor", "security", "fps"],
-    ),
-
-    # ── Resizable BAR ───────────────────────────────────────────────
-    T(
-        "fpsb-002", "Enable Resizable BAR (ReBAR)",
-        "Enables Resizable BAR so the CPU can access the full GPU VRAM in one transaction.",
-        actions=[
-            ("reg", "HKLM",
-             r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-             "HwSchMode", 2, "DWORD"),
-        ],
-        revert=[
-            ("regdel", "HKLM",
-             r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
-             "HwSchMode"),
-        ],
-        why="ReBAR lets the CPU map the entire GPU framebuffer instead of "
-            "256 MB chunks, reducing VRAM access stalls and improving FPS "
-            "by 2-8% in modern titles with heavy texture streaming.",
-        changes="Enables hardware-accelerated GPU scheduling (required for ReBAR).",
-        risk="safe", impact="high", recommended="recommended",
-        admin=True,
-        tags=["rebar", "resizeable", "bar", "vram", "gpu"],
     ),
 
     # ── GPU Power Management ────────────────────────────────────────
@@ -307,28 +289,72 @@ TWEAKS = validate_module("fps_boost", [
         tags=["activity", "history", "telemetry", "background"],
     ),
 
-    # ── Ultimate Performance Power Plan ──────────────────────────────
+    # ── Maximum Power Plan ──────────────────────────────────────────
     T(
-        "fpsb-011", "Activate Ultimate Performance Power Plan",
-        "Creates and activates the hidden Ultimate Performance power plan.",
+        "fpsb-011", "Activate Maximum Power Plan",
+        "Creates, fully configures and activates the Maximum Power Plan — a "
+        "maximum-performance gaming power plan with the processor locked to "
+        "100% and minimal power-saving delays.",
         actions=[
+            # Create the plan from the High Performance base, then apply the
+            # full Reaper-spec profile (same as the Power Plans pp-013 tweak).
             ("powerscheme", "create",
-             "e9a42b02-d5df-448d-aa00-03f14749eb61",
-             "Ultimate Performance"),
+             "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
+             MAX_PLAN_NAME),
+
+            ("power", "processor_min", 100, "AC"),
+            ("power", "processor_min", 100, "DC"),
+            ("power", "processor_max", 100, "AC"),
+            ("power", "processor_max", 100, "DC"),
+
+            ("power", "perf_increase_threshold", 10, "AC"),
+            ("power", "perf_increase_threshold", 30, "DC"),
+            ("power", "perf_decrease_threshold", 10, "AC"),
+            ("power", "perf_decrease_threshold", 10, "DC"),
+
+            ("power", "proc_freq_max", 0, "AC"),
+            ("power", "proc_freq_max", 0, "DC"),
+
+            ("power", "sys_cooling_pol", 1, "AC"),
+            ("power", "sys_cooling_pol", 0, "DC"),
+
+            ("power", "adaptive_brightness", 0, "AC"),
+            ("power", "adaptive_brightness", 0, "DC"),
+            ("power", "display_brightness", 100, "AC"),
+            ("power", "display_brightness", 75, "DC"),
+            ("power", "display_brightness_dim", 50, "AC"),
+            ("power", "display_brightness_dim", 50, "DC"),
+            ("power", "display_timeout", 0, "AC"),
+            ("power", "display_timeout", 0, "DC"),
+            ("power", "hdd_timeout", 0, "AC"),
+            ("power", "hdd_timeout", 0, "DC"),
+            ("power", "pcie_aspm", 0, "AC"),
+            ("power", "pcie_aspm", 0, "DC"),
+
+            ("power", "away_mode", 1, "AC"),
+            ("power", "away_mode", 0, "DC"),
+            ("power", "sleep_timeout", 0, "AC"),
+            ("power", "sleep_timeout", 600, "DC"),
+            ("power", "hybrid_sleep", 0, "AC"),
+            ("power", "hybrid_sleep", 0, "DC"),
+            ("power", "hibernate_timeout", 0, "AC"),
+            ("power", "hibernate_timeout", 0, "DC"),
+            ("power", "wake_timers", 0, "AC"),
+            ("power", "wake_timers", 0, "DC"),
         ],
         revert=[
             ("powerscheme", "setactive",
-             "381b4222-f694-41df-9d63-86d0b2b0e55f"),
-            ("powerscheme", "delete",
-             "e9a42b02-d5df-448d-aa00-03f14749eb61"),
+             "381b4222-f694-41f0-9685-ff5bb260df2e"),
+            ("powerscheme", "delete", MAX_PLAN_GUID),
         ],
-        why="The Ultimate Performance plan minimizes micro-latencies by "
-            "removing power-saving delays.  It keeps CPUs at high clock "
-            "speeds and disables PCI Express link state power management.",
-        changes="Activates the Ultimate Performance power plan.",
+        why="The Maximum Power Plan locks processors to 100%, disables PCI "
+            "Express link state power management and keeps systems from idling "
+            "to sleep on AC, minimizing micro-latencies and power-saving "
+            "delays for maximum-performance gaming.",
+        changes="Creates, configures and activates the Maximum Power Plan.",
         risk="safe", impact="moderate", recommended="recommended",
         admin=True,
-        tags=["power", "plan", "ultimate", "clock", "latency"],
+        tags=["power", "plan", "maximum", "clock", "latency"],
     ),
 
     # ── Spectre/Meltdown Mitigations ─────────────────────────────────
@@ -421,6 +447,7 @@ TWEAKS = validate_module("fps_boost", [
             "not recording.",
         changes="Disables Game DVR and background recording.",
         risk="safe", impact="moderate", recommended="recommended",
+        admin=True,
         tags=["game", "dvr", "recording", "background"],
     ),
 
@@ -511,6 +538,7 @@ TWEAKS = validate_module("fps_boost", [
             "in supported games.",
         changes="Enables Hardware-Accelerated GPU Scheduling.",
         risk="safe", impact="moderate", recommended="recommended",
+        admin=True,
         tags=["hags", "gpu", "scheduling", "directx"],
     ),
 
