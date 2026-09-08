@@ -1,4 +1,4 @@
-﻿"""Optimize page: one-click bundles of curated tweaks."""
+﻿"""Optimize page: one-click presets of curated tweaks."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from config.app_config import THEME as T
 from database import BY_ID
 from engine import bundles as bundles_mod
+from ui.categories import DB_AFFECTS
 from ui.widgets import ProgressDialog, risk_badge
 
 STATE_COLORS = {
@@ -63,7 +64,7 @@ class BundleCard(QFrame):
         outer.addWidget(self.preview_lbl)
 
         foot = QHBoxLayout()
-        btn_apply = QPushButton("Apply Bundle")
+        btn_apply = QPushButton("Apply Preset")
         btn_apply.setObjectName("Primary")
         btn_apply.clicked.connect(self._confirm_and_apply)
         btn_detail = QPushButton("Preview Tweaks")
@@ -131,7 +132,7 @@ class BundleCard(QFrame):
         restore_point.setChecked(self.bundle["risk"] in ("moderate", "advanced"))
 
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"Apply {self.bundle['name']} bundle")
+        dlg.setWindowTitle(f"Apply {self.bundle['name']} preset")
         dlg.resize(560, 420)
         lay = QVBoxLayout(dlg)
         head = QLabel(
@@ -143,7 +144,8 @@ class BundleCard(QFrame):
         box.setReadOnly(True)
         for t in applyable:
             mark = "ADMIN " if t.get("admin") else ""
-            box.appendPlainText(f"  {t['id']}  [{mark}{t['category']}]  {t['name']}")
+            cat = DB_AFFECTS.get(t["category"], t["category"])
+            box.appendPlainText(f"  {t['id']}  [{mark}{cat}]  {t['name']}")
         if skipped:
             box.appendPlainText("")
             box.appendPlainText("Skipped:")
@@ -209,7 +211,7 @@ class OptimizePage(QWidget):
         title.setObjectName("PageTitle")
         root.addWidget(title)
         sub = QLabel(
-            "Curated bundles of compatible tweaks. Only tweaks that work on this "
+            "Curated presets of compatible tweaks. Only tweaks that work on this "
             "hardware are applied — everything else is skipped automatically. "
             "Run Hardware Detection first for full results.")
         sub.setObjectName("PageSub")

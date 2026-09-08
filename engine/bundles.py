@@ -1,7 +1,7 @@
-"""One-click optimize bundles.
+"""One-click optimize presets.
 
-Each bundle references tweak IDs from the database. Unknown IDs are dropped
-with a warning so a stale bundle can never crash the app.
+Each preset references tweak IDs from the database. Unknown IDs are dropped
+with a warning so a stale preset can never crash the app.
 """
 from __future__ import annotations
 

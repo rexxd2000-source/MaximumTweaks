@@ -68,7 +68,7 @@ HEADER_TITLES = {
     "cpu": "CPU Tweaks",
     "gpu": "GPU Optimizations",
     "ram": "RAM Tweaks",
-    "input": "Aim / Input Tweaks",
+    "input": "Pointer & Input Tweaks",
     "mouse": "Mouse Tweaks",
     "keyboard": "Keyboard Tweaks",
     "network": "Network Tweaks",
