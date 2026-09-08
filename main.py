@@ -12,6 +12,7 @@ CLI commands:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 
@@ -27,6 +28,7 @@ def run_gui():
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
+    from config.app_config import APP_VERSION
     from engine import auth_server, discord_auth
     from ui import discord as discord_ui
     from ui.splash import CinematicSplash
@@ -56,30 +58,69 @@ def run_gui():
 
     holder: dict = {"window": None}
 
-    # Offer an update during the loading screen: fetch in the background and,
-    # if a newer build exists, pop a modal "new version" dialog over the splash.
-    _boot_ui: dict = {}
+    # Inline update check as a loading step (no popup): the splash parks its
+    # progress until the check resolves, and if a newer build exists the user
+    # decides on the splash itself before the main app launches.
+    _update: dict = {}
 
-    def _on_boot_update(payload):
-        info = payload.get("info")
-        if not info:
-            return
-        if holder.get("window") is not None:
-            return  # main window already up; its toast covers this case
-        from ui.updater_dialog import UpdateDialog
-        dlg = UpdateDialog(parent=splash, check_on_open=False)
-        dlg.set_info(info)
-        _boot_ui["dlg"] = dlg  # keep a ref so the nested loop stays alive
-        dlg.exec()
+    def _release_into_app():
+        _update.clear()
+        splash.update_ok()
 
-    def _start_boot_update():
+    def _start_update_check():
         from ui.updater_dialog import FetchWorker
+        splash.update_checking()
         worker = FetchWorker(splash)
-        worker.done.connect(_on_boot_update)
-        _boot_ui["worker"] = worker  # keep a strong ref until finished
+        worker.done.connect(_on_update_checked)
+        _update["worker"] = worker  # keep a strong ref until finished
         worker.start()
 
-    _start_boot_update()
+    def _on_update_checked(payload):
+        info = payload.get("info")
+        error = payload.get("error")
+        if holder.get("window") is not None:
+            return  # already entering the app; nothing left to gate
+        if error:
+            splash.update_error(error)
+            return
+        if info is None:
+            _release_into_app()
+            return
+        _update["info"] = info
+        splash.update_available(APP_VERSION, info["version"],
+                                info.get("notes") or "")
+
+    def _start_update_download():
+        from ui.updater_dialog import DownloadWorker
+        info = _update.get("info")
+        if not info:
+            return
+        worker = DownloadWorker(info["url"], splash)
+        worker.progress.connect(splash.update_progress)
+        worker.done.connect(_on_update_downloaded)
+        _update["dl"] = worker  # keep a strong ref until finished
+        worker.start()
+
+    def _on_update_downloaded(new_exe, error):
+        if error or new_exe is None:
+            splash.update_error(error or "Download failed.")
+            return
+        from engine import updater
+        splash.set_installing()
+        try:
+            updater.install_and_restart(new_exe)
+        except updater.UpdaterError as exc:
+            splash.update_error(str(exc))
+            return
+        # The old build terminates here; the stub swaps in the new exe and
+        # relaunches it. The restarted app runs the same check, finds no newer
+        # version, and proceeds straight into the main window — no loop.
+        os._exit(0)
+
+    splash.install_clicked.connect(_start_update_download)
+    splash.skip_clicked.connect(_release_into_app)
+    splash.retry_clicked.connect(_start_update_check)
+    _start_update_check()
 
     def build_window():
         if holder["window"] is None:

@@ -11,6 +11,13 @@ API:
     splash.start()
     splash.build_now.connect(build_main_window)   # ~80%
     splash.finished.connect(show_window_and_fade) # 100%
+
+Update flow (inline loading step, no popup):
+    splash.update_checking()                      # hold progress at HOLD_PCT
+    on check result: update_ok() or update_available(cur, new, notes)
+    while downloading: update_progress(frac); then set_installing()
+    on failure: update_error(msg)
+    install_clicked / skip_clicked / retry_clicked report the user's choice.
 """
 from __future__ import annotations
 
@@ -35,7 +42,14 @@ from PySide6.QtGui import (
     QPolygonF,
     QRadialGradient,
 )
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from config.app_config import APP_VERSION
 
@@ -52,8 +66,11 @@ STATUS_SEQ = [
     "ARMING SAFETY NET",
     "INITIALIZING TELEMETRY",
     "CALIBRATING HARDWARE",
+    "CHECKING FOR UPDATES",
     "SYSTEM READY",
 ]
+
+HOLD_PCT = 78  # progress plateau while the update check is unresolved
 
 # Rapid hardware/system detection toasts shown near the center of the stage.
 # Each entry: (prefix, base text, kind). `kind` lets real detected values fill
@@ -78,6 +95,195 @@ def _ease_in_out(t: float) -> float:
 
 def _clamp01(v: float) -> float:
     return 0.0 if v < 0 else 1.0 if v > 1 else v
+
+
+def _monotonic_ms() -> float:
+    import time as _time
+    return _time.monotonic() * 1000.0
+
+
+_UPDATE_QSS = """
+#UpdPanel {
+    background-color: rgba(10, 16, 23, 240);
+    border: 1px solid #1D2B37;
+    border-radius: 14px;
+}
+#UpdTitle {
+    color: #00F2FE;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    background: transparent;
+    border: none;
+}
+#UpdMsg {
+    color: #AAB8C3;
+    font-size: 12px;
+    background: transparent;
+    border: none;
+}
+#UpdBar {
+    background-color: #151D25;
+    border: none;
+    border-radius: 3px;
+    min-height: 6px;
+    max-height: 6px;
+}
+#UpdBar::chunk {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
+                                      stop: 0 #00BEEB, stop: 1 #00F2FE);
+    border-radius: 3px;
+}
+#UpdPrimary {
+    background-color: #00C2EE;
+    color: #041018;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 20px;
+    font-size: 12px;
+    font-weight: 800;
+}
+#UpdPrimary:hover {
+    background-color: #2FD7FF;
+}
+#UpdPrimary:disabled {
+    background-color: #17303C;
+    color: #4C6B7A;
+}
+#UpdGhost {
+    background-color: transparent;
+    color: #8FA6B8;
+    border: 1px solid #2A3A46;
+    border-radius: 8px;
+    padding: 8px 20px;
+    font-size: 12px;
+}
+#UpdGhost:hover {
+    color: #DCE8F0;
+    border-color: #3C5262;
+}
+#UpdGhost:disabled {
+    color: #3E4F5C;
+    border-color: #1E2A33;
+}
+"""
+
+
+class _UpdatePanel(QWidget):
+    """Inline update card layered over the splash stage.
+
+    Modes:
+      info         — "Update available vX → vY" with Install / Skip
+      downloading  — progress bar, actions hidden
+      installing   — full progress bar, actions disabled
+      error        — message + Retry / Skip
+    """
+
+    install = Signal()
+    skip = Signal()
+    retry = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("UpdPanel")
+        self.setStyleSheet(_UPDATE_QSS)
+        self._mode = "info"
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 18, 24, 16)
+        lay.setSpacing(10)
+
+        self._title = QLabel("UPDATE AVAILABLE")
+        self._title.setObjectName("UpdTitle")
+        self._title.setAlignment(Qt.AlignCenter)
+
+        self._msg = QLabel("")
+        self._msg.setObjectName("UpdMsg")
+        self._msg.setAlignment(Qt.AlignCenter)
+        self._msg.setWordWrap(True)
+
+        self._bar = QProgressBar()
+        self._bar.setObjectName("UpdBar")
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
+        self._bar.setTextVisible(False)
+
+        self._primary = QPushButton("Install Update")
+        self._primary.setObjectName("UpdPrimary")
+        self._primary.setCursor(Qt.PointingHandCursor)
+        self._skip = QPushButton("Skip")
+        self._skip.setObjectName("UpdGhost")
+        self._skip.setCursor(Qt.PointingHandCursor)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addStretch()
+        row.addWidget(self._skip)
+        row.addWidget(self._primary)
+        row.addStretch()
+
+        lay.addWidget(self._title)
+        lay.addWidget(self._msg)
+        lay.addWidget(self._bar)
+        lay.addLayout(row)
+
+        self._primary.clicked.connect(self._on_primary)
+        self._skip.clicked.connect(self.skip)
+
+    # ---------------- modes ----------------
+
+    def show_info(self, current: str, new: str, notes: str = ""):
+        self._mode = "info"
+        self._title.setText("UPDATE AVAILABLE")
+        text = f"Rex Tweaks v{current} \u2192 v{new}"
+        if notes:
+            text += f"\n\n{notes[:320].strip()}"
+        self._msg.setText(text)
+        self._bar.hide()
+        self._primary.show()
+        self._primary.setEnabled(True)
+        self._primary.setText("Install Update")
+        self._skip.show()
+        self._skip.setEnabled(True)
+        self._skip.setText("Skip")
+
+    def show_download(self, frac: float):
+        self._mode = "downloading"
+        self._title.setText("DOWNLOADING UPDATE")
+        self._msg.setText("Downloading the new build\u2026")
+        self._bar.show()
+        self._bar.setValue(int(round(_clamp01(frac) * 100)))
+        self._primary.hide()
+        self._skip.setEnabled(False)
+        self._skip.setText("Please wait\u2026")
+
+    def show_installing(self):
+        self._mode = "installing"
+        self._title.setText("INSTALLING UPDATE")
+        self._msg.setText("Applying the update \u2014 the app will restart\u2026")
+        self._bar.show()
+        self._bar.setValue(100)
+        self._primary.hide()
+        self._skip.setEnabled(False)
+        self._skip.setText("Please wait\u2026")
+
+    def show_error(self, message: str):
+        self._mode = "error"
+        self._title.setText("UPDATE ERROR")
+        self._msg.setText(message or "Could not check for updates.")
+        self._bar.hide()
+        self._primary.show()
+        self._primary.setEnabled(True)
+        self._primary.setText("Retry")
+        self._skip.show()
+        self._skip.setEnabled(True)
+        self._skip.setText("Skip")
+
+    def _on_primary(self):
+        if self._mode == "info":
+            self.install.emit()
+        elif self._mode == "error":
+            self.retry.emit()
 
 
 class _ProbeThread(QThread):
@@ -135,10 +341,21 @@ class _ProbeThread(QThread):
 
 
 class CinematicSplash(QWidget):
-    """Frameless boot screen. Emits build_now ~80% in, finished at 100%."""
+    """Frameless boot screen. Emits build_now ~80% in, finished at 100%.
+
+    The update check runs as an inline loading step: progress holds at
+    HOLD_PCT until the check resolves. If a newer build exists the splash
+    shows the ``_UpdatePanel`` (install / skip) and ``finished`` is held until
+    the user decides. drive via update_checking() / update_ok() /
+    update_available() / update_progress() / set_installing() /
+    update_error().
+    """
 
     build_now = Signal()
     finished = Signal()
+    install_clicked = Signal()
+    skip_clicked = Signal()
+    retry_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -154,6 +371,18 @@ class CinematicSplash(QWidget):
         self._timer.timeout.connect(self._tick)
         self._toast_values: dict = {}
         self._probe: "_ProbeThread" | None = None
+
+        # Update flow state. "held" parks the progress bar and blocks
+        # `finished` while a network decision is pending on the splash.
+        self._update_state = "idle"
+        self._held = False
+        self._ok_hold_until: float | None = None
+        self._download_frac = 0.0
+        self._panel = _UpdatePanel(self)
+        self._panel.hide()
+        self._panel.install.connect(self.install_clicked)
+        self._panel.skip.connect(self.skip_clicked)
+        self._panel.retry.connect(self.retry_clicked)
 
     # ---------------- lifecycle ----------------
 
@@ -180,6 +409,72 @@ class CinematicSplash(QWidget):
         self._toast_values.update(values)
         self.update()
 
+    # ---------------- inline update flow ----------------
+
+    def update_checking(self):
+        """Announce the update check loading step and park the bar."""
+        self._update_state = "checking"
+        self._held = True
+        self._ok_hold_until = None
+        self._panel.hide()
+        self.update()
+
+    def update_ok(self):
+        """No update (or user skipped): mark done and continue into the app."""
+        self._update_state = "ok"
+        self._held = False
+        self._ok_hold_until = _monotonic_ms() + 650.0
+        self._panel.hide()
+        self.update()
+
+    def update_available(self, current: str, new: str, notes: str = ""):
+        """A newer build exists — show the inline install card and wait."""
+        self._update_state = "available"
+        self._panel.show_info(current, new, notes)
+        self._show_panel()
+
+    def update_progress(self, frac: float):
+        """Download progress, 0..1."""
+        self._update_state = "downloading"
+        self._download_frac = _clamp01(frac)
+        self._panel.show_download(self._download_frac)
+        self._show_panel()
+        self.update()
+
+    def set_installing(self):
+        """The staged exe is being swapped in; hold until relaunch."""
+        self._update_state = "installing"
+        self._download_frac = 1.0
+        self._panel.show_installing()
+        self._show_panel()
+        self.update()
+
+    def update_error(self, message: str):
+        """Update check/download failed — show retry on the splash."""
+        self._update_state = "error"
+        self._panel.show_error(message)
+        self._show_panel()
+        self.update()
+
+    def _show_panel(self):
+        self._panel.show()
+        self._panel.raise_()
+        self._position_panel()
+        self.update()
+
+    def _position_panel(self):
+        pw = 430
+        self._panel.adjustSize()
+        ph = max(self._panel.sizeHint().height(), 128)
+        x = (self.width() - pw) // 2
+        y = max(24, int(self.height() * 0.58) - ph // 2)
+        self._panel.setGeometry(x, y, pw, ph)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._panel is not None and self._panel.isVisible():
+            self._position_panel()
+
     def fade_out(self, duration_ms: int = 700, on_done=None):
         """Cross-fade the splash away; the window below shows through."""
         anim = QPropertyAnimation(self, b"windowOpacity", self)
@@ -205,7 +500,10 @@ class CinematicSplash(QWidget):
             start_offset = 0.0 if self._t0 is None else self._dur_ms
             self._t0 = now - start_offset
         t = now - self._t0
-        if t >= self._dur_ms and not self._done_emitted:
+        if self._ok_hold_until is not None and now >= self._ok_hold_until:
+            self._ok_hold_until = None
+        if t >= self._dur_ms and not self._done_emitted \
+                and not self._held and self._ok_hold_until is None:
             self._done_emitted = True
             self.finished.emit()
         if t >= self._dur_ms * 0.80 and not self._build_emitted:
@@ -228,6 +526,14 @@ class CinematicSplash(QWidget):
         t = min(t, self._dur_ms)
         u = _clamp01(t / self._dur_ms)
         pct = int(round(_ease_out_cubic(u) * 100))
+
+        # Update flow overrides the natural progress.
+        if self._update_state == "downloading":
+            pct = int(round(self._download_frac * 100))
+        elif self._update_state == "installing":
+            pct = 100
+        elif self._held:
+            pct = max(pct, HOLD_PCT)
 
         self._draw_stage(p, w, h, t)
         self._draw_aurora(p, w, h, t)
@@ -383,6 +689,8 @@ class CinematicSplash(QWidget):
 
     def _draw_toasts(self, p: QPainter, w: int, h: int, t: float):
         """Rapid sequential hardware/system toasts, near-center, fade out fast."""
+        if self._panel is not None and self._panel.isVisible():
+            return
         if t < 2200:
             return
         cx = w / 2
@@ -471,11 +779,8 @@ class CinematicSplash(QWidget):
         p.drawText(QRectF(cx + bar_w / 2 + 14, y - 10, 42, 20),
                    Qt.AlignLeft | Qt.AlignVCenter, f"{pct}%")
 
-        # cycling status line above the bar — stretched to fill the full boot
-        hold = (self._dur_ms - 1450) / len(STATUS_SEQ)
-        idx = int((t - 1450) / hold)
-        idx = max(0, min(len(STATUS_SEQ) - 1, idx))
-        shown = STATUS_SEQ[idx]
+        # status line above the bar: fixed while the update flow drives it,
+        # otherwise cycling through the boot sequence
         cy = y - 26
         fa = QFont(self.font())
         fa.setPixelSize(11)
@@ -483,6 +788,33 @@ class CinematicSplash(QWidget):
         fa.setLetterSpacing(QFont.AbsoluteSpacing, 2)
         p.setFont(fa)
         fm = p.fontMetrics()
+
+        st = self._update_state
+        if st in ("checking", "ok", "downloading", "installing", "error"):
+            shown = {
+                "checking": "CHECKING FOR UPDATES",
+                "ok": "UPDATES OK",
+                "downloading": "DOWNLOADING UPDATE",
+                "installing": "INSTALLING UPDATE",
+                "error": "UPDATE ERROR",
+            }[st]
+            if st == "error":
+                col = QColor(255, 118, 118)
+            elif st == "checking":
+                col = QColor(130, 155, 172)
+            else:
+                col = QColor(0, 242, 254)
+            col.setAlpha(235)
+            tw = fm.horizontalAdvance(shown)
+            p.setPen(col)
+            p.drawText(QRectF(cx - tw / 2, cy - 8, tw, 16), Qt.AlignCenter,
+                       shown)
+            return
+
+        hold = (self._dur_ms - 1450) / len(STATUS_SEQ)
+        idx = int((t - 1450) / hold)
+        idx = max(0, min(len(STATUS_SEQ) - 1, idx))
+        shown = STATUS_SEQ[idx]
         tw = fm.horizontalAdvance(shown)
         stage = ((t - 1450) / hold) % 1.0
         fad = 0.35 + 0.65 * _clamp01(stage)
