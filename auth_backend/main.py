@@ -619,3 +619,14 @@ def admin_unbind(payload: KeyRequest, _: None = Depends(_admin_guard)):
     if rec is None:
         raise _err("invalid_license", "Unknown license key.", 404)
     return {"ok": True, "license": _session_payload(rec)}
+
+
+@app.delete("/admin/keys/{key}")
+def admin_delete(key: str, _: None = Depends(_admin_guard)):
+    """Permanently delete a license row. Admin-ops only (removes test keys,
+    stale rows, etc.). Not recoverable."""
+    rec = _DB.get(key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    deleted = _DB.delete(key)
+    return {"ok": True, "deleted": deleted}

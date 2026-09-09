@@ -11,7 +11,7 @@ ICON = ROOT / "assets" / "app.ico"
 block_cipher = None
 
 a = Analysis(
-    [str(ROOT / "admin_desktop" / "main.py")],
+    [str(ROOT / "admin_desktop" / "__main__.py")],
     pathex=[str(ROOT)],
     binaries=[],
     datas=[(str(ICON), ".")],

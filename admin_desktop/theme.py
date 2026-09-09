@@ -128,7 +128,7 @@ QLabel {{
     border: 1px solid {T["border"]};
     border-radius: 14px;
 }}
-#StatCard#stat-active {{
+#StatCard[active="true"] {{
     border: 1px solid {accent_40};
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 {accent_12}, stop:1 {T["card_alt"]});
@@ -242,6 +242,26 @@ QPushButton#Chip:hover:enabled {{
     border-color: {accent_40};
 }}
 
+/* ---------------- status filter buttons ---------------- */
+QPushButton#Filter {{
+    background-color: transparent;
+    color: {T["text_dim"]};
+    border: 1px solid {T["border"]};
+    border-radius: 100px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 700;
+}}
+QPushButton#Filter:hover:enabled {{
+    border-color: {accent_40};
+    color: {T["text"]};
+}}
+QPushButton#Filter[checked="true"] {{
+    background-color: {accent_30};
+    border-color: {T["accent"]};
+    color: #FFFFFF;
+}}
+
 /* ---------------- tables ---------------- */
 QTableWidget {{
     background-color: {T["card"]};
@@ -251,7 +271,7 @@ QTableWidget {{
     gridline-color: {T["border_soft"]};
 }}
 QTableWidget::item {{
-    padding: 6px 8px;
+    padding: 4px 6px;
     color: {T["text_dim"]};
 }}
 QTableWidget::item:selected {{

@@ -429,6 +429,30 @@ def test_admin_me_accepts_cookie():
     assert resp.json()["logged_in"] is True
 
 
+def test_admin_delete_key():
+    resp = client.post("/admin/generate",
+                       json={"count": 1, "prefix": "DEL", "note": "delete test"},
+                       headers=_admin_headers())
+    key = resp.json()["keys"][0]
+    assert db.get(key) is not None
+
+    # not found -> 404
+    resp = client.delete("/admin/keys/NOPE-NOPE-NOPE-NOPE",
+                         headers=_admin_headers())
+    assert resp.status_code == 404
+
+    # happy path -> gone from the store
+    resp = client.delete(f"/admin/keys/{key}", headers=_admin_headers())
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+    assert resp.json()["deleted"] == 1
+    assert db.get(key) is None
+
+    # admin endpoint refuses unauthenticated calls
+    from starlette.testclient import TestClient as _TC
+    assert _TC(backend.app).delete(f"/admin/keys/{key}").status_code == 401
+
+
 def test_admin_generate_with_prefix_and_duration():
     resp = client.post("/admin/generate",
                        json={"count": 2, "duration": "1m", "prefix": "REX",

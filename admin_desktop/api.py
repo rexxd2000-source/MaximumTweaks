@@ -121,6 +121,10 @@ class AdminClient:
     def unbind(self, key: str) -> dict:
         return self._request("POST", "/admin/unbind", {"key": key})
 
+    def delete(self, key: str) -> dict:
+        """Permanently delete a license row. Not recoverable."""
+        return self._request("DELETE", "/admin/keys/" + urllib.parse.quote(key))
+
 
 def mask_device(device_id: str | None) -> str:
     if not device_id:

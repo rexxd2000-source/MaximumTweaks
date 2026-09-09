@@ -300,6 +300,18 @@ class LicenseDB:
             self._run_with_retry(_fn)
         return self.get(license_key)
 
+    def delete(self, license_key: str) -> int:
+        """Permanently remove a key row. Admin-ops only. Returns rows deleted."""
+        def _fn(conn):
+            cur = self._exec(
+                conn,
+                "DELETE FROM licenses WHERE license_key = ?",
+                (license_key,))
+            return cur.rowcount
+        with self._lock:
+            n = self._run_with_retry(_fn)
+        return n if n is not None else 0
+
     def list_all(self, status: str | None = None) -> list[dict]:
         def _fn(conn):
             if status:

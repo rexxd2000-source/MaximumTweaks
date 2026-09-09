@@ -1,11 +1,10 @@
 """Maximum Tweaks Admin - native red/black desktop panel for license keys.
 
-Sign in with the operator ADMIN_TOKEN; the app exchanges it for the server's
+Sign in with the operator token; the app exchanges it for the server's
 HttpOnly session cookie and then manages licenses entirely through the hosted
 backend (stats / generate / search / revoke / unrevoke / unbind).
 
 Run from source:   python -m admin_desktop.main        (repo root)
-Run from folder:   python main.py
 Built EXE:         build.ps1  ->  dist\\MaximumTweaksAdmin.exe
 """
 from __future__ import annotations
@@ -13,16 +12,16 @@ from __future__ import annotations
 import sys
 from typing import Callable
 
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, QSettings, Signal
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
+    QApplication, QComboBox, QDialog, QFrame, QHBoxLayout,
+    QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
     QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout,
     QWidget, QStatusBar, QAbstractItemView, QHeaderView,
 )
 
-from .api import AdminClient, ApiError, mask_device
-from .theme import RED_BLACK, BASE_RED_QSS, repolish
+from .api import AdminClient, ApiError
+from .theme import RED_BLACK, BASE_RED_QSS
 
 APP_NAME = "Maximum Tweaks Admin"
 DEFAULT_URL = "https://maximumtweaks.onrender.com"
@@ -94,65 +93,46 @@ class TaskHost(QObject):
 class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"{APP_NAME} - Sign in")
+        self.setWindowTitle(APP_NAME)
         self.setModal(True)
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(400)
 
-        settings = QSettings("MaximumTweaks", "Admin")
-        self.url = QLineEdit(settings.value("server_url", DEFAULT_URL))
         self.token = QLineEdit()
         self.token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token.setPlaceholderText("ADMIN_TOKEN")
-        self.remember = QCheckBox("Remember this server URL on this PC")
-
-        self.done_label = QLabel("Sign in with your operator token to manage licenses.")
-        self.done_label.setObjectName("CardSub")
-        self.done_label.setWordWrap(True)
+        self.token.setPlaceholderText("Operator token")
+        self.hint = QLabel("Sign in to manage license keys.")
+        self.hint.setObjectName("CardSub")
 
         sign_btn = QPushButton("Sign in")
         sign_btn.setObjectName("Primary")
         sign_btn.clicked.connect(self.start_login)
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("Ghost")
-        cancel_btn.clicked.connect(self.reject)
+        self.sign_btn = sign_btn
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(26, 24, 26, 24)
-        layout.setSpacing(12)
-        title = QLabel(APP_NAME)
-        title.setObjectName("LoginTitle")
+        layout.setSpacing(14)
+        title = QLabel("MAXIMUM TWEAKS")
         title.setStyleSheet(
-            f"font-size:20px;font-weight:800;color:{T['text']};letter-spacing:0.5px;")
+            f"font-size:20px;font-weight:800;color:{T['text']};letter-spacing:1px;")
         layout.addWidget(title)
-        layout.addWidget(self.done_label)
+        layout.addWidget(self.hint)
         layout.addSpacing(6)
-        layout.addWidget(QLabel("License server"))
-        layout.addWidget(self.url)
-        layout.addWidget(QLabel("Admin token"))
         layout.addWidget(self.token)
-        layout.addWidget(self.remember)
-        layout.addSpacing(8)
-        btns = QHBoxLayout()
-        btns.addWidget(cancel_btn)
-        btns.addStretch(1)
-        btns.addWidget(sign_btn)
-        layout.addLayout(btns)
+        layout.addSpacing(6)
+        layout.addWidget(sign_btn)
 
         self.client = None
-        self.sign_btn = sign_btn
 
     def start_login(self) -> None:
-        url = self.url.text().strip().rstrip("/") or DEFAULT_URL
         token = self.token.text().strip()
         if not token:
-            self.done_label.setText("Please paste your ADMIN_TOKEN.")
-            self.done_label.setStyleSheet(f"color:{T['warning']};")
+            self.hint.setText("Enter your operator token.")
+            self.hint.setStyleSheet(f"color:{T['warning']};")
             return
         self.sign_btn.setEnabled(False)
-        self.done_label.setText("Signing in…")
-        self.done_label.setStyleSheet(f"color:{T['text_dim']};")
-        client = AdminClient(url)
+        self.hint.setText("Signing in…")
+        self.hint.setStyleSheet(f"color:{T['text_dim']};")
+        client = AdminClient(DEFAULT_URL)
 
         host = TaskHost(self)
         self._host = host
@@ -164,13 +144,10 @@ class LoginDialog(QDialog):
         def done(result, error):
             self.sign_btn.setEnabled(True)
             if error is not None:
-                self.done_label.setText(f"Sign in failed: {error.message}"
-                                        + (" (check the server URL)" if error.status == 0 else ""))
-                self.done_label.setStyleSheet(f"color:{T['danger']};")
+                self.hint.setText("Could not sign in. Check the token and try again.")
+                self.hint.setStyleSheet(f"color:{T['danger']};")
                 return
             self.client = client
-            if self.remember.isChecked():
-                QSettings("MaximumTweaks", "Admin").setValue("server_url", url)
             self.accept()
 
         host.run(task, done)
@@ -194,7 +171,8 @@ class AdminMainWindow(QMainWindow):
         self.client = client
         self.host = TaskHost(self)
         self.setWindowTitle(APP_NAME)
-        self.resize(1180, 760)
+        self.resize(1160, 740)
+        self.setMinimumSize(680, 560)
 
         app = QApplication.instance()
         font = app.font()
@@ -224,28 +202,36 @@ class AdminMainWindow(QMainWindow):
 
         self.refresh_all()
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        w = event.size().width()
+        split = self._splitter
+        narrow = w < 980
+        split.setOrientation(
+            Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal)
+        if narrow:
+            split.setSizes([320, 520])
+        else:
+            split.setSizes([330, max(w - 380, 420)])
+
     # -- header -----------------------------------------------------------
     def _build_header(self) -> QWidget:
         bar = QFrame()
         bar.setObjectName("Header")
-        bar.setFixedHeight(62)
+        bar.setFixedHeight(60)
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(22, 10, 22, 10)
 
-        brand = QLabel("MAXIMUM TWEAKS  ADMIN")
+        brand = QLabel("MAXIMUM TWEAKS")
         brand.setObjectName("BrandMark")
-        sub = QLabel("LICENSE CONTROL PANEL  •  RED / BLACK")
+        sub = QLabel("ADMIN")
         sub.setObjectName("BrandSub")
         col = QVBoxLayout()
         col.setSpacing(1)
         col.addWidget(brand)
         col.addWidget(sub)
 
-        self.pill = QLabel("server: online")
-        self.pill.setObjectName("ServerPill")
-        self.pill.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-
-        refresh = QPushButton("↻ Refresh")
+        refresh = QPushButton("Refresh")
         refresh.setObjectName("Secondary")
         refresh.clicked.connect(self.refresh_all)
         signout = QPushButton("Sign out")
@@ -255,8 +241,6 @@ class AdminMainWindow(QMainWindow):
 
         lay.addLayout(col)
         lay.addStretch(1)
-        lay.addWidget(self.pill)
-        lay.addSpacing(8)
         lay.addWidget(refresh)
         lay.addWidget(signout)
         return bar
@@ -270,7 +254,9 @@ class AdminMainWindow(QMainWindow):
                   ("expired", "EXPIRED"), ("revoked", "REVOKED")]
         for key, text in labels:
             card = QFrame()
-            card.setObjectName("StatCard" if key != "active" else "StatCard#stat-active")
+            card.setObjectName("StatCard")
+            if key == "active":
+                card.setProperty("active", True)
             col = QVBoxLayout(card)
             col.setContentsMargins(16, 12, 16, 12)
             col.setSpacing(2)
@@ -287,31 +273,28 @@ class AdminMainWindow(QMainWindow):
 
     # -- body -------------------------------------------------------------
     def _build_body(self) -> QWidget:
-        split = QSplitter(Qt.Orientation.Horizontal)
+        split = QSplitter()
         split.setChildrenCollapsible(False)
         split.addWidget(self._build_generate_panel())
         split.addWidget(self._build_licenses_panel())
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        split.setSizes([380, 760])
+        split.setSizes([340, 760])
+        self._splitter = split
         return split
 
     def _build_generate_panel(self) -> QWidget:
         card = QFrame()
         card.setObjectName("Card")
-        card.setMinimumWidth(360)
+        card.setMinimumWidth(280)
         lay = QVBoxLayout(card)
         lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(10)
+        lay.setSpacing(8)
 
         title = QLabel("Generate keys")
         title.setObjectName("CardTitle")
-        sub = QLabel("Duration lives only in the DB record — keys never encode it.")
-        sub.setObjectName("CardSub")
-        sub.setWordWrap(True)
         lay.addWidget(title)
-        lay.addWidget(sub)
-        lay.addSpacing(6)
+        lay.addSpacing(2)
 
         lay.addWidget(QLabel("Count"))
         self.count_spin = QSpinBox()
@@ -321,7 +304,7 @@ class AdminMainWindow(QMainWindow):
         lay.addWidget(QLabel("Prefix"))
         self.prefix_edit = QLineEdit("MAX")
         self.prefix_edit.setMaxLength(4)
-        self.prefix_edit.setPlaceholderText("MAX / REX / MTW")
+        self.prefix_edit.setPlaceholderText("MAX")
 
         lay.addWidget(QLabel("Duration"))
         self.duration_combo = QComboBox()
@@ -331,11 +314,11 @@ class AdminMainWindow(QMainWindow):
 
         lay.addWidget(QLabel("Customer"))
         self.customer_edit = QLineEdit()
-        self.customer_edit.setPlaceholderText("optional buyer name")
+        self.customer_edit.setPlaceholderText("optional")
 
         lay.addWidget(QLabel("Note"))
         self.note_edit = QLineEdit()
-        self.note_edit.setPlaceholderText("optional note")
+        self.note_edit.setPlaceholderText("optional")
 
         self.generate_btn = QPushButton("Generate")
         self.generate_btn.setObjectName("Primary")
@@ -344,10 +327,8 @@ class AdminMainWindow(QMainWindow):
         self.results = QListWidget()
         self.results.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection)
-        pill = QLabel("Result keys")
-        pill.setObjectName("CardSub")
 
-        self.copy_btn = QPushButton("Copy selected key")
+        self.copy_btn = QPushButton("Copy selected")
         self.copy_btn.setObjectName("Chip")
         self.copy_btn.clicked.connect(self.copy_selected_result)
         self.copy_all_btn = QPushButton("Copy all")
@@ -366,7 +347,6 @@ class AdminMainWindow(QMainWindow):
         lay.addWidget(self.note_edit)
         lay.addWidget(self.generate_btn)
         lay.addSpacing(8)
-        lay.addWidget(pill)
         lay.addWidget(self.results, 1)
         lay.addLayout(row)
         return card
@@ -382,36 +362,47 @@ class AdminMainWindow(QMainWindow):
         title = QLabel("Licenses")
         title.setObjectName("CardTitle")
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search key / customer / note…")
+        self.search_edit.setPlaceholderText("Search key / customer…")
         self.search_edit.textChanged.connect(self._on_search_changed)
-        self.status_combo = QComboBox()
-        for label, value in (("All", ""), ("Unused", "unused"), ("Active", "active"),
-                             ("Expired", "expired"), ("Revoked", "revoked")):
-            self.status_combo.addItem(label, value)
-        self.status_combo.currentIndexChanged.connect(self.refresh_licenses)
         head.addWidget(title)
         head.addSpacing(12)
         head.addWidget(self.search_edit, 1)
-        head.addWidget(self.status_combo)
         lay.addLayout(head)
 
-        table = QTableWidget(0, 7)
+        # status filter buttons
+        self.active_status = ""
+        self.filter_buttons = {}
+        filters = QHBoxLayout()
+        filters.setSpacing(6)
+        for label, value in (("All", ""), ("Unused", "unused"), ("Active", "active"),
+                             ("Expired", "expired"), ("Revoked", "revoked")):
+            btn = QPushButton(label)
+            btn.setObjectName("Filter")
+            btn.setCheckable(True)
+            btn.setProperty("checked", value == "")
+            btn.clicked.connect(lambda _=False, v=value: self.set_status_filter(v))
+            self.filter_buttons[value] = btn
+            filters.addWidget(btn)
+        filters.addStretch(1)
+        lay.addLayout(filters)
+
+        table = QTableWidget(0, 8)
         table.setObjectName("LicenseTable")
         table.setHorizontalHeaderLabels(
-            ["Key", "Status", "Plan", "Customer", "Expires (UTC)", "Device", "Activated (UTC)"])
+            ["Key", "Status", "Plan", "Customer", "Note",
+             "Expires (UTC)", "Device", "Activated (UTC)"])
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setAlternatingRowColors(True)
         table.setSortingEnabled(True)
-        table.horizontalHeader().setStretchLastSection(False)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        table.setColumnWidth(1, 86)
-        table.setColumnWidth(2, 84)
-        table.setColumnWidth(3, 110)
-        table.setColumnWidth(4, 128)
-        table.setColumnWidth(5, 150)
-        table.setColumnWidth(6, 128)
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col, w in ((1, 72), (2, 80), (3, 110), (4, 120),
+                       (5, 116), (6, 170), (7, 116)):
+            table.setColumnWidth(col, w)
         table.doubleClicked.connect(self.copy_selected_license)
         self.table = table
 
@@ -419,7 +410,7 @@ class AdminMainWindow(QMainWindow):
         copy_k = QPushButton("Copy key")
         copy_k.setObjectName("Secondary")
         copy_k.clicked.connect(self.copy_selected_license)
-        revoke_btn = QPushButton("Revoke selected")
+        revoke_btn = QPushButton("Revoke")
         revoke_btn.setObjectName("DangerGhost")
         revoke_btn.clicked.connect(lambda: self.revoke_selected(revoke=True))
         restore_btn = QPushButton("Un-revoke")
@@ -428,20 +419,28 @@ class AdminMainWindow(QMainWindow):
         unbind_btn = QPushButton("Unbind (PC change)")
         unbind_btn.setObjectName("Secondary")
         unbind_btn.clicked.connect(self.unbind_selected)
-        refresh = QPushButton("↻")
-        refresh.setObjectName("Secondary")
-        refresh.clicked.connect(self.refresh_licenses)
+        delete_btn = QPushButton("Delete")
+        delete_btn.setObjectName("DangerGhost")
+        delete_btn.clicked.connect(self.delete_selected)
         actions.addWidget(copy_k)
-        actions.addSpacing(6)
         actions.addWidget(revoke_btn)
         actions.addWidget(restore_btn)
         actions.addWidget(unbind_btn)
+        actions.addWidget(delete_btn)
         actions.addStretch(1)
-        actions.addWidget(refresh)
 
         lay.addWidget(table, 1)
         lay.addLayout(actions)
         return card
+
+    def set_status_filter(self, value: str) -> None:
+        self.active_status = value
+        for v, btn in self.filter_buttons.items():
+            btn.setChecked(v == value)
+            btn.setProperty("checked", v == value)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+        self.refresh_licenses()
 
     def _build_status_bar(self) -> None:
         self.status_bar = QStatusBar()
@@ -483,13 +482,15 @@ class AdminMainWindow(QMainWindow):
         self.host.run(task, done)
 
     def refresh_licenses(self) -> None:
-        status = self.status_combo.currentData()
+        status = self.active_status
         query = self.search_edit.text().strip()
 
         def task():
             if query and len(query) >= 3:
                 return self.client.search(query)
-            return self.client.licenses(status)
+            if status:
+                return self.client.licenses(status)
+            return self.client.licenses()
 
         def done(res, error):
             if error is not None:
@@ -511,23 +512,22 @@ class AdminMainWindow(QMainWindow):
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             plan_item = QTableWidgetItem((r.get("plan") or "") or "lifetime")
             cust_item = QTableWidgetItem(r.get("customer") or "")
+            note_item = QTableWidgetItem(r.get("note") or "")
+            note_item.setForeground(self._color(T["text_faint"]))
             exp_item = QTableWidgetItem(r.get("expires_at") or "lifetime")
             exp_item.setForeground(self._color(
                 T["warning"] if r.get("status") == "expired" else T["text_dim"]))
-            dev_item = QTableWidgetItem(mask_device(r.get("device_id")))
+            dev_item = QTableWidgetItem(r.get("device_id") or "")
+            dev_item.setFont(self._mono_font())
+            dev_item.setForeground(self._color(T["text_dim"]))
             act_item = QTableWidgetItem(r.get("activated_at") or "")
             act_item.setForeground(self._color(T["text_faint"]))
 
             for col, item in enumerate((key_item, status_item, plan_item,
-                                        cust_item, exp_item, dev_item, act_item)):
+                                        cust_item, note_item, exp_item,
+                                        dev_item, act_item)):
                 self.table.setItem(i, col, item)
-            self.table.setItem(i, 0, key_item)
         self.table.setSortingEnabled(True)
-        self.pill.setText("server: online")
-        self.pill.setStyleSheet(
-            f"background-color:{T['card']};border:1px solid {T['border']};"
-            f"border-radius:100px;padding:5px 12px;color:{T['text_dim']};font-size:11px;"
-            f"font-family:'JetBrains Mono','Cascadia Mono',monospace;")
 
     def _mono_font(self):
         from PySide6.QtGui import QFont
@@ -562,8 +562,7 @@ class AdminMainWindow(QMainWindow):
             self.results.clear()
             for k in keys:
                 self.results.addItem(k)
-            self.toast_msg(f"Created {len(keys)} key(s). Copy them now.",
-                           T["text"])
+            self.toast_msg(f"Created {len(keys)} key(s).", T["text"])
             self.refresh_stats()
             self.refresh_licenses()
 
@@ -572,7 +571,7 @@ class AdminMainWindow(QMainWindow):
     def copy_selected_result(self) -> None:
         items = self.results.selectedItems()
         if not items:
-            self.toast_msg("Select a generated key first.")
+            self.toast_msg("Select a key first.")
             return
         QApplication.clipboard().setText(items[0].text())
         self.toast_msg("Key copied to clipboard.", T["text"])
@@ -580,10 +579,10 @@ class AdminMainWindow(QMainWindow):
     def copy_all_results(self) -> None:
         keys = [self.results.item(i).text() for i in range(self.results.count())]
         if not keys:
-            self.toast_msg("No generated keys to copy.")
+            self.toast_msg("No keys to copy.")
             return
         QApplication.clipboard().setText("\n".join(keys))
-        self.toast_msg(f"Copied {len(keys)} key(s) to clipboard.", T["text"])
+        self.toast_msg(f"Copied {len(keys)} key(s).", T["text"])
 
     def selected_license_key(self) -> str | None:
         row = self.table.currentRow()
@@ -604,7 +603,6 @@ class AdminMainWindow(QMainWindow):
         if not key:
             self.toast_msg("Select a license row first.")
             return
-        action = "revoke" if revoke else "un-revoke"
         if revoke and QMessageBox.question(
                 self, "Revoke license",
                 f"Revoke {key}?\nThe customer will not be able to activate it.") \
@@ -619,7 +617,7 @@ class AdminMainWindow(QMainWindow):
             if error is not None:
                 self._handle_error(error)
                 return
-            self.toast_msg(f"{key}\n{action}d.", T["text"])
+            self.toast_msg(f"{key}\n{'revoked' if revoke else 'un-revoked'}.", T["text"])
             self.refresh_all()
 
         self.host.run(task, done)
@@ -642,7 +640,7 @@ class AdminMainWindow(QMainWindow):
             if error is not None:
                 self._handle_error(error)
                 return
-            self.toast_msg(f"{key}\nunbound (ready for a new PC).", T["text"])
+            self.toast_msg(f"{key}\nunbound.", T["text"])
             self.refresh_all()
 
         self.host.run(task, done)
@@ -657,16 +655,32 @@ class AdminMainWindow(QMainWindow):
 
         self.host.run(task, done)
 
+    def delete_selected(self) -> None:
+        key = self.selected_license_key()
+        if not key:
+            self.toast_msg("Select a license row first.")
+            return
+        if QMessageBox.question(
+                self, "Delete license",
+                f"Permanently delete {key}?\nThis cannot be undone.") \
+                != QMessageBox.StandardButton.Yes:
+            return
+
+        def task():
+            return self.client.delete(key)
+
+        def done(res, error):
+            if error is not None:
+                self._handle_error(error)
+                return
+            self.toast_msg(f"{key} deleted.", T["danger"])
+            self.refresh_all()
+
+        self.host.run(task, done)
+
     def _handle_error(self, error: ApiError) -> None:
-        self.pill.setText("server: error")
-        self.pill.setStyleSheet(
-            f"background-color:{T['card']};border:1px solid {T['danger']};"
-            f"border-radius:100px;padding:5px 12px;color:{T['danger']};font-size:11px;"
-            f"font-family:'JetBrains Mono','Cascadia Mono',monospace;")
         if error.status == 401:
-            QMessageBox.warning(
-                self, "Session expired",
-                "This session has expired. Sign in again to continue.")
+            QMessageBox.warning(self, "Session expired", "Please sign in again.")
             return
         self.toast_msg(error.message, T["danger"])
 
