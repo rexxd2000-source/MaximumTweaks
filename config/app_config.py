@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.4.9"
+APP_VERSION = "2.4.10"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -228,6 +228,7 @@ DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
 # License activation (the only access control). A key binds to a device via
 # the license backend; sessions persist across reboots and updates.
 LICENSE_API_URL = "https://maximumtweaks.onrender.com"
+
 
 
 

@@ -242,6 +242,7 @@ class DownloadWorker(QThread):
     """Download the staged update; reports byte progress and 0..1 fraction."""
 
     bytes = Signal(int, int)  # got bytes, total bytes
+    bytes_total = Signal(int)  # total bytes once known
     progress = Signal(float)
     done = Signal(object, str)  # new_exe path or None, error message
 
@@ -253,6 +254,7 @@ class DownloadWorker(QThread):
 
     def _progress(self, got, total):
         self.bytes.emit(int(got), int(total))
+        self.bytes_total.emit(int(total))
         if total > 0:
             self.progress.emit(min(1.0, got / total))
 
