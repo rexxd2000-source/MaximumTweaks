@@ -187,6 +187,7 @@ def run_gui():
         if not info:
             return
         worker = DownloadWorker(info["url"], splash)
+        worker.bytes.connect(splash.on_download_bytes)
         worker.bytes_total.connect(splash.set_download_bytes)
         worker.progress.connect(splash.update_progress)
         worker.done.connect(_on_update_downloaded)

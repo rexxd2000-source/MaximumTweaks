@@ -345,8 +345,9 @@ class CinematicSplash(QWidget):
         self._ok_hold_until: float | None = None
         self._download_frac = 0.0
         self._dl_total_bytes = 0
-        self._dl_probe_at: float | None = None
-        self._dl_probe_frac = 0.0
+        self._dl_bytes_got = 0
+        self._dl_speed_last_bytes: int | None = None
+        self._dl_speed_at = 0.0
         self._dl_speed = "0.0 MB/s"
         self._dl_speed_raw = -1.0
         self._dl_start_pct = 58.0
@@ -512,7 +513,7 @@ class CinematicSplash(QWidget):
             self._dl_start_pct = self._current_pct()
         self._update_state = "downloading"
         self._download_frac = _clamp01(frac)
-        self._track_download_speed()
+        self._track_download_speed(_monotonic_ms())
         self._held = True
         self._set_actions(None)
         self._spinner.stop()
@@ -579,21 +580,29 @@ class CinematicSplash(QWidget):
             lines.append(cur)
         return lines
 
-    def _track_download_speed(self):
-        now = _monotonic_ms()
-        if self._dl_probe_at is not None and self._dl_total_bytes > 0:
-            dt = (now - self._dl_probe_at) / 1000.0
-            df = max(0.0, self._download_frac - self._dl_probe_frac)
-            if dt > 0.05:
-                mb = df * self._dl_total_bytes / 1048576.0
-                raw = mb / dt
+    def _track_download_speed(self, now):
+        got = self._dl_bytes_got
+        if self._dl_speed_last_bytes is None:
+            self._dl_speed_last_bytes = got
+            self._dl_speed_at = now
+            return
+        dt = now - self._dl_speed_at
+        if dt >= 300:
+            db = got - self._dl_speed_last_bytes
+            if dt > 0 and db >= 0:
+                raw = db / dt * 1000.0 / 1048576.0
                 if self._dl_speed_raw < 0:
                     self._dl_speed_raw = raw
                 else:
-                    self._dl_speed_raw = self._dl_speed_raw * 0.7 + raw * 0.3
+                    self._dl_speed_raw = self._dl_speed_raw * 0.6 + raw * 0.4
                 self._dl_speed = f"{self._dl_speed_raw:.1f} MB/s"
-        self._dl_probe_at = now
-        self._dl_probe_frac = self._download_frac
+            self._dl_speed_at = now
+            self._dl_speed_last_bytes = got
+
+    def on_download_bytes(self, got: int, total: int):
+        self._dl_bytes_got = int(got or 0)
+        if total:
+            self._dl_total_bytes = int(total)
 
     def _on_flow_primary(self):
         if self._update_state == "available":
@@ -1134,6 +1143,7 @@ class CinematicSplash(QWidget):
         self._actions_y = int(iy + lines * 18.0 + 32.0 + _ACTIONS_H / 2.0)
 
     def _draw_downloading(self, p: QPainter, w: int, h: int):
+        self._track_download_speed(_monotonic_ms())
         frac = _clamp01(self._download_frac)
         label = f"{int(round(frac * 100))}%"
         size = int(round(max(90, min(190, w * 0.13))))
