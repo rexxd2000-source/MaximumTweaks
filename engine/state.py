@@ -30,6 +30,9 @@ import sys  # noqa: E402
 STATE_DIR = _state_dir()
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 
+# Cached copy of the brand logo fetched from the website (see ui.updater_dialog).
+LOGO_CACHE_FILE = os.path.join(STATE_DIR, "logo_cache.png")
+
 # Legacy path next to the exe — migrate on first run.
 _LEGACY_STATE = os.path.join(str(ROOT), "data", "state.json")
 

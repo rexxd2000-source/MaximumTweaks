@@ -25,7 +25,7 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -38,7 +38,13 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import APP_NAME, APP_VERSION, UPDATE_EXE_NAME
+from engine.state import LOGO_CACHE_FILE
 from maxlog import logger
+
+# Brand logo fetched from the website so the update dialog always shows the
+# current official artwork, even in builds where the bundled asset changed.
+_LOGO_URL = "https://max-opti.co.za/images/app-logo.png"
+_LOGO_CACHE = LOGO_CACHE_FILE
 
 # ---------------------------------------------------------------------------
 # Palette — copied verbatim from update_dialog_v2.html :root
@@ -262,6 +268,33 @@ class DownloadWorker(QThread):
         self.done.emit(self._dest, self._err)
 
 
+class LogoWorker(QThread):
+    """Fetch the app logo from the website into the state cache dir."""
+
+    done = Signal(str)  # path to the downloaded logo, or "" on failure
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._path = ""
+
+    def run(self):
+        import urllib.request
+        import urllib.error
+        try:
+            req = urllib.request.Request(
+                _LOGO_URL, headers={"User-Agent": "MaximumTweaks-updater/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+            if data:
+                os.makedirs(os.path.dirname(_LOGO_CACHE) or ".", exist_ok=True)
+                with open(_LOGO_CACHE, "wb") as f:
+                    f.write(data)
+                self._path = _LOGO_CACHE
+        except (urllib.error.URLError, OSError) as exc:  # noqa: BLE001
+            logger.warn(f"updater: logo fetch failed: {exc}")
+        self.done.emit(self._path)
+
+
 _RISE_QSS = f"""
 #Modal {{
     background-color: {C['surface']};
@@ -419,6 +452,8 @@ class UpdateDialog(QDialog):
         mark.setFixedSize(24, 24)
         mark.setFont(_sans(12, QFont.Weight.Bold))
         t.addWidget(mark)
+        self._mark = mark
+        self._logo_worker = None
 
         sub = QVBoxLayout()
         sub.setContentsMargins(0, 0, 0, 0)
@@ -589,12 +624,43 @@ class UpdateDialog(QDialog):
         self._footnote = fn
 
         self._adopt_widgets()
+        self._load_remote_logo()
         if check_on_open:
             self._check()
 
     # ------------------------------------------------------------------
-    # styling / content helpers
+    # brand logo (fetched from the website, cached in the state dir)
     # ------------------------------------------------------------------
+    def _load_remote_logo(self):
+        """Show the official logo in the titlebar: use the cached web fetch
+        immediately if present, then refresh it from the internet in the
+        background. Falls back to the bundled "M" mark on failure."""
+        if os.path.isfile(_LOGO_CACHE):
+            self._apply_logo_pixmap(QPixmap(_LOGO_CACHE))
+        self._logo_worker = LogoWorker(self)
+        self._logo_worker.done.connect(self._on_logo_done)
+        self._logo_worker.finished.connect(self._logo_gc)
+        self._logo_worker.start()
+
+    def _apply_logo_pixmap(self, pm):
+        if pm.isNull():
+            return
+        mark = self._mark
+        mark.setText("")
+        size = 22
+        scaled = pm.scaled(size, size, Qt.KeepAspectRatio,
+                           Qt.SmoothTransformation)
+        mark.setPixmap(scaled)
+        mark.setStyleSheet(
+            "background:transparent;border:none;border-radius:7px;")
+
+    def _on_logo_done(self, path):
+        if path and os.path.isfile(path):
+            self._apply_logo_pixmap(QPixmap(path))
+
+    def _logo_gc(self):
+        self._logo_worker = None
+
     def _adopt_widgets(self):
         """Keep the modal chrome laid out; height hugs the current content."""
         self._modal.layout().activate()
@@ -842,7 +908,7 @@ class UpdateDialog(QDialog):
         self._tb_sub.setText("READY TO INSTALL")
         self._progress_bar.set_frac(1.0)
         self._status.setText("Downloaded and verified \u2014 ready to install")
-        self._btn_update.setText("\u26a1  Restart & Update")
+        self._btn_update.setText("\u26a1  Restart Update")
         self._adopt_widgets()
 
     def _skip_version(self):

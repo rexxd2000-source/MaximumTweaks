@@ -25,6 +25,7 @@ Update flow (full-screen, ported from updater-flow.html — no card, no popup):
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -764,11 +765,26 @@ class CinematicSplash(QWidget):
                 pm = QPixmap(path)
         except Exception:  # noqa: BLE001
             pm = QPixmap()
-        # 2) otherwise the official Maximum logo so we never show the bare "M".
+        # 2) the official Maximum logo (prefer the internet-fetched cache, so
+        #    the splash always shows the current artwork) so we never show the
+        #    bare "M".
+        remote_cache = None
+        try:
+            from engine.state import LOGO_CACHE_FILE
+            _cand = Path(LOGO_CACHE_FILE)
+            if _cand.is_file():
+                remote_cache = _cand
+        except Exception:  # noqa: BLE001
+            remote_cache = None
         if pm is None or pm.isNull():
             try:
+                if remote_cache is not None:
+                    pm = QPixmap(str(remote_cache))
+            except Exception:  # noqa: BLE001
+                pm = QPixmap()
+            try:
                 logo = DIRS["assets"] / "logo.png"
-                if logo.is_file():
+                if (pm is None or pm.isNull()) and logo.is_file():
                     pm = QPixmap(str(logo))
             except Exception:  # noqa: BLE001
                 pm = QPixmap()
