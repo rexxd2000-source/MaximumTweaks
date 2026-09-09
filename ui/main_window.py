@@ -95,9 +95,10 @@ class _SidebarBackdrop(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         w, h = self.width(), self.height()
-        # .sb-glow.top — 280px orb, center at (50, 20), rgba(139,107,255,.16)
-        g1 = QRadialGradient(QPointF(50, 20), 196)
-        g1.setColorAt(0.0, QColor(139, 107, 255, 41))
+        # .sb-glow.top — compact rose glow tucked behind the brand mark so it
+        # stays a subtle highlight rather than a large off-center ring.
+        g1 = QRadialGradient(QPointF(32, 32), 72)
+        g1.setColorAt(0.0, QColor(139, 107, 255, 34))
         g1.setColorAt(1.0, QColor(139, 107, 255, 0))
         p.fillRect(self.rect(), g1)
         # .sb-glow.bottom — 240px orb, center at (60, h-20), cyan .08
