@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -342,12 +343,8 @@ class QosPage(QWidget):
         cl = QVBoxLayout(col)
         cl.setContentsMargins(44, 36, 44, 60)
         cl.setSpacing(0)
-        col.setMaximumWidth(1000)
-        wrap = QHBoxLayout()
-        wrap.addStretch()
-        wrap.addWidget(col)
-        wrap.addStretch()
-        root.addLayout(wrap)
+        col.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        root.addWidget(col, 1)
 
         head = QHBoxLayout()
         head.setSpacing(14)

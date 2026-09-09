@@ -57,6 +57,16 @@ HEADER_H = 100
 TOOLBAR_H = 48
 PAGER_H = 46
 
+# Optimize button: blends with the page background instead of a loud
+# accent fill — a quiet chip that lifts on hover.
+OPT_BTN_QSS = (
+    f"QPushButton{{background:{T['card_alt']};border:1px solid {T['border']};"
+    f"border-radius:9px;padding:8px 18px;font-size:13px;font-weight:600;"
+    f"color:#C3BBEF;}}"
+    f"QPushButton:hover{{background:{T['card_hover']};"
+    f"border-color:#332F47;color:#FFFFFF;}}"
+    f"QPushButton:pressed{{background:{T['accent_dark']};}}")
+
 SORT_MODES = [
     ("recommended", "Recommended first"),
     ("impact", "Impact: High \u2192 Low"),
@@ -422,7 +432,7 @@ class TweaksPage(QWidget):
         striple.addWidget(self.ram_scan_btn)
 
         self.ram_opt_btn = QPushButton("Optimize RAM")
-        self.ram_opt_btn.setObjectName("Primary")
+        self.ram_opt_btn.setStyleSheet(OPT_BTN_QSS)
         self.ram_opt_btn.setMinimumHeight(32)
         self.ram_opt_btn.setCursor(Qt.PointingHandCursor)
         self.ram_opt_btn.setToolTip(
@@ -707,7 +717,7 @@ class TweaksPage(QWidget):
 
         btn = QPushButton(
             f"Optimize {BUTTON_LABELS.get(self.key) or BUTTON_LABELS.get(keys[0], self.key)}")
-        btn.setObjectName("Primary")
+        btn.setStyleSheet(OPT_BTN_QSS)
         btn.setMinimumHeight(32)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setToolTip(
