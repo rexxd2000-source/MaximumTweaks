@@ -12,7 +12,7 @@ cards flip instantly and the UI never blocks.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, QThread, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QThread, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QRadialGradient
 from PySide6.QtWidgets import (
     QComboBox,
@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import THEME as T
 from database import BY_ID
 from engine import state as state_mgr
 from ui.categories import (
@@ -39,22 +38,16 @@ from ui.categories import (
     cpu_filter_tweaks,
     gpu_filter_tweaks,
     group_tweaks,
-    logo_path,
     recommended_count,
 )
 from ui.widgets import (
     BatchWorker,
     GuideDialog,
-    IconTile,
     TweakCard,
     clear_layout,
-    qss_rgba,
     toast,
 )
 
-# Fixed chrome heights used to compute how many card rows fit.
-HEADER_H = 76
-TOOLBAR_H = 48
 PAGER_H = 46
 
 SORT_MODES = [
@@ -69,6 +62,39 @@ REC_RANK = {
     "recommended": 0, "optional": 1, "experimental": 2,
     "advanced": 3, "guide": 4, "not_recommended": 5,
 }
+
+# mouse-tweaks-panel.html palette + button styles (translated to QSS).
+_P = {
+    "surface": "#0c0c15",
+    "chip": "#101019",
+    "line": "rgba(255,255,255,0.08)",
+    "line_soft": "rgba(255,255,255,0.05)",
+    "text": "#f2f1f7",
+    "text_dim": "#8b8a99",
+    "text_dim2": "#5f5e6b",
+    "purple": "#7c6df0",
+    "purple_2": "#9d8cff",
+    "green": "#4ade80",
+}
+_CAT_GHOST = (
+    "QPushButton{{background:transparent;border:none;border-radius:0;"
+    "padding:9px 14px;color:{text_dim};font-size:12.5px;font-weight:600;}}"
+    "QPushButton:hover:enabled{{color:{text};}}"
+)
+_CAT_PRIMARY = (
+    "QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+    "stop:0 {purple_2}, stop:1 {purple});border:none;border-radius:0;"
+    "color:#ffffff;padding:9px 16px;font-size:12.5px;font-weight:600;}}"
+    "QPushButton:hover:enabled{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+    "stop:0 #b4a3ff, stop:1 #8b7cf6);}}"
+)
+_CAT_BTN = (
+    "QPushButton{{background:{chip};border:1px solid {line};border-radius:0;"
+    "color:{text_dim};padding:9px 16px;font-size:12.5px;font-weight:600;}}"
+    "QPushButton:hover:enabled{{color:{text};"
+    "border-color:rgba(255,255,255,0.22);}}"
+)
+_PNP_CACHE: dict = {}
 
 ALL_KEY = "__all__"
 
@@ -165,26 +191,8 @@ class TweaksPage(QWidget):
         wrapper.setStyleSheet(
             "#category-view-wrapper{background:transparent;}")
         root = QVBoxLayout(wrapper)
-        # .content { padding: 40px 44px 60px }
-        root.setContentsMargins(44, 40, 44, 60)
-        root.setSpacing(8)
-
-        if not fixed_group:
-            self.header = self._build_header()
-            self.header.setObjectName("category-header")
-            root.addWidget(self.header)
-            root.addSpacing(14)
-            toolbar = self._build_toolbar()
-            toolbar.setObjectName("search-bar-container")
-            root.addWidget(toolbar)
-            root.addSpacing(12)
-            self.opt_host = self._build_optimizer_bar()
-            root.addWidget(self.opt_host)
-            root.addSpacing(18)
-            self.ram_selector = self._build_ram_selector()
-            root.addWidget(self.ram_selector)
-            self.gpu_selector = self._build_gpu_selector()
-            root.addWidget(self.gpu_selector)
+        root.setContentsMargins(20, 40, 20, 40)
+        root.setSpacing(0)
 
         # ---- Card grid (expands to fill the viewport so no raw page
         # background ever shows around the cards; the last row stretches)
@@ -195,7 +203,40 @@ class TweaksPage(QWidget):
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(self.GAP)
-        root.addWidget(self.grid_host)
+
+        if fixed_group:
+            root.addWidget(self.grid_host, 1)
+        else:
+            # -------- centered .panel (mouse-tweaks-panel.html) --------
+            center = QHBoxLayout()
+            center.setContentsMargins(0, 0, 0, 0)
+            center.setSpacing(0)
+            center.addStretch(1)
+            self.panel = QFrame()
+            self.panel.setObjectName("TweakPanel")
+            self.panel.setMaximumWidth(980)
+            self.panel.setMinimumWidth(0)
+            self.panel.setStyleSheet(
+                f"#TweakPanel{{ background:{_P['surface']};"
+                f" border:1px solid {_P['line']}; border-radius:0px; }}")
+            pl = QVBoxLayout(self.panel)
+            pl.setContentsMargins(0, 0, 0, 0)
+            pl.setSpacing(0)
+
+            self._build_panel_head(pl)
+            self._build_panel_search(pl)
+            self.opt_host = self._build_panel_toolbar(pl)
+            pl.addWidget(self.panel_facts)
+            self.ram_selector = self._build_ram_selector()
+            pl.addWidget(self.ram_selector)
+            self.gpu_selector = self._build_gpu_selector()
+            pl.addWidget(self.gpu_selector)
+            pl.addSpacing(16)
+            pl.addWidget(self.grid_host, 1)
+
+            center.addWidget(self.panel, 0)
+            center.addStretch(1)
+            root.addLayout(center, 1)
 
         outer.addWidget(scroll, 1)
         scroll.setWidget(wrapper)
@@ -215,53 +256,71 @@ class TweaksPage(QWidget):
         self.ctx.live_state_changed.connect(self._on_live_state)
         QTimer.singleShot(0, self.refresh)
 
-    # ---------------- Header ----------------
+    # ---------------- Panel head (reference .p-head) ----------------
 
-    def _build_header(self):
-        # Reference .top-bar: h1 + subtitle on the left, dot stats on the
-        # right. No icon tile, no pills — pure typography.
+    def _build_panel_head(self, pl):
+        # Reference .p-head: h1 + subtitle left, .stat-pill right, separated
+        # by a 1px bottom border. No icon tile, no pills — pure typography.
         head = QFrame()
-        head.setFixedHeight(HEADER_H)
-        hl = QVBoxLayout(head)
-        hl.setContentsMargins(0, 10, 0, 0)
-        hl.setSpacing(4)
-        top = QHBoxLayout()
-        top.setSpacing(16)
-        top.setAlignment(Qt.AlignVCenter)
+        head.setObjectName("PanelHead")
+        head.setStyleSheet(
+            f"#PanelHead{{background:transparent;"
+            f" border-bottom:1px solid {_P['line']};}}")
+        hl = QHBoxLayout(head)
+        hl.setContentsMargins(28, 26, 28, 22)
+        hl.setSpacing(20)
+        hl.setAlignment(Qt.AlignTop)
+
         box = QVBoxLayout()
-        box.setSpacing(5)
+        box.setSpacing(6)
         self.title_lbl = QLabel("Optimize Your PC")
         self.title_lbl.setStyleSheet(
-            "font-family: \"Space Grotesk\", \"Segoe UI\";"
-            " font-size: 26px; font-weight: 600; background: transparent;")
+            "font-family: 'Space Grotesk', 'Segoe UI'; font-size: 24px;"
+            f" font-weight: 700; color: {_P['text']};"
+            " letter-spacing: -0.01em; background: transparent;")
         self.blurb_lbl = QLabel(
             "Toggle the optimizations you want \u2014 tweaks are pre-checked for "
             "your hardware, and each flips instantly.")
-        self.blurb_lbl.setObjectName("PageSub")
+        self.blurb_lbl.setStyleSheet(
+            f"font-size: 13.5px; color: {_P['text_dim']}; background: transparent;")
         self.blurb_lbl.setWordWrap(True)
         box.addWidget(self.title_lbl)
         box.addWidget(self.blurb_lbl)
-        top.addLayout(box, 1)
-        # Reference .top-stats: green dot "N recommended" + violet dot
-        # "N catalogued", stacked right of the title.
-        self.top_stats = QVBoxLayout()
-        self.top_stats.setSpacing(6)
+        hl.addLayout(box, 1)
+
+        # Reference .stat-pill: two mono stats side by side, 1px divider.
+        pill = QFrame()
+        pill.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        pill.setStyleSheet(
+            f"QFrame{{background:{_P['chip']}; border:1px solid {_P['line']};}}")
+        ppl = QHBoxLayout(pill)
+        ppl.setContentsMargins(16, 9, 16, 9)
+        ppl.setSpacing(14)
+        mono = ("font-family: 'JetBrains Mono', monospace; font-size: 11.5px;"
+                " background: transparent;")
         self.stat_rec = QLabel()
-        self.stat_rec.setStyleSheet(
-            "font-size: 12.5px; color: #928AAD; background: transparent;")
+        self.stat_rec.setStyleSheet(mono)
         self.stat_cat = QLabel()
-        self.stat_cat.setStyleSheet(
-            "font-size: 12.5px; color: #928AAD; background: transparent;")
-        self.top_stats.addWidget(self.stat_rec)
-        self.top_stats.addWidget(self.stat_cat)
-        top.addLayout(self.top_stats, 0)
-        hl.addLayout(top)
+        self.stat_cat.setStyleSheet(mono)
+        ppl.addWidget(self.stat_rec)
+        divider = QFrame()
+        divider.setFixedWidth(1)
+        divider.setFixedHeight(14)
+        divider.setStyleSheet(
+            f"background: {_P['line']}; border: none;")
+        ppl.addWidget(divider)
+        ppl.addWidget(self.stat_cat)
+        hl.addWidget(pill, 0, Qt.AlignTop)
+
+        self.panel_head = head
+        pl.addWidget(head)
         return head
 
     @staticmethod
-    def _dot_stat(color: str, text: str) -> str:
+    def _dot_stat(color: str, number, label: str) -> str:
         return (f"<span style='color:{color};'>\u25cf</span>"
-                f"<span style='color:#928AAD;'>&nbsp; {text}</span>")
+                f"<span style='color:{_P['text']};font-weight:600;'>&nbsp;{number}</span>"
+                f"<span style='color:{_P['text_dim']}'>&nbsp;{label}</span>")
 
     def _header_for(self, key) -> tuple[str, str]:
         if key == ALL_KEY:
@@ -290,83 +349,130 @@ class TweaksPage(QWidget):
             rec = cat = 0
         if hasattr(self, "stat_rec"):
             self.stat_rec.setText(
-                self._dot_stat("#3DDC97", f"{rec} recommended"))
+                self._dot_stat("#4ade80", rec, "recommended"))
             self.stat_cat.setText(
-                self._dot_stat("#C9C0FF", f"{cat} catalogued"))
+                self._dot_stat("#5f5e6b", cat, "catalogued"))
             self.stat_rec.setVisible(True)
             self.stat_cat.setVisible(True)
 
-    # ---------------- Toolbar (search row) ----------------
+    # ---------------- Panel search row (reference .p-search) ----------------
 
-    def _build_toolbar(self):
-        # Reference .search-row: just the search bar + sort select.
+    def _build_panel_search(self, pl):
+        # Reference .search-row: search box (flex) + sort pill side by side,
+        # separated from the head by a 1px bottom border.
         bar = QWidget()
-        bar.setFixedHeight(TOOLBAR_H)
+        bar.setObjectName("PanelSearch")
+        bar.setStyleSheet(
+            f"#PanelSearch{{background:transparent;"
+            f" border-bottom:1px solid {_P['line']};}}")
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(28, 18, 28, 18)
         lay.setSpacing(10)
+
+        self.search_box = QFrame()
+        self.search_box.setObjectName("SearchBox")
+        self.search_box.setStyleSheet(
+            f"QFrame#SearchBox{{background:{_P['chip']};"
+            f" border:1px solid {_P['line']};}}")
+        sl = QHBoxLayout(self.search_box)
+        sl.setContentsMargins(14, 11, 14, 11)
+        sl.setSpacing(10)
+        icon = QLabel("\u2315")
+        icon.setStyleSheet(
+            f"color: {_P['text_dim2']}; font-size: 15px; background: transparent;")
+        sl.addWidget(icon)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search tweaks\u2026")
         self.search.setClearButtonEnabled(True)
+        self.search.setStyleSheet(
+            f"QLineEdit{{background:transparent;border:none;"
+            f" font-size:13.5px;color:{_P['text']};}}"
+            f"QLineEdit::placeholder{{color:{_P['text_dim2']};}}")
         self.search.textChanged.connect(lambda _: self._on_filters())
-
-        search_box = QFrame()
-        search_box.setObjectName("SearchBox")
-        sl = QHBoxLayout(search_box)
-        sl.setContentsMargins(10, 0, 6, 0)
-        sl.setSpacing(6)
-        icon = QLabel("\u2315")
-        icon.setObjectName("SearchIcon")
-        sl.addWidget(icon)
+        self.search.installEventFilter(self)
         sl.addWidget(self.search, 1)
-        lay.addWidget(search_box, 1)
+        lay.addWidget(self.search_box, 1)
 
         self.sort_combo = QComboBox()
         for key, label in SORT_MODES:
             self.sort_combo.addItem(label, key)
-        self.sort_combo.setFixedWidth(190)
+        self.sort_combo.setFixedWidth(220)
+        self.sort_combo.setCursor(Qt.PointingHandCursor)
+        self.sort_combo.setStyleSheet(
+            f"QComboBox {{ background: {_P['chip']};"
+            f" border: 1px solid {_P['line']}; color: {_P['text_dim']};"
+            " font-size: 12.5px; font-weight: 500; padding: 0 12px;"
+            " border-radius: 0; }}"
+            f"QComboBox:hover {{ border-color: rgba(124,109,240,0.4);"
+            f" color: {_P['text']}; }}"
+            "QComboBox::drop-down { border: none; width: 28px; }"
+            "QComboBox::down-arrow {"
+            f" border-left: 4px solid transparent; border-right: 4px solid transparent;"
+            f" border-top: 5px solid {_P['text_dim2']}; margin-right: 12px; }}"
+            f"QComboBox QAbstractItemView {{ background: {_P['chip']};"
+            f" border: 1px solid {_P['line']}; color: {_P['text']};"
+            " selection-background-color: #7c6df0; selection-color: #ffffff;"
+            " padding: 4px; }}")
         self.sort_combo.currentIndexChanged.connect(lambda _: self._on_filters())
         lay.addWidget(self.sort_combo)
 
+        self.panel_search = bar
+        pl.addWidget(bar)
         return bar
 
-    # ---------------- Category optimizer bar (action row) ----------------
+    # ---------------- Panel toolbar (reference .p-toolbar) ----------------
 
-    def _build_optimizer_bar(self):
-        # Reference .action-row: left = Scan/Optimize (per category, hideable),
-        # right = plain "N / M applied" text + glass Apply all / Revert all.
+    def _build_panel_toolbar(self, pl):
+        # Reference .action-row: left = ghost Scan + primary Optimize + device
+        # badge, right = mono progress text + glass Apply all / ghost Revert all.
         host = QWidget()
-        host.setObjectName("optimizer-bar")
-        host.setFixedHeight(TOOLBAR_H)
-        self._right_cluster = QHBoxLayout()
-        self._right_cluster.setSpacing(10)
+        host.setObjectName("PanelToolbar")
+        host.setStyleSheet("#PanelToolbar{background:transparent;}")
+        self.panel_toolbar = host
         row = QHBoxLayout(host)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(10)
+        row.setContentsMargins(28, 18, 28, 18)
+        row.setSpacing(18)
 
         self.opt_left = QWidget()
         self.opt_left.setStyleSheet("background:transparent;")
         self.opt_lay = QHBoxLayout(self.opt_left)
         self.opt_lay.setContentsMargins(0, 0, 0, 0)
-        self.opt_lay.setSpacing(8)
+        self.opt_lay.setSpacing(10)
         row.addWidget(self.opt_left)
-        row.addStretch(1)
 
+        # Device badge (HID / USB / Bluetooth...) — a sibling of the left
+        # cluster (NOT inside opt_lay: clear_layout() would delete it while
+        # rebuilding the Scan/Optimize buttons). Shown/hidden by
+        # _update_optimizer_bar when the active category has a device.
+        self.device_badge = QLabel("")
+        self.device_badge.setStyleSheet(
+            f"background: {_P['chip']}; border: 1px solid {_P['line_soft']};"
+            " padding: 8px 12px; font-family: 'JetBrains Mono', monospace;"
+            f" font-size: 11px; color: {_P['text_dim']};")
+        self.device_badge.setVisible(False)
+        row.addWidget(self.device_badge)
+
+        # Reference .toolbar-right: progress-txt, bordered Apply all, ghost
+        # Revert all (gap 16px).
+        self._right_cluster = QHBoxLayout()
+        self._right_cluster.setSpacing(16)
         self.counter_lbl = QLabel()
-        self.counter_lbl.setObjectName("AppliedText")
+        self.counter_lbl.setStyleSheet(
+            "font-family: 'JetBrains Mono', monospace;"
+            f" font-size: 12px; color: {_P['text_dim']}; background: transparent;")
         self._right_cluster.addWidget(self.counter_lbl)
 
         self.btn_apply_all = QPushButton("Apply all")
-        self.btn_apply_all.setObjectName("Secondary")
-        self.btn_apply_all.setMinimumHeight(32)
+        self.btn_apply_all.setStyleSheet(_CAT_BTN.format(**_P))
+        self.btn_apply_all.setCursor(Qt.PointingHandCursor)
         self.btn_apply_all.clicked.connect(self._apply_all)
         self._apply_all_text = "Apply all"
         self._right_cluster.addWidget(self.btn_apply_all)
 
         self.btn_revert_all = QPushButton("Revert all")
-        self.btn_revert_all.setObjectName("Ghost")
-        self.btn_revert_all.setMinimumHeight(32)
+        self.btn_revert_all.setStyleSheet(_CAT_GHOST.format(**_P))
+        self.btn_revert_all.setCursor(Qt.PointingHandCursor)
         self.btn_revert_all.clicked.connect(self._revert_all)
         self._right_cluster.addWidget(self.btn_revert_all)
 
@@ -374,13 +480,29 @@ class TweaksPage(QWidget):
         cluster_wrap.setLayout(self._right_cluster)
         cluster_wrap.setStyleSheet("background:transparent;")
         row.addWidget(cluster_wrap)
+        row.addStretch(1)
 
+        # Facts strip: live hardware detection facts for the active category.
+        # Collapsed until a scan produces content (added to the panel layout
+        # directly after this toolbar row).
+        self.panel_facts = QFrame()
+        self.panel_facts.setStyleSheet(
+            f"QFrame {{ background: {_P['chip']}; border: 1px solid {_P['line']}; }}"
+            " QLabel { background: transparent; }")
+        fl = QHBoxLayout(self.panel_facts)
+        fl.setContentsMargins(28, 7, 28, 7)
+        fl.setSpacing(0)
         self.opt_facts = QLabel()
-        self.opt_facts.setObjectName("PageSub")
+        self.opt_facts.setStyleSheet(
+            "font-family: 'JetBrains Mono', monospace;"
+            f" font-size: 11px; color: {_P['text_dim']}; background: transparent;")
         self.opt_facts.setWordWrap(True)
-        self.opt_lay.addWidget(self.opt_facts, 1)
+        fl.addWidget(self.opt_facts)
+        self.panel_facts.setVisible(False)
+
         self._facts_cache: dict = {}
         self._scan_worker = None
+        pl.addWidget(host)
         return host
 
     def _build_ram_selector(self):
@@ -669,24 +791,31 @@ class TweaksPage(QWidget):
         clear_layout(self.opt_lay)
         if not self.key or self.key == ALL_KEY:
             self.opt_left.setVisible(False)
+            self.device_badge.setVisible(False)
+            self._set_facts()
             return
         if self.key == "ram":
             # The RAM selector strip has its own Scan / Optimize RAM buttons
             # and live specs, so the generic optimizer bar is hidden here.
             self.opt_left.setVisible(False)
+            self.device_badge.setVisible(False)
+            self._set_facts()
             return
         if self.key == "gpu" and not self._gpu_selected_vendor:
             self.opt_left.setVisible(False)
+            self.device_badge.setVisible(False)
+            self._set_facts()
             return
         keys = GROUP_OPTIMIZERS.get(self.key)
         if not keys:
             self.opt_left.setVisible(False)
+            self.device_badge.setVisible(False)
+            self._set_facts()
             return
         self.opt_left.setVisible(True)
 
         scan = QPushButton("Scan")
-        scan.setObjectName("Ghost")
-        scan.setMinimumHeight(32)
+        scan.setStyleSheet(_CAT_GHOST.format(**_P))
         scan.setCursor(Qt.PointingHandCursor)
         scan.setToolTip("Re-detect this system's hardware for the active category.")
         scan.clicked.connect(lambda: self._scan_group(self.key))
@@ -694,8 +823,7 @@ class TweaksPage(QWidget):
 
         btn = QPushButton(
             f"Optimize {BUTTON_LABELS.get(self.key) or BUTTON_LABELS.get(keys[0], self.key)}")
-        btn.setObjectName("Primary")
-        btn.setMinimumHeight(32)
+        btn.setStyleSheet(_CAT_PRIMARY.format(**_P))
         btn.setCursor(Qt.PointingHandCursor)
         btn.setToolTip(
             "Scan, validate and apply the recommended tweaks for this "
@@ -704,14 +832,54 @@ class TweaksPage(QWidget):
         btn.clicked.connect(lambda _=False: self._open_optimizer_group(self.key))
         self.opt_lay.addWidget(btn)
 
-        self.opt_facts = QLabel()
-        self.opt_facts.setObjectName("PageSub")
-        self.opt_facts.setWordWrap(True)
-        self.opt_facts.setText(self._facts_text(self.key))
-        self.opt_lay.addWidget(self.opt_facts, 1)
+        badge = self._badge_text()
+        if badge:
+            self.device_badge.setText(badge)
+            self.device_badge.setVisible(True)
+        else:
+            self.device_badge.setVisible(False)
 
+        self._set_facts()
         if self.key not in self._facts_cache:
             QTimer.singleShot(0, lambda: self._scan_group(self.key, silent=True))
+
+    def _set_facts(self):
+        text = self._facts_text(self.key) if self.key else ""
+        if hasattr(self, "opt_facts"):
+            self.opt_facts.setText(text)
+        if hasattr(self, "panel_facts"):
+            self.panel_facts.setVisible(bool(text))
+
+    def _badge_text(self) -> str:
+        if self.key not in ("mouse", "keyboard"):
+            return ""
+        name, conn = self._pnp_hardware()
+        if not name:
+            return ""
+        return (f"<span style='color:{_P['text_dim']};'><b>Device</b>&nbsp; "
+                f"{name}</span>"
+                f"<span style='color:{_P['text_dim2']};'>&nbsp;\u00b7&nbsp;</span>"
+                f"<span style='color:{_P['text_dim']};'><b>Connection</b>&nbsp; "
+                f"{conn}</span>")
+
+    def _pnp_hardware(self):
+        if not _PNP_CACHE:
+            try:
+                from hardware.probes import _pnp_devices
+                devs = _pnp_devices(["Mouse", "Keyboard"]) or []
+            except Exception as exc:  # noqa: BLE001
+                from maxlog import logger
+                logger.warn(f"device badge probe: {type(exc).__name__}: {exc}")
+                devs = []
+            _PNP_CACHE["mouse"] = [d for d in devs
+                                   if d.get("status", "").strip().lower() == "ok"]
+            _PNP_CACHE["keyboard"] = [d for d in devs
+                                      if d.get("status", "").strip().lower() == "ok"]
+        for d in (_PNP_CACHE.get(self.key) or []):
+            name = str(d.get("name") or "").strip()
+            if name and name.lower() not in ("unknown device", "unknown"):
+                return name, str(d.get("connection") or "Unknown")
+        return "", ""
 
     def _facts_text(self, group) -> str:
         facts = self._facts_cache.get(group) or {}
@@ -741,7 +909,10 @@ class TweaksPage(QWidget):
         if not self.key or self.key == ALL_KEY or group != self.key:
             return
         if hasattr(self, "opt_facts"):
-            self.opt_facts.setText(self._facts_text(group))
+            text = self._facts_text(group)
+            self.opt_facts.setText(text)
+        if hasattr(self, "panel_facts"):
+            self.panel_facts.setVisible(bool(text))
 
     def _open_optimizer_group(self, group):
         from engine.optimizer import GROUP_OPTIMIZERS, OPTIMIZERS
@@ -1077,14 +1248,11 @@ class TweaksPage(QWidget):
         applied_ids = state_mgr.applied_ids()
         applied = sum(1 for t in all_tweaks if t["id"] in applied_ids)
         rec = recommended_count(all_tweaks)
-        color = T["accent"] if applied else T["text_dim"]
         self.counter_lbl.setText(
-            f"<span style='color:{color}; font-size:13px; font-weight:700;'>"
+            f"<span style='color:{_P['purple_2']}; font-weight:600;'>"
             f"{applied} / {len(all_tweaks)}</span>"
-            f"<span style='color:{T['text_dim']}; font-size:10px; font-weight:700;'>"
-            f"&nbsp;&nbsp;APPLIED</span>"
-            f"<span style='color:{T['text_faint']}; font-size:10px; font-weight:600;'>"
-            f"&nbsp;&nbsp;\u00b7&nbsp; {rec} RECOMMENDED</span>")
+            f"<span style='color:{_P['text_dim']}';&nbsp; applied "
+            f"&nbsp;\u00b7&nbsp; {rec} recommended</span>")
 
     def _set_toolbar(self):
         if self.fixed_group or not hasattr(self, "btn_apply_all"):
@@ -1097,13 +1265,25 @@ class TweaksPage(QWidget):
     def _geometry(self) -> tuple[int, int]:
         width = max(10, self.grid_host.width())
         cols = max(1, min(self.MAX_COLS, (width + self.GAP) // (self.MIN_CARD_W + self.GAP)))
-        # Rows are derived from the visible scroll viewport (minus header,
-        # toolbar and their spacers) so pagination never underestimates and
-        # the last page never leaves a dead band at the bottom.
-        chrome = HEADER_H + TOOLBAR_H + 20 if not self.fixed_group else 0
+        # Rows are derived from the visible scroll viewport (minus the chrome
+        # above the grid) so pagination never underestimates and the last page
+        # never leaves a dead band at the bottom. The chrome is measured from
+        # the live panel sections (they vary per category once the RAM/GPU
+        # selector strips are shown).
+        chrome = self._top_chrome_height() if not self.fixed_group else 0
         view_h = max(10, self.scroll.viewport().height() - chrome)
         rows = max(1, view_h // (TweakCard.GRID_HEIGHT + self.GAP))
         return cols, rows
+
+    def _top_chrome_height(self) -> int:
+        h = 40 + 40  # wrapper vertical margins
+        if hasattr(self, "panel") and self.panel.isVisible():
+            for attr in ("panel_head", "panel_search", "panel_toolbar",
+                         "panel_facts", "ram_selector", "gpu_selector"):
+                w = getattr(self, attr, None)
+                if w is not None and w.isVisible():
+                    h += w.height() or w.sizeHint().height()
+        return h
 
     def _schedule_relayout(self):
         if self._relayout_pending:
@@ -1228,9 +1408,20 @@ class TweaksPage(QWidget):
             self._schedule_relayout()
 
     def eventFilter(self, obj, event):
+        if (hasattr(self, "search") and obj is self.search
+                and event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut)):
+            self._set_search_focus(event.type() == QEvent.Type.FocusIn)
         if obj is self.grid_host and event.type() == QEvent.Type.Resize and self.key:
             self._schedule_relayout()
         return super().eventFilter(obj, event)
+
+    def _set_search_focus(self, focused):
+        if not hasattr(self, "search_box"):
+            return
+        border = ("1px solid rgba(124,109,240,0.5)" if focused
+                  else f"1px solid {_P['line']}")
+        self.search_box.setStyleSheet(
+            f"QFrame#SearchBox{{background:{_P['chip']}; border:{border};}}")
 
 
 class _TweakAtmosphere(QWidget):
