@@ -12,7 +12,7 @@ API:
     splash.build_now.connect(build_main_window)   # ~80%
     splash.finished.connect(show_window_and_fade) # 100%
 
-Update flow (full-screen, ported from updater-flow.html â€” no card, no popup):
+Update flow (full-screen, ported from updater-flow.html — no card, no popup):
     splash.arm_update_check()                     # check runs behind the boot
     the boot sequence plays normally first; at its mid milestone either the
     resolved result reveals directly or the "Checking for updates" view takes
@@ -203,7 +203,7 @@ class _RingSpinner(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Full-screen update flow â€” pixel-accurate port of updater-flow.html.
+# Full-screen update flow — pixel-accurate port of updater-flow.html.
 # The boot canvas keeps painting the background/blobs/dots/topbar/bottombar;
 # the hero area swaps between the flow's views (checking, update available,
 # downloading, installing, ready, error). Action buttons are real widgets so
@@ -278,7 +278,7 @@ class _ProbeThread(QThread):
 
 
 class CinematicSplash(QWidget):
-    """Boot screen â€” port of loading-screen-fullscreen.html.
+    """Boot screen — port of loading-screen-fullscreen.html.
 
     Fullscreen + always-on-top (locked above everything, but still Alt+Tab-
     able). Renders the reference: brand topbar with live clock, tracking
@@ -306,11 +306,11 @@ class CinematicSplash(QWidget):
               (40, "LOADING TWEAK DATABASE"), (58, "VERIFYING LICENSE"),
               (88, "STARTING ENGINE"), (98, "READY"))
     STEPS = (
-        (0, "Detecting GPU â€” {gpu}"),
-        (12, "Detecting CPU â€” {cpu}"),
-        (24, "Reading system memory â€” {ram}"),
-        (40, "Loading tweak database â€” {db} entries"),
-        (58, "Verifying license â€” {license}"),
+        (0, "Detecting GPU — {gpu}"),
+        (12, "Detecting CPU — {cpu}"),
+        (24, "Reading system memory — {ram}"),
+        (40, "Loading tweak database — {db} entries"),
+        (58, "Verifying license — {license}"),
         (72, "Restoring last session state"),
         (88, "Starting Maximum Engine"),
         (98, "Ready"),
@@ -520,7 +520,7 @@ class CinematicSplash(QWidget):
         self.update()
 
     def update_downloaded(self):
-        """Download finished â€” play the installing beat, then the ready view
+        """Download finished — play the installing beat, then the ready view
         with the green Restart action (ported from updater-flow.html)."""
         self._update_state = "installing"
         self._download_frac = 1.0
@@ -839,7 +839,7 @@ class CinematicSplash(QWidget):
         return pm
 
     def _draw_topbar(self, p: QPainter, w: int, t: float):
-        # brand mark â€” the user's profile picture, or the official Maximum
+        # brand mark — the user's profile picture, or the official Maximum
         # logo if no PFP has been set (falling back to the "M" monogram only
         # if even the logo is unavailable).
         rect = QRectF(40, 28, 30, 30)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 import math
+import os
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -46,6 +47,8 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import DISCORD_INVITE_URL, DIRS, THEME as T
+
+from engine.state import LOGO_CACHE_FILE
 
 from ui.widgets import qss_rgba, tint_pixmap
 
@@ -237,22 +240,82 @@ class LinkLabel(QLabel):
 # Maximum logo mark — the official dashboard brand tile
 # --------------------------------------------------------------------------
 
+# Official artwork is fetched from the website (cached in the state dir) so
+# the brand tile always shows the current logo; the bundled PNG is the
+# offline fallback.
+_LOGO_URL = "https://max-opti.co.za/images/app-logo.png"
+_LOGO_CACHE = LOGO_CACHE_FILE
+
+
+class _RemoteLogoWorker(QThread):
+    """Fetch the official app logo from the website into the state cache."""
+
+    done = Signal(str)  # path to the downloaded logo, or "" on failure
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._path = ""
+
+    def run(self):
+        import urllib.error
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                _LOGO_URL, headers={"User-Agent": "MaximumTweaks/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+            if data:
+                os.makedirs(os.path.dirname(_LOGO_CACHE) or ".", exist_ok=True)
+                with open(_LOGO_CACHE, "wb") as f:
+                    f.write(data)
+                self._path = _LOGO_CACHE
+        except (urllib.error.URLError, OSError):
+            pass
+        self.done.emit(self._path)
+
+
 class AppLogo(QWidget):
     """Brand mark: the Maximum app artwork on a frosted cyan-edged tile.
 
-    Renders the official ``assets/logo.png`` artwork cover-fitted into the
-    tile; falls back to the glowing 'R' monogram painter if that file is
-    missing.
+    Prefers the official logo fetched from the website (cached in the state
+    dir) so the full ring mark is shown, falls back to the bundled
+    ``assets/logo.png``, and finally to the glowing 'R' monogram painter.
+    The artwork is contain-fitted into the tile so it is never cropped.
     """
 
     def __init__(self, size: int = 58, image_path=None, parent=None):
         super().__init__(parent)
         self.setFixedSize(size, size)
-        self._image_path = image_path or str(
-            (DIRS["assets"] / "logo.png").resolve())
-        self._pixmap = QPixmap(self._image_path)
+        self._worker = None
+        bundled = str((DIRS["assets"] / "logo.png").resolve())
+        if image_path is None and os.path.isfile(_LOGO_CACHE):
+            image_path = _LOGO_CACHE
+        self._pixmap = QPixmap(image_path or bundled)
         if self._pixmap.isNull():
             self._pixmap = QPixmap()  # fall back to the painted 'R'
+        self.fetch_remote()
+
+    def fetch_remote(self):
+        """Refresh the artwork from the website in the background."""
+        if self._worker is not None:
+            return
+        self._worker = _RemoteLogoWorker(self)
+        self._worker.done.connect(self._on_remote_done)
+        self._worker.finished.connect(self._worker_gc)
+        self._worker.start()
+
+    def _on_remote_done(self, path):
+        if path and os.path.isfile(path):
+            self.set_image(path)
+
+    def _worker_gc(self):
+        self._worker = None
+
+    def set_image(self, path):
+        pm = QPixmap(str(path))
+        if not pm.isNull():
+            self._pixmap = pm
+            self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -264,16 +327,19 @@ class AppLogo(QWidget):
         tile.addRoundedRect(r, radius, radius)
 
         if not self._pixmap.isNull():
-            # cover-fit the artwork into the rounded tile
+            # contain-fit the artwork so nothing gets cropped by the tile
             p.save()
             p.setClipPath(tile)
             src = self._pixmap
-            if src.width() != src.height():
-                side = min(src.width(), src.height())
-                src = src.copy(
-                    (src.width() - side) // 2, (src.height() - side) // 2,
-                    side, side)
-            p.drawPixmap(r, src, QRectF(src.rect()))
+            pad = max(3.0, self.width() * 0.055)
+            fit = QRectF(r).adjusted(pad, pad, -pad, -pad)
+            scaled = src.scaled(
+                max(1, int(fit.width())), max(1, int(fit.height())),
+                Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            p.drawPixmap(
+                QPointF(fit.center().x() - scaled.width() / 2.0,
+                        fit.center().y() - scaled.height() / 2.0),
+                scaled, QRectF(src.rect()))
             p.restore()
         else:
             fill = QLinearGradient(0, 0, self.width(), self.height())
