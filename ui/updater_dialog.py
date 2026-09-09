@@ -171,6 +171,34 @@ class _Dial(QWidget):
 
 
 # ---------------------------------------------------------------------------
+# Download progress bar — a thin filled track with a rounded violet fill.
+# ---------------------------------------------------------------------------
+class _ProgressBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._frac = 0.0
+        self.setFixedHeight(6)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_frac(self, frac: float):
+        self._frac = max(0.0, min(1.0, frac))
+        self.update()
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(0, 0, self.width(), self.height())
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(C["surface_2"]))
+        p.drawRoundedRect(r, 3, 3)
+        if self._frac > 0:
+            fill = QRectF(0, 0, self.width() * self._frac, self.height())
+            p.setBrush(QColor(C["violet"]))
+            p.drawRoundedRect(fill, 3, 3)
+        p.end()
+
+
+# ---------------------------------------------------------------------------
 # Update dialog
 # ---------------------------------------------------------------------------
 class FetchWorker(QThread):
@@ -509,7 +537,12 @@ class UpdateDialog(QDialog):
         st.addWidget(self._status, 1)
         st.addStretch()
         b.addLayout(st)
-        b.addSpacing(18)
+
+        # thin download progress bar — only visible while downloading
+        self._progress_bar = _ProgressBar(self._modal)
+        self._progress_bar.setVisible(False)
+        b.addWidget(self._progress_bar)
+        b.addSpacing(8)
 
         # actions
         act = QHBoxLayout()
@@ -614,7 +647,8 @@ class UpdateDialog(QDialog):
         for bold, text, tag, glyph in items[:3]:
             self._changes.addWidget(_change(bold, text, tag, glyph))
 
-        self._status.setText("Downloaded and verified \u2014 ready to install")
+        self._status.setText("A newer build is ready \u2014 hit Update now")
+        self._progress_bar.setVisible(False)
         self._later.setText("Remind me later")
         self._later.show()
         self._btn_later.setText("Skip this version")
@@ -647,6 +681,7 @@ class UpdateDialog(QDialog):
         self._clear_layout(self._changes)
 
         self._status.setText("All good \u2014 you\u2019re on the latest release")
+        self._progress_bar.setVisible(False)
         self._later.hide()
         self._btn_later.hide()
         self._btn_update.setText("\u2713  Done")
@@ -670,6 +705,7 @@ class UpdateDialog(QDialog):
         self._clear_layout(self._changes)
         self._changes_box.hide()
         self._status.setText(message or "Couldn\u2019t check for updates.")
+        self._progress_bar.setVisible(False)
         self._later.hide()
         self._btn_later.hide()
         self._btn_update.setText("Retry")
@@ -726,6 +762,7 @@ class UpdateDialog(QDialog):
         self._changes_box.hide()
         self._clear_layout(self._changes)
         self._status.setText("")
+        self._progress_bar.setVisible(False)
         self._later.setEnabled(False)
         self._btn_later.setEnabled(False)
         self._btn_update.setEnabled(False)
@@ -774,6 +811,8 @@ class UpdateDialog(QDialog):
         # Collapse the changelog so the status + buttons stay grouped at the
         # bottom (no big empty opening while it downloads).
         self._changes_box.hide()
+        self._progress_bar.set_frac(0.0)
+        self._progress_bar.setVisible(True)
         self._status.setText("Downloading the new build\u2026")
         self.worker = DownloadWorker(self._info["url"], self)
         self.worker.bytes.connect(self._on_bytes)
@@ -785,6 +824,7 @@ class UpdateDialog(QDialog):
         self._bytes_got = int(got or 0)
         self._bytes_total = int(total or 0)
         frac = (self._bytes_got / self._bytes_total) if self._bytes_total else 0.0
+        self._progress_bar.set_frac(frac)
         got_mb = f"{self._bytes_got / 1048576:.0f}"
         total_mb = f"{self._bytes_total / 1048576:.0f}"
         self._status.setText(
@@ -800,6 +840,7 @@ class UpdateDialog(QDialog):
         self._mode = "ready"
         self._new_exe = new_exe
         self._tb_sub.setText("READY TO INSTALL")
+        self._progress_bar.set_frac(1.0)
         self._status.setText("Downloaded and verified \u2014 ready to install")
         self._btn_update.setText("\u26a1  Restart & Update")
         self._adopt_widgets()
