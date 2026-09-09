@@ -178,7 +178,7 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
-    """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(frac)."""
+    """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(got, total)."""
     logger.info("updater: download started")
     dest = data_dir() / UPDATE_EXE_NAME
     req = urllib.request.Request(url)
@@ -200,7 +200,7 @@ def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
                     fh.write(chunk)
                     got += len(chunk)
                     if total and progress_cb is not None:
-                        progress_cb(min(1.0, got / total))
+                        progress_cb(got, total)
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise UpdaterError(f"Download failed: {exc}") from exc
     size = dest.stat().st_size

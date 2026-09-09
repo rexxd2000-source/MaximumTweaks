@@ -205,10 +205,10 @@ class FetchWorker(QThread):
 
 
 class DownloadWorker(QThread):
-    """Download the staged update; reports 0..1 progress."""
+    """Download the staged update; reports byte progress and 0..1 fraction."""
 
+    bytes = Signal(int, int)  # got bytes, total bytes
     progress = Signal(float)
-    bytes_total = Signal(int)
     done = Signal(object, str)  # new_exe path or None, error message
 
     def __init__(self, url: str, parent=None):
@@ -217,8 +217,10 @@ class DownloadWorker(QThread):
         self._err = ""
         self._dest = None
 
-    def _progress(self, frac):
-        self.progress.emit(frac)
+    def _progress(self, got, total):
+        self.bytes.emit(int(got), int(total))
+        if total > 0:
+            self.progress.emit(min(1.0, got / total))
 
     def run(self):
         from engine import updater
@@ -356,6 +358,7 @@ class UpdateDialog(QDialog):
         self._info = None
         self._new_exe = None
         self._bytes_total = 0
+        self._bytes_got = 0
         self._mode = None
         self._worker = None
 
@@ -708,7 +711,6 @@ class UpdateDialog(QDialog):
         if self._bytes_total > 0:
             return f"{self._bytes_total / 1048576:.0f}"
         return "41"
-
     def _check(self):
         self._mode = "checking"
         self._tb_sub.setText("CHECKING FOR UPDATES")
@@ -768,23 +770,30 @@ class UpdateDialog(QDialog):
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Downloading\u2026")
         self._btn_later.setEnabled(False)
+        self._later.setEnabled(False)
+        # Collapse the changelog so the status + buttons stay grouped at the
+        # bottom (no big empty opening while it downloads).
+        self._changes_box.hide()
         self._status.setText("Downloading the new build\u2026")
         self.worker = DownloadWorker(self._info["url"], self)
-        self.worker.bytes_total.connect(self._on_bytes_total)
-        self.worker.progress.connect(self._on_progress)
+        self.worker.bytes.connect(self._on_bytes)
         self.worker.done.connect(self._on_downloaded)
         self.worker.start()
+        self._adopt_widgets()
 
-    def _on_bytes_total(self, n: int):
-        self._bytes_total = int(n or 0)
-
-    def _on_progress(self, frac: float):
+    def _on_bytes(self, got: int, total: int):
+        self._bytes_got = int(got or 0)
+        self._bytes_total = int(total or 0)
+        frac = (self._bytes_got / self._bytes_total) if self._bytes_total else 0.0
+        got_mb = f"{self._bytes_got / 1048576:.0f}"
+        total_mb = f"{self._bytes_total / 1048576:.0f}"
         self._status.setText(
-            f"Downloading {self._mb_label()} MB\u2026 {int(frac * 100)}%")
+            f"Downloading {got_mb} / {total_mb} MB\u2026 {int(frac * 100)}%")
 
     def _on_downloaded(self, new_exe, error):
         self._btn_update.setEnabled(True)
         self._btn_later.setEnabled(True)
+        self._later.setEnabled(True)
         if error or new_exe is None:
             self._show_error(error or "Download failed.")
             return
