@@ -356,6 +356,7 @@ class CinematicSplash(QWidget):
 
         # Full-screen update-flow chrome: spinner + the action buttons.
         self._spinner = _RingSpinner(self)
+        self._spinner.hide()
         self._spinner.raise_()
 
         self._btn_skip = QPushButton("Skip", self)
@@ -424,6 +425,7 @@ class CinematicSplash(QWidget):
         self._held = True
         self._ok_hold_until = None
         self._set_actions(None)
+        self._spinner.move(self.width() // 2 - 32, int(self.height() * 0.32))
         self._spinner.start()
         self.update()
 
