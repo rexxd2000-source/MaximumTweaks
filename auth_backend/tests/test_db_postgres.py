@@ -15,7 +15,11 @@ import pytest
 
 try:
     from dotenv import load_dotenv
+    from pathlib import Path
     load_dotenv()  # pick up TEST_DATABASE_URL from auth_backend/.env if set
+    # Also load the repo .env explicitly: find_dotenv() resolution varies with
+    # the caller, and this must match what the server uses via DATABASE_URL.
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except Exception:  # noqa: BLE001
     pass
 

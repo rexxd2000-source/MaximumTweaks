@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maximum Tweaks — License Admin</title>
+<style>
+  :root{
+    --bg:#08060F; --bg2:#0B0912; --card:#0C0A16; --card2:#12101F;
+    --border:#1D1B28; --border2:#262238;
+    --ink:#F6F4FC; --ink-2:#C3BBD6; --dim:#8A829F; --faint:#5A5470;
+    --violet:#8B6BFF; --violet-2:#A78BFF;
+    --green:#3DDC97; --amber:#FFB454; --red:#FF6F7A; --blue:#6CA8FF; --grey:#9AA0AE;
+    --mono:'JetBrains Mono','Consolas',monospace;
+    --sans:'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;
+       -webkit-font-smoothing:antialiased;}
+  ::selection{background:rgba(139,107,255,.35)}
+  button{font-family:var(--sans);cursor:pointer}
+  input,select{font-family:var(--sans)}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
+
+  header{display:flex;align-items:center;justify-content:space-between;
+         padding:18px 26px;border-bottom:1px solid var(--border);
+         background:linear-gradient(180deg,var(--bg2),var(--bg));}
+  header .brand{display:flex;align-items:center;gap:12px}
+  header .logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+         background:linear-gradient(135deg,#8B6BFF,#5B3FD8);font-weight:800;font-size:15px;color:#fff}
+  header h1{font-size:17px;font-weight:700;letter-spacing:.2px}
+  header small{display:block;color:var(--dim);font-size:11.5px;font-weight:500;margin-top:1px}
+  header .side{display:flex;align-items:center;gap:10px}
+  .pill{font-size:11.5px;color:var(--dim);border:1px solid var(--border);background:var(--card);
+        padding:5px 10px;border-radius:20px;font-family:var(--mono)}
+
+  .btn{border:1px solid var(--border);background:var(--card2);color:var(--ink);
+       font-size:13px;font-weight:600;padding:8px 16px;border-radius:9px;
+       transition:all .15s ease}
+  .btn:hover{border-color:var(--border2);background:#171428}
+  .btn.primary{background:linear-gradient(135deg,#8B6BFF,#6B48E8);border-color:transparent;color:#fff}
+  .btn.primary:hover{filter:brightness(1.1)}
+  .btn.danger{border-color:rgba(255,111,122,.4);color:var(--red)}
+  .btn.danger:hover{background:rgba(255,111,122,.1)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;
+        padding:22px;margin-bottom:20px}
+  .card h2{font-size:14px;font-weight:700;letter-spacing:.3px;margin-bottom:16px;
+           display:flex;align-items:center;gap:8px}
+  .card h2 .tag{font-size:10.5px;color:var(--dim);font-weight:600;letter-spacing:1px;
+        text-transform:uppercase;margin-left:auto}
+
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:16px 18px}
+  .stat .n{font-size:24px;font-weight:800;font-family:var(--mono)}
+  .stat .l{font-size:11px;color:var(--dim);font-weight:600;letter-spacing:1.2px;
+           text-transform:uppercase;margin-top:4px}
+  .stat.s-total .n{color:var(--ink)} .stat.s-unused .n{color:var(--grey)}
+  .stat.s-active .n{color:var(--green)} .stat.s-expired .n{color:var(--amber)}
+  .stat.s-revoked .n{color:var(--red)}
+
+  .grid{display:grid;grid-template-columns:1.05fr 1.95fr;gap:20px}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:11px;font-weight:700;letter-spacing:1px;
+        text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+  .field input,.field select{width:100%;background:var(--bg2);border:1px solid var(--border);
+        color:var(--ink);border-radius:9px;padding:9px 12px;font-size:13.5px;outline:none}
+  .field input:focus,.field select:focus{border-color:var(--violet)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  .durations{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+  .dur{border:1px solid var(--border);background:var(--bg2);border-radius:11px;
+       padding:11px 8px;text-align:center;cursor:pointer;transition:all .15s}
+  .dur .t{font-size:13px;font-weight:700}
+  .dur .s{font-size:10.5px;color:var(--faint);margin-top:2px;font-family:var(--mono)}
+  .dur.sel{border-color:var(--violet);background:rgba(139,107,255,.12)}
+  .dur.sel .t{color:var(--violet-2)}
+
+  .banner{border-radius:10px;padding:11px 14px;font-size:13px;font-weight:600;margin-bottom:14px;display:none}
+  .banner.ok{display:block;background:rgba(61,220,151,.1);border:1px solid rgba(61,220,151,.35);color:var(--green)}
+  .banner.err{display:block;background:rgba(255,111,122,.1);border:1px solid rgba(255,111,122,.35);color:var(--red)}
+
+  .keys-out{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:var(--bg2);
+        border:1px solid var(--border);border-radius:9px;padding:7px 6px 7px 11px;
+        font-family:var(--mono);font-size:13px;letter-spacing:.4px}
+  .chip .cpy{border:1px solid var(--border);background:var(--card2);color:var(--violet-2);
+        border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:700}
+  .chip .cpy:hover{background:#211a44}
+  .chip .cpy.copied{color:var(--green)}
+
+  .filters{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .fp{border:1px solid var(--border);background:var(--bg2);color:var(--dim);border-radius:20px;
+      padding:5px 13px;font-size:12.5px;font-weight:600}
+  .fp.on{background:rgba(139,107,255,.16);border-color:var(--violet);color:var(--violet-2)}
+  .search{flex:1;min-width:180px;margin-left:auto;display:flex;gap:8px}
+  .search input{flex:1;width:auto}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);
+     text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:10px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .keycell{font-family:var(--mono);font-size:12.5px;letter-spacing:.3px;white-space:nowrap}
+  .status{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.8px;
+          text-transform:uppercase;padding:3px 9px;border-radius:20px}
+  .st-unused{color:var(--grey);background:rgba(154,160,174,.12)}
+  .st-active{color:var(--green);background:rgba(61,220,151,.12)}
+  .st-expired{color:var(--amber);background:rgba(255,180,84,.12)}
+  .st-revoked{color:var(--red);background:rgba(255,111,122,.12)}
+  .dim{color:var(--dim)} .faint{color:var(--faint)} .mono{font-family:var(--mono)}
+  .tbl-actions{display:flex;gap:6px}
+  .mini{border:1px solid var(--border);background:var(--card2);border-radius:6px;
+        padding:3px 8px;font-size:11px;font-weight:700;color:var(--ink-2)}
+  .mini:hover{border-color:var(--border2)}
+  .mini.cpy{color:var(--violet-2)} .mini.rev{color:var(--red)}
+  .empty{text-align:center;color:var(--faint);padding:36px 0;font-size:13px}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);
+           border-top-color:var(--violet);border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* Login */
+  #login-backdrop{position:fixed;inset:0;background:rgba(4,3,9,.72);
+        backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:20}
+  .login-box{width:380px;background:var(--card);border:1px solid var(--border);
+        border-radius:16px;padding:34px 30px;text-align:center}
+  .login-box .logo{width:52px;height:52px;border-radius:14px;margin:0 auto 16px;
+        display:grid;place-items:center;font-size:22px;font-weight:800;color:#fff;
+        background:linear-gradient(135deg,#8B6BFF,#5B3FD8)}
+  .login-box h2{font-size:17px;margin-bottom:4px}
+  .login-box p{color:var(--dim);font-size:12.5px;margin-bottom:22px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">MT</div>
+    <div>
+      <h1>Maximum Tweaks — License Admin</h1>
+      <small>Server-side license key management</small>
+    </div>
+  </div>
+  <div class="side">
+    <span class="pill" id="api-pill">…</span>
+    <button class="btn" id="btn-refresh">Refresh</button>
+    <button class="btn" id="btn-logout">Log out</button>
+  </div>
+</header>
+
+<div class="wrap" id="main-view" style="display:none">
+
+  <div class="stats">
+    <div class="stat s-total"><div class="n" id="st-total">–</div><div class="l">Total</div></div>
+    <div class="stat s-unused"><div class="n" id="st-unused">–</div><div class="l">Unused</div></div>
+    <div class="stat s-active"><div class="n" id="st-active">–</div><div class="l">Active</div></div>
+    <div class="stat s-expired"><div class="n" id="st-expired">–</div><div class="l">Expired</div></div>
+    <div class="stat s-revoked"><div class="n" id="st-revoked">–</div><div class="l">Revoked</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Generate license keys <span class="tag">Server-side</span></h2>
+      <div class="banner" id="gen-banner"></div>
+      <div class="durations" id="durations">
+        <div class="dur sel" data-dur="1m"><div class="t">1 Month</div><div class="s">monthly</div></div>
+        <div class="dur" data-dur="6m"><div class="t">6 Months</div><div class="s">custom</div></div>
+        <div class="dur" data-dur="lifetime"><div class="t">Lifetime</div><div class="s">lifetime</div></div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Prefix (first key group)</label>
+          <input id="f-prefix" maxlength="4" placeholder="MAX" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label>Quantity (1–500)</label>
+          <input id="f-count" type="number" min="1" max="500" value="1" inputmode="numeric">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Customer (optional)</label>
+          <input id="f-customer" placeholder="Name or email" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label>Note (optional)</label>
+          <input id="f-note" placeholder="e.g. order id / channel" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <button class="btn primary" id="btn-gen" style="width:100%">Generate keys</button>
+      <div id="gen-output" style="margin-top:16px"></div>
+    </div>
+
+    <div class="card">
+      <h2>All generated keys <span class="tag" id="count-label"></span></h2>
+      <div class="filters">
+        <button class="fp on" data-st="">All</button>
+        <button class="fp" data-st="unused">Unused</button>
+        <button class="fp" data-st="active">Active</button>
+        <button class="fp" data-st="expired">Expired</button>
+        <button class="fp" data-st="revoked">Revoked</button>
+        <div class="search">
+          <input id="f-search" placeholder="Search key / customer / note…" autocomplete="off">
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>License key</th><th>Status</th><th>Plan</th><th>Customer</th>
+              <th>Created</th><th>Expires</th><th>Activated</th><th>Device</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"><tr><td colspan="9"><div class="empty">Loading…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="login-backdrop">
+  <div class="login-box">
+    <div class="logo">MT</div>
+    <h2>Maximum Tweaks Admin</h2>
+    <p>Enter the admin token issued by the Maximum Tweaks license server.</p>
+    <div class="banner err" id="login-banner" style="display:none"></div>
+    <div class="field">
+      <input id="login-token" type="password" placeholder="Admin token" autocomplete="off" style="text-align:center;letter-spacing:1px">
+    </div>
+    <button class="btn primary" id="btn-login" style="width:100%">Log in</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let STATE = { prefix:"MAX", status:"", search:"", rows:[] };
+
+/* ---------- helpers ---------- */
+async function api(path, opts={}) {
+  const r = await fetch(path, Object.assign({credentials:"same-origin", headers:{"Accept":"application/json"}}, opts));
+  let body = null;
+  try { body = await r.json(); } catch (e) {}
+  if (!r.ok) throw Object.assign(new Error((body && (body.message || body.error)) || ("Request failed (HTTP "+r.status+")")), {status:r.status, body});
+  return body;
+}
+function toast(banner, text, ok) {
+  banner.className = "banner " + (ok ? "ok" : "err");
+  banner.textContent = text;
+  clearTimeout(banner._t);
+  banner._t = setTimeout(()=>{ banner.style.display="none"; banner.className="banner"; }, ok ? 4500 : 7000);
+}
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = document.createElement("textarea"); ta.value=text; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  if (btn) { const old=btn.textContent; btn.textContent="COPIED"; btn.classList.add("copied");
+    setTimeout(()=>{btn.textContent=old; btn.classList.remove("copied");}, 1200); }
+}
+function fmt(ts) { return ts ? String(ts).slice(0,16) : "—"; }
+function maskDev(d) { return d ? (String(d).slice(0,12)+"…") : "—"; }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- stats + table ---------- */
+async function loadStats() {
+  try {
+    const s = (await api("/admin/stats")).stats;
+    $("st-total").textContent = s.total ?? 0;
+    $("st-unused").textContent = (s.by_status && s.by_status.unused) || 0;
+    $("st-active").textContent = (s.by_status && s.by_status.active) || 0;
+    $("st-expired").textContent = (s.by_status && s.by_status.expired) || 0;
+    $("st-revoked").textContent = (s.by_status && s.by_status.revoked) || 0;
+  } catch (e) { /* keep old numbers */ }
+}
+
+async function loadLicenses(append=false) {
+  $("tbody").innerHTML = '<tr><td colspan="9"><div class="empty"><span class="spinner" style="margin-right:8px"></span>Loading…</div></td></tr>';
+  let rows;
+  try {
+    rows = STATE.search.trim().length >= 3
+      ? (await api("/admin/search?q="+encodeURIComponent(STATE.search.trim()))).licenses
+      : (await api("/admin/licenses" + (STATE.status ? "?status="+encodeURIComponent(STATE.status) : ""))).licenses;
+  } catch (e) {
+    $("tbody").innerHTML = '<tr><td colspan="9"><div class="empty">Could not load licenses: '+esc(e.message)+'</div></td></tr>';
+    return;
+  }
+  STATE.rows = rows;
+  $("count-label").textContent = rows.length + (STATE.status ? " · "+STATE.status : "");
+  if (!rows.length) { $("tbody").innerHTML = '<tr><td colspan="9"><div class="empty">No licenses match.</div></td></tr>'; return; }
+  const now = Date.now()/1000;
+  const frag = document.createDocumentFragment();
+  for (const r of rows) {
+    let st = r.status || "unused";
+    if (st==="unused" && r.expires_at) {
+      const expT = new Date(r.expires_at.replace(" ","T")+"Z").getTime()/1000;
+      if (!isNaN(expT) && expT < now) st = "expired";
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="keycell">'+esc(r.license_key)+'</td>'+
+      '<td><span class="status st-'+st+'">'+st+'</span></td>'+
+      '<td>'+esc(r.plan||"—")+'</td>'+
+      '<td>'+esc(r.customer||"—")+'</td>'+
+      '<td class="dim">'+fmt(r.created_at)+'</td>'+
+      '<td class="dim">'+fmt(r.expires_at)+'</td>'+
+      '<td class="dim">'+fmt(r.activated_at)+'</td>'+
+      '<td class="dim mono" title="activation count: '+(r.activation_count||0)+'">'+maskDev(r.device_id)+'</td>'+
+      '<td><div class="tbl-actions">'+
+        '<button class="mini cpy" data-act="copy">Copy</button>'+
+        (st==="revoked" ? '<button class="mini" data-act="unrevoke">Restore</button>'
+                        : '<button class="mini rev" data-act="revoke">Revoke</button>')+
+      '</div></td>';
+    tr.querySelector('[data-act="copy"]').onclick = ()=>copyText(r.license_key, tr.querySelector('[data-act="copy"]'));
+    tr.querySelector('[data-act="revoke"]').onclick = ()=>revokeKey(r);
+    tr.querySelector('[data-act="unrevoke"]').onclick = ()=>unrevokeKey(r);
+    frag.appendChild(tr);
+  }
+  $("tbody").innerHTML = "";
+  $("tbody").appendChild(frag);
+}
+
+async function revokeKey(r) {
+  const reason = (prompt("Revoke "+r.license_key+" — reason:") || "").trim();
+  try {
+    await api("/admin/revoke", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({key:r.license_key, reason})});
+    await Promise.all([loadLicenses(), loadStats()]);
+  } catch (e) { alert("Revoke failed: "+e.message); }
+}
+async function unrevokeKey(r) {
+  try {
+    await api("/admin/unrevoke", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({key:r.license_key})});
+    await Promise.all([loadLicenses(), loadStats()]);
+  } catch (e) { alert("Restore failed: "+e.message); }
+}
+
+/* ---------- generate ---------- */
+function selDur(el) {
+  document.querySelectorAll("#durations .dur").forEach(d=>d.classList.toggle("sel", d===el));
+  return el.dataset.dur;
+}
+$("durations").addEventListener("click", (e)=>{ const d=e.target.closest(".dur"); if (d) selDur(d); });
+
+$("btn-gen").onclick = async ()=>{
+  const banner = $("gen-banner");
+  const dur = document.querySelector("#durations .dur.sel").dataset.dur;
+  const count = Math.max(1, Math.min(500, parseInt($("f-count").value,10)||1));
+  const prefix = $("f-prefix").value.trim().toUpperCase();
+  const payload = { count, duration: dur, customer: $("f-customer").value.trim(),
+                    note: $("f-note").value.trim() };
+  if (prefix) payload.prefix = prefix;
+  $("btn-gen").disabled = true;
+  $("btn-gen").textContent = "Generating…";
+  try {
+    const res = await api("/admin/generate", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    const bannerText = res.count===1 ? "Key generated successfully" : res.count+" keys generated successfully";
+    toast(banner, bannerText+" — duration stored server-side.", true);
+    const out = $("gen-output");
+    out.innerHTML = '<div class="keys-out">'+res.keys.map(k=>
+      '<span class="chip">'+esc(k)+'<button class="cpy" data-k="'+esc(k)+'">Copy</button></span>').join("")+'</div>';
+    out.querySelectorAll(".cpy").forEach(b=>b.onclick=()=>copyText(b.dataset.k, b));
+    await Promise.all([loadLicenses(), loadStats()]);
+  } catch (e) {
+    toast(banner, (e.status===401 || e.status===403)
+      ? "Unable to generate key. Check that you are logged in as an admin."
+      : "Unable to generate key. Please check the server connection.", false);
+  } finally {
+    $("btn-gen").disabled = false;
+    $("btn-gen").textContent = "Generate keys";
+  }
+};
+
+/* ---------- filters / search ---------- */
+document.querySelectorAll(".fp").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".fp").forEach(x=>x.classList.toggle("on", x===b));
+  STATE.status = b.dataset.st;
+  loadLicenses();
+});
+let searchTimer;
+$("f-search").oninput = ()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>{ STATE.search=$("f-search").value; loadLicenses(); }, 400); };
+
+/* ---------- auth ---------- */
+$("btn-login").onclick = async ()=>{
+  const token = $("login-token").value.trim();
+  if (!token) return;
+  const b = $("login-banner");
+  $("btn-login").disabled = true;
+  try {
+    await api("/admin/login", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({token})});
+    await boot();
+  } catch (e) {
+    b.style.display="block"; b.textContent = "Login failed. Check the admin token.";
+  } finally { $("btn-login").disabled = false; $("login-token").value=""; }
+};
+$("btn-logout").onclick = async ()=>{
+  try { await api("/admin/logout", {method:"POST"}); } catch(e){}
+  location.reload();
+};
+$("login-token").addEventListener("keydown", e=>{ if (e.key==="Enter") $("btn-login").click(); });
+$("f-count").addEventListener("keydown", e=>{ if (e.key==="Enter") $("btn-gen").click(); });
+
+async function boot() {
+  let me;
+  try { me = await api("/admin/me"); }
+  catch (e) { me = { logged_in:false }; }
+  if (me.logged_in) {
+    STATE.prefix = me.configured_prefix || "MAX";
+    $("f-prefix").value = STATE.prefix;
+    $("login-backdrop").style.display = "none";
+    $("main-view").style.display = "block";
+    $("api-pill").textContent = location.origin || window.location.hostname;
+    await Promise.all([loadStats(), loadLicenses()]);
+  } else {
+    $("login-backdrop").style.display = "flex";
+  }
+}
+$("btn-refresh").onclick = async ()=>{ await Promise.all([loadStats(), loadLicenses()]); };
+
+boot();
+</script>
+</body>
+</html>

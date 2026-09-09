@@ -22,27 +22,57 @@ import time
 
 # 32-char alphabet with no ambiguous characters (I/L/O/0/1 removed).
 ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-KEY_PREFIX = "MAX"
+
+# Configurable key prefix (env override in production): MAX / REX / MTW etc.
+# It is NOT hard-coded by design — the format stays XXXX-XXXX-XXXX-XXXX and
+# the prefix simply sets the first group (3-4 characters).
+KEY_PREFIX = os.environ.get("LICENSE_KEY_PREFIX", "MAX").strip().upper()
+if not KEY_PREFIX or not KEY_PREFIX.isalnum() or len(KEY_PREFIX) > 4:
+    KEY_PREFIX = "MAX"
+
 _GROUPS = 3
 _GROUP_LEN = 4
 TOKEN_VERSION = 1
 
-KEY_RE = f"^{KEY_PREFIX}-[A-HJKMNP-Z2-9]{{4}}-[A-HJKMNP-Z2-9]{{4}}-[A-HJKMNP-Z2-9]{{4}}$"
+KEY_RE = (
+    "^[A-Z0-9]{3,4}-"
+    "[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$"
+)
 
 
-def generate_key() -> str:
-    """Return a fresh key like ``MAX-XXXX-XXXX-XXXX`` (60 bits of entropy)."""
+def generate_key(prefix: str = "") -> str:
+    """Return a fresh key like ``MAX-DVA8-XQPE-S9TZ`` (60 bits of entropy).
+
+    ``prefix`` is optional and defaults to the configured license key prefix;
+    it must be 1-4 uppercase letters/digits (anything else falls back to the
+    configured prefix). The key never encodes the plan or duration — that is
+    stored server-side only.
+    """
+    prefix = (prefix or "").strip().upper()
+    if not prefix or not prefix.isalnum() or len(prefix) > 4:
+        prefix = KEY_PREFIX
+
     def group():
         return "".join(secrets.choice(ALPHABET) for _ in range(_GROUP_LEN))
-    return f"{KEY_PREFIX}-{group()}-{group()}-{group()}"
+    return f"{prefix}-{group()}-{group()}-{group()}"
 
 
 def normalize_key(raw: str) -> str:
-    """Tolerate lowercase / missing dashes / surrounding whitespace."""
+    """Tolerate lowercase / missing dashes / surrounding whitespace.
+
+    Accepts any 3-4 character key prefix (``MAX``, ``REX``, ``MTW``, ...) as
+    long as the total key is 15 or 16 uppercase alphanumerics, then rebuilds
+    the canonical ``XXXX-XXXX-XXXX-XXXX`` form (3 or 4 chars in the first
+    group). Unknown prefixes won't match any stored key → generic
+    ``invalid_license``.
+    """
     cleaned = "".join(ch for ch in (raw or "").upper() if ch.isalnum())
-    if len(cleaned) != len(KEY_PREFIX) + _GROUPS * _GROUP_LEN:  # MAX + 12 chars
+    total = len(cleaned)
+    if total not in (15, 16):
         return ""
-    return f"{cleaned[:3]}-{cleaned[3:7]}-{cleaned[7:11]}-{cleaned[11:]}"
+    body = total - 12  # first group length: 3 (e.g. MAX) or 4 (e.g. MTWX)
+    return (f"{cleaned[:body]}-{cleaned[body:body + 4]}"
+            f"-{cleaned[body + 4:body + 8]}-{cleaned[body + 8:body + 12]}")
 
 
 # ---------------------------------------------------------------------------

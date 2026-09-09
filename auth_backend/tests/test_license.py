@@ -94,6 +94,38 @@ def test_normalize_key_tolerates_noise():
     assert normalize_key("XXXX-XXXX-XXXX") == ""
 
 
+def test_generate_key_accepts_custom_prefix():
+    for prefix in ("MAX", "REX", "MTW", "MTWX"):
+        key = generate_key(prefix)
+        assert key.startswith(prefix + "-")
+        groups = key.split("-")
+        assert len(groups) == 4
+        assert len(groups[0]) == len(prefix)
+        assert all(len(g) == 4 for g in groups[1:])
+    # Default prefix is still used when none is passed.
+    assert generate_key().startswith("MAX-")
+
+
+def test_generated_keys_do_not_encode_duration():
+    """A 1-month key and a lifetime key must be format-identical and
+    unpredictable — the duration lives only in the DB record."""
+    import re as _re
+    shape = r"^[A-Z]{3,4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$"
+    for _ in range(200):
+        assert _re.match(shape, generate_key())
+
+
+def test_normalize_key_accepts_custom_prefixes():
+    assert normalize_key("REX-7KQ2-M8VA-XP4T") == "REX-7KQ2-M8VA-XP4T"
+    assert normalize_key("mtw-a92f-qx7p-k4zd") == "MTW-A92F-QX7P-K4ZD"
+    assert normalize_key("MTWX-A92F-QX7P-K4ZD") == "MTWX-A92F-QX7P-K4ZD"
+
+
+def test_generate_key_rejects_invalid_prefix():
+    key = generate_key("toolong!")
+    assert key.startswith("MAX-")  # silently falls back to the configured prefix
+
+
 # ---------------------------------------------------------------------------
 # Token signing / verification
 # ---------------------------------------------------------------------------
@@ -355,3 +387,135 @@ def test_admin_unbind_frees_key_for_new_pc():
     resp = _activate(key, DEVICE_B)
     assert resp.status_code == 200
     assert db.get(key)["device_id"] == DEVICE_B
+
+
+# ---------------------------------------------------------------------------
+# Admin panel + configurable key generation
+# ---------------------------------------------------------------------------
+
+def test_admin_me_requires_login():
+    assert client.get("/admin/me").status_code == 401
+    resp = client.get("/admin/me", headers=_admin_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["logged_in"] is True
+    assert body["configured_prefix"] == "MAX"
+
+
+def test_admin_login_cookie_flow():
+    # Wrong token is rejected.
+    bad = client.post("/admin/login", json={"token": "wrong-token"})
+    assert bad.status_code == 401
+    # Correct token sets an HttpOnly session cookie.
+    ok = client.post("/admin/login", json={"token": os.environ["ADMIN_TOKEN"]})
+    assert ok.status_code == 200
+    cookie = ok.cookies.get("adm")
+    assert cookie
+    assert "httponly" in ok.headers.get("set-cookie", "").lower()
+    # The cookie alone authenticates admin endpoints.
+    resp = client.get("/admin/licenses", cookies={"adm": cookie})
+    assert resp.status_code == 200
+    assert "licenses" in resp.json()
+    # A fresh client with no cookie is a hard 401 (cookie jar does not leak).
+    from starlette.testclient import TestClient as _TC
+    assert _TC(backend.app).get("/admin/licenses").status_code == 401
+
+
+def test_admin_me_accepts_cookie():
+    ok = client.post("/admin/login", json={"token": os.environ["ADMIN_TOKEN"]})
+    cookie = ok.cookies.get("adm")
+    resp = client.get("/admin/me", cookies={"adm": cookie})
+    assert resp.status_code == 200
+    assert resp.json()["logged_in"] is True
+
+
+def test_admin_generate_with_prefix_and_duration():
+    resp = client.post("/admin/generate",
+                       json={"count": 2, "duration": "1m", "prefix": "REX",
+                             "customer": "Alice"},
+                       headers=_admin_headers())
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert len(data["keys"]) == 2 and len(set(data["keys"])) == 2
+    assert all(k.startswith("REX-") for k in data["keys"])
+    assert data["plan"] == "monthly"
+    assert data["expires_at"]  # ~1 month out, server-computed
+    for k in data["keys"]:
+        rec = db.get(k)
+        assert rec["plan"] == "monthly"
+        assert rec["expires_at"] == data["expires_at"]
+        assert rec["customer"] == "Alice"
+
+
+def test_admin_generate_lifetime_has_no_expiry():
+    resp = client.post("/admin/generate",
+                       json={"count": 1, "duration": "lifetime", "prefix": "MTW"},
+                       headers=_admin_headers())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["keys"][0].startswith("MTW-")
+    assert data["expires_at"] is None
+    assert db.get(data["keys"][0])["plan"] == "lifetime"
+
+
+def test_admin_generate_6m_sets_expiry():
+    resp = client.post("/admin/generate",
+                       json={"count": 1, "duration": "6m"},
+                       headers=_admin_headers())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["plan"] == "custom"
+    assert data["expires_at"]
+    assert db.get(data["keys"][0])["expires_at"] == data["expires_at"]
+
+
+def test_admin_generate_bulk_unique():
+    resp = client.post("/admin/generate", json={"count": 50},
+                       headers=_admin_headers())
+    assert resp.status_code == 200
+    keys = resp.json()["keys"]
+    assert len(keys) == 50 == len(set(keys))
+    assert all(normalize_key(k) for k in keys)
+
+
+def test_admin_generate_rejects_bad_prefix():
+    resp = client.post("/admin/generate", json={"prefix": "LONG!!"},
+                       headers=_admin_headers())
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "invalid_prefix"
+
+
+def test_admin_generate_computed_keys_activate():
+    resp = client.post("/admin/generate",
+                       json={"count": 1, "duration": "1m", "prefix": "REX"},
+                       headers=_admin_headers())
+    key = resp.json()["keys"][0]
+    # The generated (prefixed) key works through the public license API.
+    act = _activate(key)
+    assert act.status_code == 200, act.text
+    assert act.json()["license"]["key"] == key
+    assert db.get(key)["status"] == "active"
+
+
+def test_admin_panel_html_served():
+    resp = client.get("/admin")
+    assert resp.status_code == 200
+    assert "Maximum Tweaks" in resp.text
+
+
+def test_unhandled_500_returns_friendly_envelope():
+    """A genuine server error must return the friendly JSON envelope while the
+    real exception is logged server-side — never raw Internal Server Error."""
+    from starlette.testclient import TestClient as _TC
+    original = backend._DB.list_all
+    backend._DB.list_all = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    try:
+        with _TC(backend.app, raise_server_exceptions=False) as quiet:
+            resp = quiet.get("/admin/licenses", headers=_admin_headers())
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["error"] == "server_error"
+            assert "boom" not in body["message"]
+            assert body["message"]
+    finally:
+        backend._DB.list_all = original

@@ -8,7 +8,9 @@ Usage
 -----
 Run from the ``auth_backend/`` directory::
 
-    python -m admin generate [--count N] [--plan lifetime|monthly|yearly|custom]
+    python -m admin generate [--count N] [--prefix MAX|REX|MTW]
+                             [--duration 1m|6m|lifetime]
+                             [--plan lifetime|monthly|yearly|custom]
                              [--customer "Name"] [--note "..."]
                              [--expires "YYYY-MM-DD HH:MM:SS"]
     python -m admin list [--status unused|active|revoked|expired]
@@ -21,8 +23,10 @@ Run from the ``auth_backend/`` directory::
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import sys
+from datetime import datetime, timezone
 
 from db import LicenseDB
 from keys import generate_key
@@ -35,17 +39,48 @@ def _redact(rec: dict) -> dict:
     return out
 
 
+def _add_months_utc(months: int) -> str:
+    now = datetime.now(timezone.utc)
+    month_index = now.month - 1 + months
+    year = now.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(now.day, calendar.monthrange(year, month)[1])
+    return datetime(year, month, day, now.hour, now.minute, now.second,
+                    tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def cmd_generate(db: LicenseDB, args):
+    prefix = (getattr(args, "prefix", "") or "").strip().upper()
+    if not prefix:
+        prefix = "MAX"
+    if len(prefix) > 4 or not prefix.isalnum():
+        print(f"Invalid prefix: {prefix!r} (use 1-4 letters/digits)")
+        sys.exit(1)
+    expires = args.expires
+    plan = args.plan
+    duration = (getattr(args, "duration", "") or "").strip().lower()
+    if not expires:
+        if duration == "1m":
+            plan = "monthly"; expires = _add_months_utc(1)
+        elif duration == "6m":
+            plan = "custom"; expires = _add_months_utc(6)
+        elif duration == "lifetime":
+            plan = "lifetime"; expires = None
+        elif duration:
+            print("Duration must be: 1m, 6m or lifetime"); sys.exit(1)
     keys = []
     for _ in range(max(1, args.count)):
-        key = generate_key()
-        db.create(key, plan=args.plan, customer=args.customer,
-                  note=args.note, expires_at=args.expires)
+        key = generate_key(prefix)
+        db.create(key, plan=plan if plan else "lifetime", customer=args.customer,
+                  note=args.note, expires_at=expires)
         keys.append(key)
     if args.json:
-        print(json.dumps({"keys": keys}))
+        print(json.dumps({"keys": keys, "prefix": prefix, "plan": plan,
+                          "expires_at": expires}))
     else:
-        print(f"Generated {len(keys)} license key(s):")
+        print(f"Generated {len(keys)} license key(s) "
+              f"(prefix: {prefix}, plan: {plan or 'lifetime'}"
+              f"{', expires: ' + expires if expires else ', lifetime'}):")
         for k in keys:
             print(f"  {k}")
 
@@ -106,6 +141,11 @@ def main(argv=None):
 
     p_gen = sub.add_parser("generate", help="create new license keys")
     p_gen.add_argument("--count", type=int, default=1)
+    p_gen.add_argument("--prefix", default="",
+                       help="key prefix, e.g. MAX, REX, MTW (default MAX)")
+    p_gen.add_argument("--duration", default="",
+                       choices=["1m", "6m", "lifetime"],
+                       help="license length (sets plan + expiry server-side)")
     p_gen.add_argument("--plan", default="lifetime",
                        choices=["lifetime", "monthly", "yearly", "custom"])
     p_gen.add_argument("--customer", default="")

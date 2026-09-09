@@ -11,12 +11,18 @@ Both backends expose the same ``LicenseDB`` API; the licensing logic in
 ``main.py``/``keys.py`` is identical either way. The desktop app never touches
 this store — it only ever talks to the HTTP API in ``main.py``.
 
+Note on Postgres connections: we deliberately open a *fresh* connection per
+operation instead of using a warm pool. ``psycopg_pool`` (as used previously)
+strands its worker threads after a few getconn/putconn cycles and then times
+out on every subsequent call — that surfaced as persistent ``HTTP 500``s on
+the live license server. This store is low-traffic, so the ~10-500ms connect
+overhead per operation is a fair price for never hanging again.
+
 All times are UTC in ``YYYY-MM-DD HH:MM:SS`` strings (same format the old
 Discord backend used). ``expires_at`` is NULL for lifetime licenses.
 """
 from __future__ import annotations
 
-import atexit
 import os
 import sqlite3
 import threading
@@ -26,11 +32,9 @@ from pathlib import Path
 try:
     import psycopg
     from psycopg.rows import dict_row
-    from psycopg_pool import ConnectionPool
 except ImportError:  # pragma: no cover - only needed when DATABASE_URL is set
     psycopg = None
     dict_row = None
-    ConnectionPool = None
 
 import logging
 logger = logging.getLogger("maxtweaks.license.db")
@@ -91,34 +95,9 @@ def _parse_db_path() -> str:
     return str(DEFAULT_DB_PATH)
 
 
-class _PooledConnection:
-    """Proxy over a pooled psycopg connection: ``close()`` hands the
-    connection back to the pool instead of truly closing it, so the rest of
-    the code can keep the same connect/commit/close idiom as SQLite."""
-
-    def __init__(self, pool: ConnectionPool, conn):
-        self._pool = pool
-        self._conn = conn
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-    def close(self) -> None:
-        self._pool.putconn(self._conn)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self.close()
-
-
 class LicenseDB:
     """Thread-safe license store: SQLite locally, PostgreSQL when DATABASE_URL
     is set. The public API is identical for both backends."""
-
-    _pool: "ConnectionPool | None" = None
-    _pool_lock = threading.Lock()
 
     def __init__(self, path: str | None = None):
         self._dsn = os.environ.get("DATABASE_URL", "").strip() or None
@@ -146,26 +125,13 @@ class LicenseDB:
                 raise RuntimeError(
                     "DATABASE_URL is set but psycopg is not installed - "
                     "run: pip install -r requirements.txt")
-            pool = type(self)._pool
-            if pool is None:
-                # Serverless (Neon) pays a multi-second cold start per new
-                # connection, so keep a small warm pool instead of dialing a
-                # fresh connection on every DB op.
-                with type(self)._pool_lock:
-                    pool = type(self)._pool
-                    if pool is None:
-                        pool = ConnectionPool(
-                            self._dsn,
-                            min_size=1,
-                            max_size=4,
-                            open=False,
-                            kwargs={"connect_timeout": 30,
-                                    "row_factory": dict_row},
-                        )
-                        pool.open()
-                        type(self)._pool = pool
-            # Borrow a connection; close() hands it back to the pool.
-            return _PooledConnection(pool, pool.getconn(timeout=30))
+            # A fresh, dedicated connection per operation. See the module
+            # docstring for why we don't pool here: psycopg_pool strands its
+            # worker threads after a few cycles and then times out on every
+            # subsequent call (which is what made the live server return HTTP
+            # 500s on every database route).
+            return psycopg.connect(self._dsn, connect_timeout=15,
+                                   row_factory=dict_row)
         conn = sqlite3.connect(self._path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 30000")
@@ -202,7 +168,8 @@ class LicenseDB:
         return conn.execute(self._sql(sql))
 
     def _run_with_retry(self, fn, *, commit: bool = True):
-        """Execute *fn(conn)* with a fresh connection; retry once on stale-pool errors."""
+        """Execute *fn(conn)* with a fresh connection; retry once on stale/
+        transient errors (each attempt dials a brand-new connection)."""
         for attempt in range(2):
             conn = self._connect()
             try:
@@ -216,7 +183,8 @@ class LicenseDB:
                 except Exception:  # noqa: BLE001
                     pass
                 if attempt == 0 and self._is_stale_conn(exc):
-                    logger.warning("db: stale Neon connection, retrying (attempt %d)", attempt + 1)
+                    logger.warning("db: stale/transient connection, retrying "
+                                   "(attempt %d)", attempt + 1)
                     continue
                 raise
             else:
@@ -372,14 +340,3 @@ class LicenseDB:
             return {"total": total, "by_status": {r["status"]: r["n"] for r in rows}}
         with self._lock:
             return self._run_with_retry(_fn, commit=False)
-
-
-def _close_pool() -> None:
-    """Close the shared Postgres pool at interpreter exit so tests and the
-    server don't leave serverless connections dangling."""
-    pool = LicenseDB._pool
-    if pool is not None:
-        pool.close()
-
-
-atexit.register(_close_pool)
