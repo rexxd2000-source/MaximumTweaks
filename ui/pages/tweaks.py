@@ -138,7 +138,7 @@ class TweaksPage(QWidget):
     """All tweaks in one place — sidebar-driven, searchable, sortable."""
 
     MIN_CARD_W = 240
-    MAX_COLS = 4
+    MAX_COLS = 6
     GAP = 14
 
     def __init__(self, ctx, parent=None, fixed_group=None):
@@ -207,15 +207,13 @@ class TweaksPage(QWidget):
         if fixed_group:
             root.addWidget(self.grid_host, 1)
         else:
-            # -------- centered .panel (mouse-tweaks-panel.html) --------
+            # -------- full-width .panel (fills the viewport) --------
             center = QHBoxLayout()
             center.setContentsMargins(0, 0, 0, 0)
             center.setSpacing(0)
-            center.addStretch(1)
             self.panel = QFrame()
             self.panel.setObjectName("TweakPanel")
-            self.panel.setMaximumWidth(980)
-            self.panel.setMinimumWidth(0)
+            self.panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self.panel.setStyleSheet(
                 f"#TweakPanel{{ background:{_P['surface']};"
                 f" border:1px solid {_P['line']}; border-radius:0px; }}")
@@ -234,8 +232,7 @@ class TweaksPage(QWidget):
             pl.addSpacing(16)
             pl.addWidget(self.grid_host, 1)
 
-            center.addWidget(self.panel, 0)
-            center.addStretch(1)
+            center.addWidget(self.panel, 1)
             root.addLayout(center, 1)
 
         outer.addWidget(scroll, 1)
