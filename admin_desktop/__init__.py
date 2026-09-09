@@ -1,0 +1,1 @@
+"""Maximum Tweaks Admin - native red/black desktop license panel."""
