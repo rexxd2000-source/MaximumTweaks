@@ -356,15 +356,21 @@ QSpinBox {{
 QSpinBox:focus {{ border-color: {T["gold"]}; }}
 
 /* ---------- plan cards (create-key dialog) ---------- */
+/* The card's border/background are painted in PlanCard.paintEvent so the
+   selection state always renders; the QSS only styles the inner text. */
 #PlanCard {{
-    background: {T["field"]};
-    border: 1px solid {T["line"]};
-    border-radius: 12px;
+    background: transparent;
+    border: none;
 }}
-#PlanCard:hover {{ border-color: {rgba("#e6cc92", 0.45)}; }}
-#PlanCard[on="true"] {{
-    border-color: {T["gold"]};
-    background: {rgba("#e6cc92", 0.09)};
+#PlanCardTitle {{
+    font-size: 16px; font-weight: 700; background: transparent; color: {T["ink"]};
+}}
+#PlanCardSub {{
+    color: {T["muted"]}; font-size: 12.5px; background: transparent;
+}}
+#PlanCardCheck {{
+    color: {T["gold"]}; font-size: 16px; font-weight: 900;
+    background: transparent; padding-top: 1px;
 }}
 
 /* ---------- list container ---------- */

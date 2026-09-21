@@ -370,8 +370,7 @@ class KeyRow(QFrame):
             lbl = QLabel("Not used yet")
             lbl.setStyleSheet(f"color:{T['muted']};")
             return lbl
-        mins = _minutes_since(last)
-        if mins is not None and mins < 5:
+        if _is_online(last):
             w = QWidget()
             h = QHBoxLayout(w)
             h.setContentsMargins(0, 0, 0, 0)
@@ -415,6 +414,20 @@ def _minutes_since(ts: str) -> int | None:
     except Exception:  # noqa: BLE001
         return None
     return int((datetime.now(timezone.utc) - dt).total_seconds() // 60)
+
+
+# The customer app heartbeats every 5 minutes (CHECKIN_INTERVAL_S). "Online"
+# means contacted within the last 12 minutes so a steady heartbeater always
+# shows online — a razor-thin 5-minute window made PCs flicker to "offline"
+# for half of every cycle.
+_ONLINE_MIN = 12
+
+
+def _is_online(last: str | None) -> bool:
+    if not last:
+        return False
+    mins = _minutes_since(last)
+    return mins is not None and mins < _ONLINE_MIN
 
 
 def day_counts_for(data: dict, span: int) -> list[int]:
@@ -616,8 +629,7 @@ def _last_text(data: dict, st: str) -> str:
     last = data.get("last_seen")
     if not last:
         return "Not used yet"
-    mins = _minutes_since(last)
-    if mins is not None and mins < 5:
+    if _is_online(last):
         return "Online now"
     return _ago(last) or "—"
 
@@ -626,7 +638,10 @@ def _pc_row(pc: dict, key_status: str, key: str,
             on_remove: Callable[[str, str], None]) -> QWidget:
     last = pc.get("last_seen")
     days_on = len([v for v in pc.get("days", {}).values() if v])
-    mins = _minutes_since(last) if last else None
+    if _is_online(last):
+        ok_online = True
+    else:
+        ok_online = False
 
     row = QFrame()
     row.setObjectName("PcvPC")
@@ -653,7 +668,7 @@ def _pc_row(pc: dict, key_status: str, key: str,
     if key_status == "revoked":
         status.setText("Signed out")
         status.setStyleSheet(f"color:{T['rose']};")
-    elif mins is not None and mins < 5:
+    elif ok_online:
         status.setText("Online now")
         status.setStyleSheet(f"color:{T['live']};font-weight:600;")
     else:
@@ -911,22 +926,61 @@ class PlanCard(QWidget):
     def __init__(self, plan_id: str, label: str, sub: str, parent=None):
         super().__init__(parent)
         self.plan_id = plan_id
+        self._on = False
         self.setObjectName("PlanCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setProperty("on", "false")
+        self.setMinimumHeight(78)
+        self.setMinimumWidth(150)
+
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(2)
+        lay.setContentsMargins(18, 16, 18, 14)
+        lay.setSpacing(4)
+
+        head = QHBoxLayout()
+        head.setSpacing(8)
         b = QLabel(label)
-        b.setStyleSheet("font-size:15px;font-weight:700;background:transparent;")
+        b.setObjectName("PlanCardTitle")
+        self.title_lbl = b
+        self.check = QLabel("✓")
+        self.check.setObjectName("PlanCardCheck")
+        self.check.setVisible(False)
+        head.addWidget(b, 1)
+        head.addWidget(self.check, 0, Qt.AlignmentFlag.AlignTop)
+        lay.addLayout(head)
+
         s = QLabel(sub)
-        s.setStyleSheet(f"color:{T['muted']};font-size:12px;background:transparent;")
-        lay.addWidget(b)
+        s.setObjectName("PlanCardSub")
         lay.addWidget(s)
+        lay.addStretch(1)
 
     def set_on(self, on: bool) -> None:
+        self._on = on
         self.setProperty("on", "true" if on else "false")
+        self.check.setVisible(on)
+        self.title_lbl.setStyleSheet(
+            "font-size:16px;font-weight:800;background:transparent;"
+            "color:#f2ddaf;" if on else
+            "font-size:16px;font-weight:700;background:transparent;")
         repolish(self)
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        # Selection highlight is painted here (QSS attribute selectors are
+        # unreliable on plain QWidget subclasses), so the chosen plan always
+        # reads as chosen.
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        if self._on:
+            p.setPen(QPen(QColor(T["gold"]), 3))
+            p.setBrush(QColor(230, 204, 146, 52))
+        else:
+            p.setPen(QPen(QColor(T["line"]), 1))
+            p.setBrush(QColor(T["field"]))
+        p.drawRoundedRect(rect, 12, 12)
+        p.end()
+        super().paintEvent(event)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -941,7 +995,7 @@ class CreateKeyDialog(QDialog):
         self.host = host
         self.setWindowTitle("Create a key")
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(580)
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._build_form())
@@ -956,8 +1010,8 @@ class CreateKeyDialog(QDialog):
     def _build_form(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(30, 26, 30, 26)
-        lay.setSpacing(14)
+        lay.setContentsMargins(34, 28, 34, 28)
+        lay.setSpacing(12)
 
         title = QLabel("Create a key")
         title.setObjectName("DialogTitle")
@@ -966,7 +1020,7 @@ class CreateKeyDialog(QDialog):
         lead.setWordWrap(True)
         lay.addWidget(title)
         lay.addWidget(lead)
-        lay.addSpacing(6)
+        lay.addSpacing(10)
 
         who_lbl = QLabel("Customer or label")
         who_lbl.setObjectName("DlgFieldName")
@@ -981,10 +1035,11 @@ class CreateKeyDialog(QDialog):
 
         plan_lbl = QLabel("Plan")
         plan_lbl.setObjectName("DlgFieldName")
+        lay.addSpacing(6)
         lay.addWidget(plan_lbl)
         self.cards: dict[str, PlanCard] = {}
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(10)
+        cards_row.setSpacing(12)
         for pid, label, sub in (("1m", "1 Month", "30 days of access"),
                                 ("6m", "6 Months", "180 days of access"),
                                 ("life", "Lifetime", "Never expires")):
@@ -996,16 +1051,19 @@ class CreateKeyDialog(QDialog):
 
         pcs_lbl = QLabel("PCs allowed")
         pcs_lbl.setObjectName("DlgFieldName")
+        lay.addSpacing(6)
         lay.addWidget(pcs_lbl)
         step_row = QHBoxLayout()
-        step_row.setSpacing(8)
+        step_row.setSpacing(10)
         minus = QPushButton("−")
         minus.setObjectName("BtnGhost")
-        minus.setFixedWidth(40)
+        minus.setFixedWidth(42)
+        minus.setFixedHeight(36)
         minus.clicked.connect(lambda: self._step_pc(-1))
         plus = QPushButton("+")
         plus.setObjectName("BtnGhost")
-        plus.setFixedWidth(40)
+        plus.setFixedWidth(42)
+        plus.setFixedHeight(36)
         plus.clicked.connect(lambda: self._step_pc(1))
         self.pc_out = QLabel("1")
         self.pc_out.setObjectName("KeyCode")
@@ -1013,15 +1071,17 @@ class CreateKeyDialog(QDialog):
         self.pc_out.setMinimumWidth(48)
         hint = QLabel("How many different PCs can be active on this key.")
         hint.setObjectName("DlgHint")
+        hint.setWordWrap(True)
         step_row.addWidget(minus)
         step_row.addWidget(self.pc_out)
         step_row.addWidget(plus)
-        step_row.addSpacing(8)
+        step_row.addSpacing(10)
         step_row.addWidget(hint, 1)
         lay.addLayout(step_row)
-        lay.addSpacing(10)
+        lay.addSpacing(14)
 
         actions = QHBoxLayout()
+        actions.setSpacing(10)
         actions.addStretch(1)
         cancel = QPushButton("Cancel")
         cancel.setObjectName("BtnGhost")
