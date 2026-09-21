@@ -26,6 +26,10 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+import time as _time_mod
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -59,7 +63,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config.app_config import APP_VERSION, DIRS
+from config.app_config import APP_VERSION, DIRS, LICENSE_API_URL
 
 ACCENT = QColor("#8B6BFF")
 TEXT = QColor(238, 244, 248)
@@ -78,6 +82,15 @@ STATUS_SEQ = [
 ]
 
 HOLD_PCT = 78  # progress plateau while the update check is unresolved
+
+# Server connection probe (requirement 6): the splash checks the license API
+# is reachable the moment the app loads. It only reports "Connected" after a
+# real HTTP response; Render free-tier cold starts can take up to a minute, so
+# the probe retries with backoff and shows a "Waking the server" message on
+# the first long wait. On final failure it shows the reason + a Retry button.
+SERVER_CONN_TIMEOUT_MS = 9000          # per request
+SERVER_CONN_BACKOFF_MS = (3000, 6000, 12000, 20000, 20000, 20000)
+SERVER_CONN_MAX_ATTEMPTS = 6           # ~1 minute of total waking time
 
 # Rapid hardware/system detection toasts shown near the center of the stage.
 # Each entry: (prefix, base text, kind). `kind` lets real detected values fill
@@ -202,6 +215,46 @@ class _RingSpinner(QWidget):
         p.end()
 
 
+class _ServerProbeThread(QThread):
+    """Lightweight GET /health probe against the license API.
+
+    Used by the splash to show a truthful "Connected / Can't reach server"
+    status.  Never touches the key or the local session — pure connectivity.
+    """
+
+    done = Signal(str, bool, str)  # (url, ok, message)
+
+    def __init__(self, base: str, parent=None):
+        super().__init__(parent)
+        self._base = str(base or "").rstrip("/")
+
+    def run(self):
+        base = self._base
+        if not base or not base.startswith("https://"):
+            self.done.emit(base, False,
+                           "License server not configured (https required).")
+            return
+        url = base + "/health"
+        try:
+            req = urllib.request.Request(url, method="GET", headers={
+                "User-Agent": "MaximumTweaks/" + APP_VERSION,
+                "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=SERVER_CONN_TIMEOUT_MS / 1000.0) as resp:  # noqa: E501
+                # A raw HTTP 200 from /health (status "ok") is the minimum the
+                # app needs before it can call license endpoints.
+                if resp.status == 200:
+                    self.done.emit(base, True, "")
+                    return
+                self.done.emit(base, False, f"Server returned HTTP {resp.status}.")
+        except urllib.error.HTTPError as exc:
+            self.done.emit(base, False, f"Server returned HTTP {exc.code}.")
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            reason = getattr(exc, "reason", exc)
+            self.done.emit(base, False, f"Can\u2019t reach server \u2014 {reason}.")
+        except Exception as exc:  # noqa: BLE001
+            self.done.emit(base, False, f"Can\u2019t reach server \u2014 {exc}.")
+
+
 # ---------------------------------------------------------------------------
 # Full-screen update flow — pixel-accurate port of updater-flow.html.
 # The boot canvas keeps painting the background/blobs/dots/topbar/bottombar;
@@ -301,6 +354,8 @@ class CinematicSplash(QWidget):
     skip_clicked = Signal()
     retry_clicked = Signal()
     restart_clicked = Signal()
+    server_retry_clicked = Signal()
+    server_connected = Signal(str)
 
     STAGES = ((0, "INITIALIZING ENGINE"), (24, "DETECTING HARDWARE"),
               (40, "LOADING TWEAK DATABASE"), (58, "VERIFYING LICENSE"),
@@ -358,6 +413,18 @@ class CinematicSplash(QWidget):
         self._actions_y: int | None = None   # vertical centre of the action row
         self._flow_enter_ms: float | None = None
         self._pending_available: tuple | None = None
+
+        # Server-connection status (requirement 6): state is one of
+        # "checking" | "waking" | "connected" | "unreachable", displayed on
+        # the bottombar status line with a colour-coded dot.
+        self._server_state = "checking"       # before the probe starts
+        self._server_base = LICENSE_API_URL
+        self._server_host = ""
+        self._server_msg = ""
+        self._server_attempt = 0
+        self._server_probe: _ServerProbeThread | None = None
+        self._server_timer: QTimer | None = None
+        self._server_retry_btn: QPushButton | None = None
 
         # Full-screen update-flow chrome: spinner + the action buttons.
         self._spinner = _RingSpinner(self)
@@ -422,6 +489,109 @@ class CinematicSplash(QWidget):
         v.setdefault("license", v.get("license", "..."))
         self._toast_values.update(v)
         self.update()
+
+    # ---------------- server-connection status (requirement 6) ----------------
+
+    def begin_server_check(self, base_url: str):
+        """Start probing the license API so the splash shows a real
+        "Connecting to server\u2026 / Connected / Can't reach server" line.
+
+        Called on app load, right after the splash starts.  ``base_url`` is
+        the build's LICENSE_API_URL.  The probe is purely a GET /health
+        liveness check; it never touches the key or the local session.
+        """
+        self._server_base = (base_url or LICENSE_API_URL or "").rstrip("/")
+        self._server_host = self._clean_host(self._server_base)
+        self._server_msg = ""
+        self._server_attempt = 0
+        self._server_state = "checking"
+        self._arm_retry_btn(show=False)
+        self._schedule_server_probe(0)
+
+    @staticmethod
+    def _clean_host(base_url: str) -> str:
+        host = (base_url or "").strip().rstrip("/")
+        try:
+            if "://" in host:
+                host = urllib.parse.urlsplit(host).netloc or host
+        except Exception:  # noqa: BLE001
+            pass
+        return host
+
+    def _schedule_server_probe(self, delay_ms: int):
+        if self._server_timer is not None:
+            self._server_timer.stop()
+        self._server_timer = QTimer(self)
+        self._server_timer.setSingleShot(True)
+        self._server_timer.timeout.connect(self._run_server_probe)
+        self._server_timer.start(max(0, int(delay_ms)))
+
+    def _run_server_probe(self):
+        self._server_state = "waking"
+        self.update()
+        if self._server_probe is not None and self._server_probe.isRunning():
+            return
+        self._server_probe = _ServerProbeThread(
+            self._server_base or LICENSE_API_URL, self)
+        self._server_probe.done.connect(self._on_server_probe)
+        self._server_probe.start()
+
+    def _on_server_probe(self, base, ok: bool, message: str):
+        if ok:
+            self._server_state = "connected"
+            self._server_msg = ""
+            self._server_attempt = 0
+            self._arm_retry_btn(show=False)
+            self._stop_server_timer()
+            self.server_connected.emit(self._server_host)
+            self.update()
+            return
+        self._server_attempt += 1
+        self._server_msg = message or "Can\u2019t reach server"
+        if self._server_attempt >= SERVER_CONN_MAX_ATTEMPTS:
+            self._server_state = "unreachable"
+            self._arm_retry_btn(show=True)
+            self._stop_server_timer()
+            self.update()
+            return
+        idx = min(self._server_attempt - 1, len(SERVER_CONN_BACKOFF_MS) - 1)
+        self._schedule_server_probe(SERVER_CONN_BACKOFF_MS[idx])
+
+    def _stop_server_timer(self):
+        if self._server_timer is not None:
+            self._server_timer.stop()
+            self._server_timer = None
+
+    def retry_server(self):
+        """User clicked Retry on the unreachable server status.  Restart the
+        probe sequence (cold starts are retried with backoff again)."""
+        self._server_attempt = 0
+        self._server_state = "checking"
+        self._server_msg = ""
+        self._arm_retry_btn(show=False)
+        self._schedule_server_probe(0)
+
+    def _arm_retry_btn(self, show: bool):
+        if self._server_retry_btn is None:
+            btn = QPushButton("Retry", self)
+            btn.setObjectName("FlowPrimary")
+            btn.setStyleSheet(_FLOW_QSS)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.hide()
+            btn.clicked.connect(self.retry_server)
+            self._server_retry_btn = btn
+        self._server_retry_btn.setVisible(show)
+        if show:
+            self._server_retry_btn.raise_()
+        self._layout_server_retry()
+
+    def _layout_server_retry(self):
+        btn = self._server_retry_btn
+        if btn is None or not btn.isVisible():
+            return
+        bw, bh = 120, 40
+        btn.setGeometry(round(self.width() / 2.0 - bw / 2.0),
+                        int(round(self.height() * 0.66)), bw, bh)
 
     # ---------------- full-screen update flow ----------------
 
@@ -656,6 +826,7 @@ class CinematicSplash(QWidget):
         super().resizeEvent(event)
         self._bg = None
         self._layout_actions()
+        self._layout_server_retry()
         if getattr(self, "_spinner", None) is not None:
             self.update()
 
@@ -1245,6 +1416,7 @@ class CinematicSplash(QWidget):
             foot = "MAXIMUM ENGINE \u00b7 v" + APP_VERSION
         p.drawText(QRectF(40, top + 10, 480, 20),
                    Qt.AlignVCenter | Qt.AlignLeft, foot)
+        self._draw_server_status(p, w, top)
         if self._update_state in ("checking", "available", "downloading",
                                   "installing", "ready", "error"):
             return
@@ -1280,3 +1452,51 @@ class CinematicSplash(QWidget):
                           2.5, 2.5)
             p.drawText(crect.adjusted(18, 0, -6, 0),
                        Qt.AlignVCenter | Qt.AlignLeft, up)
+
+    def _draw_server_status(self, p: QPainter, w: int, top: int):
+        """Bottombar license-server line (requirement 6): a coloured dot +
+        the exact connection state.  'Connected' is only ever shown after a
+        real HTTP response from /health; the waking state backs off for up to
+        ~1 minute (Render cold starts) before giving up and offering Retry."""
+        host = self._server_host or (
+            urllib.parse.urlsplit(LICENSE_API_URL or "").netloc or
+            "license server")
+        st = self._server_state
+        if st == "connected":
+            dot, label, hint = QColor("#3DDC97"), "CONNECTED", host
+        elif st == "unreachable":
+            dot, label, hint = QColor("#FF6B8A"), "CAN'T REACH SERVER", host
+            hint = f"{hint} \u2014 {self._server_msg or 'check your connection'}"
+        elif st == "waking":
+            dot = QColor("#8B6BFF")
+            label = "WAKING THE SERVER"
+            hint = f"{host} \u2014 THIS CAN TAKE UP TO A MINUTE"
+        else:
+            dot = QColor("#8B6BFF")
+            label = "CONNECTING TO SERVER"
+            hint = host + " \u2026"
+        y = top + 34
+        p.setPen(dot)
+        p.setBrush(dot)
+        p.drawEllipse(QPointF(46, y + 9), 3.2, 3.2)
+        f1 = QFont("JetBrains Mono", 9)
+        f1.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
+        p.setFont(f1)
+        p.setPen(QColor("#514A70"))
+        p.drawText(QRectF(58, y, 160, 20),
+                   Qt.AlignVCenter | Qt.AlignLeft, label)
+        f2 = QFont("JetBrains Mono", 9)
+        p.setFont(f2)
+        p.setPen(QColor("#514A70"))
+        # Elide the host+reason so the line never collides with the chips.
+        # The chips (drawn right-aligned) are hidden during the update flow,
+        # so the full width is only available when they are not shown.
+        chips_visible = self._update_state not in (
+            "checking", "available", "downloading", "installing",
+            "ready", "error")
+        reserve = 480 if chips_visible else 120
+        max_w = max(160, w - 58 - reserve)
+        fm = p.fontMetrics()
+        hint = fm.elidedText(hint, Qt.ElideRight, int(max_w))
+        p.drawText(QRectF(58 + 4 + fm.horizontalAdvance(label), y, max_w, 20),
+                   Qt.AlignVCenter | Qt.AlignLeft, hint)

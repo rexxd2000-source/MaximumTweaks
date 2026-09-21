@@ -45,6 +45,7 @@ from config.app_config import (
     DIRS,
     DISCORD_INVITE_URL,
     ENGINE_NAME,
+    LICENSE_API_URL,
     LOG_FILE,
     current_windows_user,
 )
@@ -896,6 +897,9 @@ class SettingsPage(QWidget):
             _Row(f"{APP_NAME} v{APP_VERSION} \u00b7 {ENGINE_NAME}",
                  f"Full log file: {LOG_FILE}",
                  b_logs),
+            _Row("License server",
+                 f"This build checks in with: {LICENSE_API_URL}",
+                 None),
             _Row("Community & support",
                  "Join the Discord server for real-time support, update "
                  "previews, and discussions with other users.",

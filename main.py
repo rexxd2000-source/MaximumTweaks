@@ -53,7 +53,7 @@ def run_gui():
             pass
         return
 
-    from config.app_config import APP_VERSION
+    from config.app_config import APP_VERSION, LICENSE_API_URL
     from engine import license as license_mgr
     from ui import license as license_ui
     from ui.splash import CinematicSplash
@@ -144,6 +144,18 @@ def run_gui():
     splash.move(_prim.topLeft())
     splash.showFullScreen()
     splash.start()
+
+    # Server connection status on the splash (requirement 6): the boot screen
+    # shows "Connecting to server… / Connected / Can't reach server" with the
+    # build's server host and a Retry button, so a cold Render start (up to a
+    # minute) is visible instead of a silent hang.  The probe only calls GET
+    # /health — never the key or the local session.
+    splash.begin_server_check(LICENSE_API_URL)
+    # The moment the connection is verified the heartbeat must fire right away
+    # (not just on the 5-minute timer), so a freshly-started PC shows as
+    # "online now" in the admin panel immediately.
+    splash.server_connected.connect(
+        lambda _host: license_ui.pulse_heartbeat())
 
     # Refresh the persisted license token in the background so a valid license
     # stays fresh without forcing the gate to appear on every launch.
