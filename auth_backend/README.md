@@ -32,43 +32,61 @@ this is *not* a permanent bypass, and the backend remains the authority.
 
 ### Public endpoints
 
-| Endpoint                    | Purpose                                                |
-|-----------------------------|--------------------------------------------------------|
-| `GET /health`               | Health check                                           |
-| `POST /api/license/activate`  | Bind a key to this device; issue a session token     |
-| `POST /api/license/validate`  | Verify + refresh a session token                     |
-| `POST /api/license/deactivate`| Acknowledge a client-side deactivation               |
+| Endpoint                       | Purpose                                                |
+|--------------------------------|--------------------------------------------------------|
+| `GET /health`                  | Health check                                           |
+| `POST /api/license/activate`   | Bind a key to this device; issue a session token     |
+| `POST /api/license/validate`   | Verify + refresh a session token                     |
+| `POST /api/license/deactivate` | Acknowledge a client-side deactivation               |
+| `POST /api/license/checkin`    | Heartbeat (every 5 min): per-PC/day activity + PC-limit enforcement |
 
 ### Admin endpoints (Bearer `ADMIN_TOKEN` **or** the HttpOnly `adm` session cookie)
 
-| Endpoint            | Purpose                                        |
-|---------------------|------------------------------------------------|
-| `GET /admin`        | Serves the admin panel UI (`admin_panel.html`)  |
-| `GET /admin/me`     | Login-state probe (cookie/bearer)               |
-| `POST /admin/login`   | Exchange `ADMIN_TOKEN` for an HttpOnly `adm` session cookie |
-| `POST /admin/logout`  | Clear the session cookie                       |
-| `GET /admin/licenses?status=` | List licenses (filter by status)       |
-| `GET /admin/search?q=`  | Search licenses by key / customer / note       |
-| `GET /admin/stats`  | Totals by status                                 |
-| `POST /admin/generate` | Generate 1..500 keys (`{count, prefix, duration, plan, customer, note, expires_at}`) |
-| `POST /admin/revoke`   | Revoke a key (`{key, reason}`)                |
-| `POST /admin/unrevoke` | Undo a revocation                             |
-| `POST /admin/unbind`   | **PC change only**: free a key for a new device |
+| Endpoint                          | Purpose                                        |
+|-----------------------------------|------------------------------------------------|
+| `GET /admin`                      | JSON probe (browser panel removed; admin UI is the native desktop app) |
+| `GET /admin/me`                   | Login-state probe (cookie/bearer)               |
+| `POST /admin/login`               | Exchange `ADMIN_TOKEN` for an HttpOnly `adm` session cookie |
+| `POST /admin/logout`              | Clear the session cookie                       |
+| `GET /admin/licenses?status=`     | List licenses (filter by status)       |
+| `GET /admin/search?q=`            | Search licenses by key / customer / note       |
+| `GET /admin/stats`                | Totals by status                                 |
+| `POST /admin/generate`            | Generate 1..500 keys (`{count, prefix, duration, plan, customer, note, expires_at}`) |
+| `POST /admin/keys`                | Create one key with a plan + PC limit (`{customer, plan: '1m'\|'6m'\|'life', max_pcs: 1..10, note}`) |
+| `GET /admin/keys`                 | Admin overview: all keys + per-PC activity aggregates + dashboard stats |
+| `GET /admin/keys/{key}/activity`  | 30-day per-PC check-in grid + recent refusals   |
+| `DELETE /admin/keys/{key}/pcs/{hwid}` | Free a PC slot immediately                  |
+| `DELETE /admin/keys/{key}`        | Permanently delete a license row               |
+| `POST /admin/revoke`              | Revoke a key (`{key, reason}`)                |
+| `POST /admin/unrevoke`            | Undo a revocation                             |
+| `POST /admin/unbind`              | **PC change only**: free a key for a new device |
 
 `duration` is resolved server-side: `1m` → 1-month `monthly` expiry, `6m` →
-6-month `custom` expiry, `lifetime` → no expiry. When `expires_at` is given it
-wins. `prefix` defaults to `LICENSE_KEY_PREFIX` (or `MAX`).
+6-month `custom` expiry, `lifetime` → no expiry. The new mockup-style plans on
+`POST /admin/keys` are exact-day based: `1m` = 30 days, `6m` = 180 days,
+`life` = never. When `expires_at` is given it wins. `prefix` defaults to
+`LICENSE_KEY_PREFIX` (or `MAX`).
 
-**Panel.** Open `GET /admin` in a browser (same origin as the API, serve
-`admin_panel.html` next to `main.py`). The panel logs in with the admin token
-once; the token itself never lives in the browser — only a signed, HttpOnly,
-SameSite cookie that expires in `ADMIN_SESSION_HOURS` (default 12). Every
-`/admin/*` API route is independently authenticated server-side with a
-constant-time token/cookie check, so the panel page is deliberately not a
-security boundary.
+**Heartbeat / PC limits.** While the customer app runs it POSTs a check-in
+every 5 minutes (`CHECKIN_INTERVAL_S`). The server records one activity row per
+key + PC + UTC day and refreshes `last_seen`/`pc_name`. A key allows up to
+`max_pcs` distinct PCs within a rolling 30-day window; a PC that goes silent
+for 30 days automatically frees its slot. A *new* PC beyond the limit is
+refused (its existing PCs keep working) and the attempt is logged to
+`key_blocked`, which powers the "X blocked attempts this week" warning in the
+admin app — rather than silently displacing an active user.
+
+**Admin UI.** The browser admin panel (`admin_panel.html` at `/admin`) was
+removed. Administer licenses from the **native desktop app**
+(`../admin_desktop/`, built to `MaximumTweaksAdmin.exe`), which talks to the
+JSON endpoints above with `Authorization: Bearer ADMIN_TOKEN`. Login stores a
+short-lived, signed, HttpOnly cookie so browser/script users can use
+`POST /admin/login` once; every `/admin/*` API route is independently
+authenticated server-side with a constant-time token/cookie check.
 
 There is deliberately **no client-side unbind**: a stolen app copy cannot free
-its own license and be re-sold. Support frees a key with `unbind`.
+its own license and be re-sold. Support frees a key with `unbind` (or removes a
+PC slot with the `DELETE .../pcs/{hwid}` endpoint).
 
 ## Setup
 

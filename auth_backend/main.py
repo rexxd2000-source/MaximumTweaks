@@ -46,11 +46,11 @@ import logging
 import os
 import time
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
@@ -93,13 +93,10 @@ ADMIN_COOKIE = "adm"
 ACTIVATE_PER_KEY = int(os.environ.get("ACTIVATE_PER_KEY", "10"))
 ACTIVATE_PER_IP = int(os.environ.get("ACTIVATE_PER_IP", "40"))
 
-PANEL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "admin_panel.html")
-
 _DB = LicenseDB()
 _OK = {"status": "ok", "service": "maximumtweaks-licenses"}
 
-app = FastAPI(title="Maximum Tweaks License Server", version="1.1.0")
+app = FastAPI(title="Maximum Tweaks License Server", version="1.2.0")
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +116,23 @@ class ValidateRequest(BaseModel):
 class DeactivateRequest(BaseModel):
     token: str
     device_id: str
+
+
+class CheckinRequest(BaseModel):
+    key: str
+    device_id: str
+    pc_name: str = ""
+
+
+class CreateKeyRequest(BaseModel):
+    customer: str = ""
+    plan: str = "life"          # "1m" | "6m" | "life"
+    max_pcs: int = 1
+    note: str = ""
+
+
+class RemovePcRequest(BaseModel):
+    hwid: str
 
 
 class GenerateRequest(BaseModel):
@@ -326,6 +340,12 @@ def _add_months_utc(months: int) -> str:
                     tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _add_days_utc(days: int) -> str:
+    """N days from now, UTC, ``YYYY-MM-DD HH:MM:SS``."""
+    return (datetime.now(timezone.utc) + timedelta(days=days)).strftime(
+        "%Y-%m-%d %H:%M:%S")
+
+
 def _resolve_duration(plan: str, duration: str,
                       expires_at: str | None):
     """Server-side duration application: returns (plan, expires_at).
@@ -346,6 +366,16 @@ def _resolve_duration(plan: str, duration: str,
         raise _err("invalid_duration",
                    "Duration must be one of: 1m, 6m, lifetime.", 400)
     return plan, expires_at
+
+
+def _plan_expiry(plan: str) -> str | None:
+    """Resolve a mockup-style plan to an expiry timestamp (1m = 30 days,
+    6m = 180 days, life = never)."""
+    if plan == "1m":
+        return _add_days_utc(30)
+    if plan == "6m":
+        return _add_days_utc(180)
+    return None
 
 
 def _valid_prefix(prefix: str) -> str:
@@ -499,18 +529,54 @@ def deactivate(payload: DeactivateRequest):
     return _success("License deactivated on this device")
 
 
+#: Heartbeat cadence told to the client (seconds). The desktop app repeats
+#: check-ins on this interval whenever it is running.
+CHECKIN_INTERVAL_S = 300
+
+
+@app.post("/api/license/checkin")
+def checkin(payload: CheckinRequest):
+    """Heartbeat from a previously-activated device. Records per-PC/day
+    activity and enforces the key's PC limit:
+    * existing PCs keep working (their slot stays warm for 30 days), and
+    * a NEW PC beyond ``max_pcs`` is refused (and logged) instead of kicking
+      an existing PC out, so over-limit attempts surface in the admin panel as
+      "X blocked attempts this week" rather than silently displacing a user.
+    """
+    key = normalize_key(payload.key)
+    if not key:
+        raise _err("invalid_license", "Invalid license key format.")
+    device_id = (payload.device_id or "").strip()
+    if len(device_id) < 16:
+        raise _err("invalid_device", "Device fingerprint is missing or invalid.")
+    pc_name = (payload.pc_name or "").strip()[:80]
+
+    result = _DB.checkin(key, device_id, pc_name)
+    if result["status"] != "allowed":
+        raise _err(result["error"], result["message"], 403)
+    rec = _DB.get(key)
+    return {
+        "success": True, "valid": True, "message": "OK",
+        "interval_s": CHECKIN_INTERVAL_S,
+        "license": _license_payload(rec) if rec else None,
+    }
+
+
 # ---------------------------------------------------------------------------
-# Admin UI + Admin API (server-side auth: Bearer ADMIN_TOKEN or adm cookie)
+# Admin API (server-side auth: Bearer ADMIN_TOKEN or adm cookie)
+#
+# Note: the old browser admin panel (admin_panel.html served at /admin) was
+# removed by request — the admin UI is now the native desktop app
+# (admin_desktop/) which talks to these JSON endpoints only.
 # ---------------------------------------------------------------------------
 
-@app.get("/admin", response_class=HTMLResponse)
-def admin_panel():
-    """Serve the admin panel. It is NOT a security boundary — every /admin/*
-    API route behind it is independently authenticated server-side."""
-    if not os.path.exists(PANEL_FILE):  # pragma: no cover
-        return HTMLResponse(
-            "<h1>Maximum Tweaks Admin Panel</h1><p>admin_panel.html missing.</p>")
-    return FileResponse(PANEL_FILE)
+@app.get("/admin")
+def admin_root():
+    """Root admin probe: confirms the API is up and reports the prefix. The
+    browser panel no longer exists; admin UIs authenticate via the endpoints
+    below."""
+    return {"ok": True, "admin": True, "configured_prefix": KEY_PREFIX,
+            "panel": "desktop"}
 
 
 @app.get("/admin/me")
@@ -630,3 +696,107 @@ def admin_delete(key: str, _: None = Depends(_admin_guard)):
         raise _err("invalid_license", "Unknown license key.", 404)
     deleted = _DB.delete(key)
     return {"ok": True, "deleted": deleted}
+
+
+VALID_PLANS = {"1m", "6m", "life"}
+
+
+@app.post("/admin/keys")
+def admin_create_key(payload: CreateKeyRequest,
+                     _: None = Depends(_admin_guard)):
+    """Create one license key with the mockup-style plans (1m = 30 days,
+    6m = 180 days, life = never) and a PC limit."""
+    plan = (payload.plan or "life").strip().lower()
+    if plan not in VALID_PLANS:
+        raise _err("invalid_plan",
+                   "Plan must be one of: 1m, 6m, life.", 400)
+    max_pcs = int(payload.max_pcs or 1)
+    if not 1 <= max_pcs <= 10:
+        raise _err("invalid_max_pcs", "max_pcs must be between 1 and 10.", 400)
+    expires_at = _plan_expiry(plan)
+    rec = _DB.create(generate_key(KEY_PREFIX), plan=plan,
+                     customer=(payload.customer or "").strip(),
+                     note=(payload.note or "").strip(),
+                     expires_at=expires_at, max_pcs=max_pcs)
+    return {"ok": True, "key": rec["license_key"], "plan": plan,
+            "expires_at": expires_at, "max_pcs": max_pcs}
+
+
+@app.get("/admin/keys")
+def admin_keys(_: None = Depends(_admin_guard)):
+    """Full admin overview: every key plus per-key activity aggregates and
+    the dashboard stat counters, fetched in a handful of table-wide queries."""
+    data = _DB.overview()
+    now_ts = _now_ts()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    keys = []
+    active_keys = 0
+    online_now = 0
+    active_today = 0
+    expiring_7d = 0
+    for k in data["keys"]:
+        status = k["status"]
+        if status != "revoked" and _iso_to_ts(k.get("expires_at") or "") \
+                and _iso_to_ts(k["expires_at"]) <= now_ts:
+            status = "expired"
+        key_online = any(
+            p.get("last_seen") and _iso_to_ts(p["last_seen"]) > now_ts - 300
+            for p in k["pcs"])
+        # "active today" = any PC check-in whose day == today
+        active_today += 1 if today in k.get("day_counts", {}) else 0
+        if status != "revoked" and status != "expired":
+            active_keys += 1
+            exp = _iso_to_ts(k.get("expires_at") or "")
+            if exp and now_ts < exp <= now_ts + 7 * 86400:
+                expiring_7d += 1
+        if key_online:
+            online_now += 1
+        keys.append({
+            "key": k["license_key"],
+            "customer": k.get("customer", ""),
+            "note": k.get("note", ""),
+            "plan": k.get("plan", "lifetime"),
+            "status": status,
+            "created_at": k.get("created_at"),
+            "activated_at": k.get("activated_at"),
+            "expires_at": k.get("expires_at"),
+            "last_seen": k.get("last_seen"),
+            "max_pcs": int(k.get("max_pcs") or 1),
+            "used_pcs": len(k.get("pcs", [])),
+            "pcs": k.get("pcs", []),
+            "day_counts": k.get("day_counts", {}),
+            "blocked_week": k.get("blocked_week", 0),
+        })
+
+    return {
+        "ok": True,
+        "keys": keys,
+        "stats": {
+            "total": len(keys),
+            "active_keys": active_keys,
+            "online_now": online_now,
+            "active_today": active_today,
+            "expiring_7d": expiring_7d,
+        },
+    }
+
+
+@app.get("/admin/keys/{key}/activity")
+def admin_key_activity(key: str, _: None = Depends(_admin_guard)):
+    """Per-PC 30-day check-in grid for a single key plus recent refusals."""
+    rec = _DB.get(key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    data = _DB.activity(key, days=30)
+    return {"ok": True, "key": key, **data}
+
+
+@app.delete("/admin/keys/{key}/pcs/{hwid}")
+def admin_remove_pc(key: str, hwid: str, _: None = Depends(_admin_guard)):
+    """Free a slot by removing one PC's activity from a key immediately."""
+    rec = _DB.get(key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    removed = _DB.remove_pc(key, hwid)
+    return {"ok": True, "removed": removed}

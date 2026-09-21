@@ -51,6 +51,8 @@ def _clean_db():
         conn = db._connect()
         try:
             db._exec(conn, "DELETE FROM licenses")
+            db._exec(conn, "DELETE FROM key_activity")
+            db._exec(conn, "DELETE FROM key_blocked")
             conn.commit()
         finally:
             conn.close()
@@ -521,10 +523,13 @@ def test_admin_generate_computed_keys_activate():
     assert db.get(key)["status"] == "active"
 
 
-def test_admin_panel_html_served():
+def test_admin_root_removed_web_panel():
+    """The browser admin panel was removed; /admin is now a JSON probe only."""
     resp = client.get("/admin")
     assert resp.status_code == 200
-    assert "Maximum Tweaks" in resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["panel"] == "desktop"
 
 
 def test_unhandled_500_returns_friendly_envelope():
@@ -543,3 +548,227 @@ def test_unhandled_500_returns_friendly_envelope():
             assert body["message"]
     finally:
         backend._DB.list_all = original
+# ---------------------------------------------------------------------------
+# Check-in (heartbeat) + PC limits
+# ---------------------------------------------------------------------------
+
+def test_checkin_unknown_key_refused():
+    resp = client.post("/api/license/checkin",
+                       json={"key": "MAX-0000-0000-0000", "device_id": DEVICE_A,
+                             "pc_name": "Alice-PC"})
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "invalid_license"
+
+
+def test_checkin_revoked_refused():
+    key = _make_key()
+    _activate(key)
+    client.post("/admin/revoke", json={"key": key, "reason": "x"},
+                headers=_admin_headers())
+    resp = client.post("/api/license/checkin",
+                       json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "license_revoked"
+
+
+def test_checkin_expired_refused_and_marked():
+    past = _old_ts()
+    key = _make_key(expires_at=past)
+    resp = client.post("/api/license/checkin",
+                       json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "license_expired"
+    assert db.get(key)["status"] == "expired"
+
+
+def test_checkin_allowed_records_activity():
+    key = _make_key(plan="life", customer="Alice")
+    _activate(key)
+    resp = client.post("/api/license/checkin",
+                       json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["interval_s"] == 300
+    act = db.activity(key, days=30)
+    assert len(act["pcs"]) == 1
+    pc = act["pcs"][0]
+    assert pc["hwid"] == DEVICE_A
+    assert pc["name"] == "Alice-PC"
+    rec = db.get(key)
+    assert rec["last_seen"] is not None
+    assert rec["pc_name"] == "Alice-PC"
+
+
+def test_checkin_over_limit_blocks_new_pc_keeps_existing():
+    key = _make_key(plan="life", customer="Alice")
+    with db._lock:
+        db._run_with_retry(lambda conn: db._exec(
+            conn, "UPDATE licenses SET max_pcs = 1 WHERE license_key = ?", (key,)))
+    # PC A checks in fine
+    r1 = client.post("/api/license/checkin",
+                     json={"key": key, "device_id": DEVICE_A, "pc_name": "PC-A"})
+    assert r1.status_code == 200
+    # PC B is blocked
+    r2 = client.post("/api/license/checkin",
+                     json={"key": key, "device_id": DEVICE_B, "pc_name": "PC-B"})
+    assert r2.status_code == 403
+    assert r2.json()["error"] == "over_limit"
+    assert "maximum number of PCs" in r2.json()["message"]
+    # Blocked attempt is logged; PC A still works
+    detail = db.activity(key, days=30)
+    assert len(detail["blocked"]) == 1
+    assert detail["blocked"][0]["reason"] == "over_limit"
+    assert detail["blocked"][0]["pc_hwid"] == DEVICE_B
+    assert len(detail["pcs"]) == 1
+    r3 = client.post("/api/license/checkin",
+                     json={"key": key, "device_id": DEVICE_A, "pc_name": "PC-A"})
+    assert r3.status_code == 200
+
+
+def test_remove_pc_frees_slot():
+    key = _make_key(plan="life", customer="Alice")
+    with db._lock:
+        db._run_with_retry(lambda conn: db._exec(
+            conn, "UPDATE licenses SET max_pcs = 2 WHERE license_key = ?", (key,)))
+    _activate(key)
+    client.post("/api/license/checkin",
+                json={"key": key, "device_id": DEVICE_A, "pc_name": "PC-A"})
+    client.post("/api/license/checkin",
+                json={"key": key, "device_id": DEVICE_B, "pc_name": "PC-B"})
+    detail = db.activity(key, days=30)
+    assert len(detail["pcs"]) == 2
+    assert len(detail["blocked"]) == 0
+    n = db.remove_pc(key, DEVICE_B)
+    assert n == 1  # one history row (one day) for that PC
+    assert len(db.activity(key, days=30)["pcs"]) == 1
+
+
+def test_checkin_auto_free_after_30_days():
+    """A PC whose last check-in is older than the 30-day window no longer
+    counts toward max_pcs, so its slot is freed automatically."""
+    key = _make_key(plan="life", customer="Alice")
+    _activate(key)
+    with db._lock:
+        conn = db._connect()
+        try:
+            db._exec(conn, "INSERT INTO key_activity"
+                     " (license_key, pc_hwid, day, pc_name, seen_count, last_seen)"
+                     " VALUES (?, ?, ?, ?, 1, ?)",
+                     (key, DEVICE_A, _old_day(), "PC-A", _old_ts()))
+            conn.commit()
+        finally:
+            conn.close()
+    # A second PC can now check in even though max_pcs = 1
+    r = client.post("/api/license/checkin",
+                    json={"key": key, "device_id": DEVICE_B, "pc_name": "PC-B"})
+    assert r.status_code == 200
+    assert len(db.activity(key, days=30)["pcs"]) == 1  # only new PC in window
+
+
+def _old_day():
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=40)).strftime("%Y-%m-%d")
+
+
+def _old_ts():
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=40)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ---------------------------------------------------------------------------
+# New-style admin create (plans + max_pcs) + overview
+# ---------------------------------------------------------------------------
+
+def test_admin_create_key_with_plan_and_max_pcs():
+    resp = client.post("/admin/keys",
+                       json={"customer": "Bob", "plan": "1m", "max_pcs": 2,
+                             "note": "trial"},
+                       headers=_admin_headers())
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["plan"] == "1m"
+    assert body["max_pcs"] == 2
+    rec = db.get(body["key"])
+    assert rec["max_pcs"] == 2
+    assert rec["expires_at"] is not None
+    # 1 month = 30 days
+    from datetime import datetime, timezone
+    expiry = datetime.strptime(rec["expires_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    delta = (expiry - now).days
+    assert 28 <= delta <= 31
+
+
+def test_admin_create_key_lifetime_no_expiry():
+    resp = client.post("/admin/keys",
+                       json={"customer": "Carol", "plan": "life", "max_pcs": 1},
+                       headers=_admin_headers())
+    assert resp.status_code == 200
+    rec = db.get(resp.json()["key"])
+    assert rec["expires_at"] is None
+
+
+def test_admin_create_key_invalid_plan():
+    resp = client.post("/admin/keys",
+                       json={"customer": "D", "plan": "2y", "max_pcs": 1},
+                       headers=_admin_headers())
+    assert resp.status_code == 400
+
+
+def test_admin_create_key_invalid_max_pcs():
+    resp = client.post("/admin/keys",
+                       json={"customer": "D", "plan": "life", "max_pcs": 99},
+                       headers=_admin_headers())
+    assert resp.status_code == 400
+
+
+def test_admin_overview_includes_activity_and_stats():
+    key = _make_key(plan="life", customer="Alice")
+    _activate(key)
+    client.post("/api/license/checkin",
+                json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    resp = client.get("/admin/keys", headers=_admin_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stats"]["total"] == 1
+    assert body["stats"]["active_keys"] == 1
+    assert body["stats"]["active_today"] == 1
+    assert body["stats"]["online_now"] == 1
+    k = body["keys"][0]
+    assert k["key"] == key
+    assert k["used_pcs"] == 1
+    assert len(k["pcs"]) == 1
+    assert k["pcs"][0]["name"] == "Alice-PC"
+    assert k["max_pcs"] == 1
+    # 30-day activity grid includes today
+    assert any(d == _today() for d in k["day_counts"])
+
+
+def _today():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def test_admin_key_activity_endpoint():
+    key = _make_key(plan="life", customer="Alice")
+    _activate(key)
+    client.post("/api/license/checkin",
+                json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    resp = client.get(f"/admin/keys/{key}/activity", headers=_admin_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["key"] == key
+    assert len(body["pcs"]) == 1
+    assert body["pcs"][0]["hwid"] == DEVICE_A
+
+
+def test_admin_remove_pc_endpoint():
+    key = _make_key(plan="life", customer="Alice")
+    _activate(key)
+    client.post("/api/license/checkin",
+                json={"key": key, "device_id": DEVICE_A, "pc_name": "Alice-PC"})
+    resp = client.delete(f"/admin/keys/{key}/pcs/{DEVICE_A}",
+                         headers=_admin_headers())
+    assert resp.status_code == 200
+    assert resp.json()["removed"] == 1
