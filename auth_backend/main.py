@@ -286,6 +286,18 @@ _DISCORD_API = "https://discord.com/api"
 _DISCORD_STATE_TTL = 300            # seconds a sign-in request stays valid
 _DISCORD_STATES: dict[str, dict] = {}
 _DISCORD_LOCK = threading.Lock()
+# Discord blocks default urllib / datacenter-IP User-Agents at the token
+# endpoint (HTTP 403 code 1010). Masquerade as a browser so the exchange on
+# Render's egress IPs is not mistaken for a bot.
+_DISCORD_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+
+def _discord_http_error(e: "urllib.error.HTTPError") -> str:
+    try:
+        return e.read().decode("utf-8", "replace")[:300]
+    except Exception:  # noqa: BLE001
+        return str(e)
 
 
 def _discord_config() -> dict:
@@ -347,10 +359,12 @@ def _discord_state_set(state: str, **kw: object) -> None:
 
 def _discord_exchange(code: str, redirect_uri: str) -> dict:
     """Exchange the OAuth code for an access token (stdlib-only; patched in
-    tests so the suite never touches Discord)."""
+    tests so the suite never touches Discord). On failure returns a dict
+    carrying a ``__error__`` string so the callback can tell the user exactly
+    what Discord returned instead of a generic sorry."""
     cfg = _discord_config()
     if not cfg["client_id"] or not cfg["client_secret"]:
-        return {}
+        return {"__error__": "client credentials missing"}
     data = urllib.parse.urlencode({
         "client_id": cfg["client_id"],
         "client_secret": cfg["client_secret"],
@@ -361,18 +375,24 @@ def _discord_exchange(code: str, redirect_uri: str) -> dict:
     req = urllib.request.Request(f"{_DISCORD_API}/oauth2/token", data=data,
                                  method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    req.add_header("User-Agent", _DISCORD_UA)
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
-    except Exception:  # noqa: BLE001
+    except urllib.error.HTTPError as e:
+        detail = _discord_http_error(e)
+        logger.error("discord: token exchange HTTP %s: %s", e.code, detail)
+        return {"__error__": f"HTTP {e.code}: {detail[:200]}"}
+    except Exception as e:  # noqa: BLE001
         logger.exception("discord: token exchange failed")
-        return {}
+        return {"__error__": str(e)[:200]}
 
 
 def _discord_user(access_token: str) -> dict:
     """Fetch the Discord account behind an access token (patched in tests)."""
     req = urllib.request.Request(f"{_DISCORD_API}/users/@me")
     req.add_header("Authorization", f"Bearer {access_token}")
+    req.add_header("User-Agent", _DISCORD_UA)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
@@ -448,10 +468,12 @@ def discord_callback(request: Request, code: str = "", state: str = ""):
     access_token = token_body.get("access_token")
     if not access_token:
         _discord_state_set(state, status="denied")
-        return _discord_page(
-            "Discord sign-in failed",
-            "Discord could not complete the sign-in. Close this window and "
-            "try again.")
+        detail = token_body.get("__error__", "")
+        body = ("Discord could not complete the sign-in. Close this window "
+                "and try again.")
+        if detail:
+            body += "\nServer detail: " + detail
+        return _discord_page("Discord sign-in failed", body)
     user = _discord_user(access_token)
     uid = str(user.get("id") or "")
     username = user.get("username") or uid or "Unknown"
