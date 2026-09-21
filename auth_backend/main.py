@@ -125,7 +125,9 @@ if os.path.isdir(_ASSETS_DIR):
 @app.get("/", include_in_schema=False)
 def web_root():
     if os.path.isfile(_WEB_INDEX):
-        return FileResponse(_WEB_INDEX)
+        return FileResponse(_WEB_INDEX, headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        })
     return JSONResponse({"status": "ok", "service": "maximumtweaks-licenses",
                          "panel": "not_built"})
 
