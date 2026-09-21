@@ -44,10 +44,13 @@ this is *not* a permanent bypass, and the backend remains the authority.
 
 | Endpoint                          | Purpose                                        |
 |-----------------------------------|------------------------------------------------|
-| `GET /admin`                      | JSON probe (browser panel removed; admin UI is the native desktop app) |
+| `GET /admin`                      | JSON probe (reports `auth`: `discord` or `token`, plus admin names) |
 | `GET /admin/me`                   | Login-state probe (cookie/bearer)               |
 | `POST /admin/login`               | Exchange `ADMIN_TOKEN` for an HttpOnly `adm` session cookie |
 | `POST /admin/logout`              | Clear the session cookie                       |
+| `POST /admin/discord/start`       | Begin a Discord sign-in → `{url, state}` for the browser |
+| `GET /admin/discord/callback`     | Discord OAuth redirect; allowlist check against `DISCORD_ADMIN_IDS` |
+| `GET /admin/discord/poll/{state}` | `waiting`/`ok`/`denied`/`expired`; on `ok` issues the `adm` session cookie |
 | `GET /admin/licenses?status=`     | List licenses (filter by status)       |
 | `GET /admin/search?q=`            | Search licenses by key / customer / note       |
 | `GET /admin/stats`                | Totals by status                                 |
@@ -79,10 +82,19 @@ admin app — rather than silently displacing an active user.
 **Admin UI.** The browser admin panel (`admin_panel.html` at `/admin`) was
 removed. Administer licenses from the **native desktop app**
 (`../admin_desktop/`, built to `MaximumTweaksAdmin.exe`), which talks to the
-JSON endpoints above with `Authorization: Bearer ADMIN_TOKEN`. Login stores a
-short-lived, signed, HttpOnly cookie so browser/script users can use
-`POST /admin/login` once; every `/admin/*` API route is independently
-authenticated server-side with a constant-time token/cookie check.
+JSON endpoints above. Two sign-in paths, chosen by the server:
+`auth: "discord"` (preferred) or `auth: "token"`.
+
+With **Discord login**, the desktop app opens the server's authorize URL,
+Discord redirects the browser back to `/admin/discord/callback`, the server
+checks the account against `DISCORD_ADMIN_IDS`, and the desktop polls
+`/admin/discord/poll/{state}` until the handshake completes — the poll
+response delivers the HttpOnly `adm` session cookie. The raw `ADMIN_TOKEN`
+never reaches the desktop. When Discord is not configured, `/admin` reports
+`auth: "token"` and the app falls back to the operator-token box.
+
+Every `/admin/*` API route is independently authenticated server-side with a
+constant-time token/cookie check.
 
 There is deliberately **no client-side unbind**: a stolen app copy cannot free
 its own license and be re-sold. Support frees a key with `unbind` (or removes a
@@ -116,6 +128,10 @@ PC slot with the `DELETE .../pcs/{hwid}` endpoint).
    | `LICENSE_KEY_PREFIX`| Key prefix, `1-4` letters/digits, default `MAX`          |
    | `ADMIN_SESSION_HOURS` | Admin panel session length (default `12`)             |
    | `TEST_DATABASE_URL` | **Tests only** — dedicated throwaway Postgres, never prod |
+   | `DISCORD_CLIENT_ID`     | Discord OAuth application client id (enables Discord admin login) |
+   | `DISCORD_CLIENT_SECRET` | Discord OAuth client secret (**keep secret**)                |
+   | `DISCORD_ADMIN_IDS`     | Comma-separated Discord user IDs allowed to sign in          |
+   | `DISCORD_ADMIN_NAMES`   | Optional `id:Display Name` pairs for friendly labels          |
 
    Generate the two secrets with:
 
@@ -184,6 +200,14 @@ as-is, so always pair it with a throwaway `TEST_DATABASE_URL`.
   to generate keys.
 - Set `LICENSE_SECRET` and `ADMIN_TOKEN` as Render environment variables,
   never in the repository.
+- **Discord admin login** (optional): create an application at
+  `https://discord.com/developers/applications`, enable OAuth2, add the redirect
+  URI `https://maximumtweaks.onrender.com/admin/discord/callback`, then set
+  `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ADMIN_IDS`
+  (`458618658390933507,924289061907218462`) and optionally
+  `DISCORD_ADMIN_NAMES` in the Render environment. Until they are set, the
+  server keeps reporting `auth: "token"` and the desktop app shows the
+  operator-token box.
 - The desktop app talks to the same HTTPS origin (`LICENSE_API_URL` in
   `config/app_config.py`), default `https://maximumtweaks.onrender.com`.
 - After deploy, `GET /health` must return `{"status":"ok"}` — the app refuses

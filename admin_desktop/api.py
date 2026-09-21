@@ -78,6 +78,19 @@ class AdminClient:
         self._jar.clear()
         self._request("POST", "/admin/login", {"token": token})
 
+    def admin_probe(self) -> dict:
+        """Server's login mode: {'auth': 'discord'|'token', 'admins': [..], ...}."""
+        return self._request("GET", "/admin")
+
+    def discord_start(self) -> dict:
+        """Begin a Discord sign-in -> {'url': authorize_url, 'state': ..}."""
+        return self._request("POST", "/admin/discord/start")
+
+    def discord_poll(self, state: str) -> dict:
+        """waiting | ok | denied | expired. On 'ok' the response's Set-Cookie
+        (the HttpOnly 'adm' session cookie) is captured in this client's jar."""
+        return self._request("GET", "/admin/discord/poll/" + urllib.parse.quote(state, safe=""))
+
     def logout(self) -> None:
         try:
             self._request("POST", "/admin/logout")

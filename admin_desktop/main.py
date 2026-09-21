@@ -4,9 +4,10 @@ A native port of the key-manager.html mockup: teal/ink surfaces, gold serif
 headings, plan chips, per-key 30-day activity strips, a sticky detail panel
 with the per-PC day grid, create-key and revoke dialogs, and a toast.
 
-Sign in with the operator token; the app exchanges it for the server's
-HttpOnly session cookie and then manages licenses through the hosted backend.
-Network calls always run on a background thread pool (never the UI thread).
+Sign in with Discord (preferred) or the operator token; the app exchanges
+either for the server's HttpOnly session cookie and then manages licenses
+through the hosted backend. Network calls always run on a background thread
+pool (never the UI thread).
 
 Run from source:   python -m admin_desktop.main        (repo root)
 Built EXE:         build.ps1  ->  dist\\MaximumTweaksAdmin.exe
@@ -14,6 +15,8 @@ Built EXE:         build.ps1  ->  dist\\MaximumTweaksAdmin.exe
 from __future__ import annotations
 
 import sys
+import time
+import webbrowser
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Callable
@@ -679,24 +682,60 @@ def _pc_row(pc: dict, key_status: str, key: str,
 # ---------------------------------------------------------------------------
 
 class LoginDialog(QDialog):
+    """Sign-in for the license backend.
+
+    Two ways in:
+      - Discord OAuth (preferred): opens the server's authorize URL in the
+        browser, polls until the server confirms the identity, then keeps the
+        HttpOnly session cookie the poll response delivers.
+      - Operator token: the classic ADMIN_TOKEN fallback, shown only when the
+        server does not offer Discord login.
+    """
+
+    _POLL_MS = 800
+    _POLL_TIMEOUT_S = 180
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(APP_NAME)
         self.setModal(True)
         self.setMinimumWidth(420)
 
-        self.token = QLineEdit()
-        self.token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token.setPlaceholderText("Operator token")
         self.hint = QLabel("Sign in to manage license keys.")
         self.hint.setObjectName("DlgHint")
         self.hint.setWordWrap(True)
 
-        sign_btn = QPushButton("Sign in")
-        sign_btn.setObjectName("BtnGold")
+        # -- Discord (primary when the server has it configured) ----------
+        discord_btn = QPushButton("Continue with Discord")
+        discord_btn.setObjectName("BtnGold")
+        discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        discord_btn.clicked.connect(self.start_discord)
+        discord_btn.setVisible(False)
+        self.discord_btn = discord_btn
+
+        # -- operator-token fallback --------------------------------------
+        self.token = QLineEdit()
+        self.token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.token.setPlaceholderText("Operator token")
+        self.token.returnPressed.connect(self.start_login)
+
+        sign_btn = QPushButton("Sign in with token")
+        sign_btn.setObjectName("BtnGhost")
         sign_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         sign_btn.clicked.connect(self.start_login)
         self.sign_btn = sign_btn
+
+        self._token_row = QWidget()
+        _tr = QVBoxLayout(self._token_row)
+        _tr.setContentsMargins(0, 0, 0, 0)
+        _tr.setSpacing(10)
+        _tr.addWidget(self.token)
+        _tr.addWidget(sign_btn)
+
+        self._or_lbl = QLabel("or use an operator token")
+        self._or_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._or_lbl.setStyleSheet(f"color:{T['muted']};font-size:12px;")
+        self._or_lbl.setVisible(False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
@@ -708,23 +747,138 @@ class LoginDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(sub)
         layout.addSpacing(6)
-        layout.addWidget(self.token)
+        layout.addWidget(discord_btn)
+        layout.addWidget(self._or_lbl)
+        layout.addWidget(self._token_row)
         layout.addSpacing(6)
-        layout.addWidget(sign_btn)
         layout.addWidget(self.hint)
 
         self.client = None
         self._host = TaskHost(self)
+        self._auth = "token"
+        self._poll_timer = QTimer(self)
+        self._poll_timer.setInterval(self._POLL_MS)
+        self._poll_timer.timeout.connect(self._poll_tick)
+        self._poll_state = None
+        self._poll_client = None
+        self._poll_deadline = 0.0
 
+        self._host.run(lambda: AdminClient(DEFAULT_URL).admin_probe(),
+                       self._probe_done)
+
+    # -- mode detection ---------------------------------------------------
+    def _probe_done(self, result, error) -> None:
+        if error is not None:
+            self._set_mode("token", resets=False)
+            return
+        body = result or {}
+        self._set_mode("discord" if body.get("auth") == "discord" else "token")
+
+    def _set_mode(self, mode: str, resets: bool = True) -> None:
+        self._auth = mode
+        if mode == "discord":
+            self.discord_btn.setVisible(True)
+            self._or_lbl.setVisible(True)
+            self.hint.setText("Sign in with your Discord account.")
+            self.hint.setStyleSheet(f"color:{T['muted']};")
+            return
+        self.discord_btn.setVisible(False)
+        self._or_lbl.setVisible(False)
+        if resets:
+            self.hint.setText("Sign in to manage license keys.")
+            self.hint.setStyleSheet(f"color:{T['muted']};")
+
+    def _set_discord_hint(self, text: str, danger: bool = False) -> None:
+        self.hint.setText(text)
+        self.hint.setStyleSheet(f"color:{T['rose'] if danger else T['muted']};")
+
+    # -- Discord flow -----------------------------------------------------
+    def start_discord(self) -> None:
+        self.discord_btn.setEnabled(False)
+        self._set_discord_hint("Opening Discord…")
+        client = AdminClient(DEFAULT_URL)
+
+        def task():
+            body = client.discord_start()
+            return body.get("url", ""), body.get("state", "")
+
+        def done(result, error):
+            if error is not None:
+                self._set_discord_hint("Could not reach the server. Try again.",
+                                       danger=True)
+                self.discord_btn.setEnabled(True)
+                return
+            url, state = result
+            if not url or not state:
+                self._set_discord_hint("Discord login is unavailable right now.",
+                                       danger=True)
+                self.discord_btn.setEnabled(True)
+                return
+            self._poll_client = client
+            self._poll_state = state
+            self._poll_deadline = time.monotonic() + self._POLL_TIMEOUT_S
+            self._set_discord_hint("Waiting for Discord sign-in…")
+            webbrowser.open(url)
+            self._poll_timer.start()
+
+        self._host.run(task, done)
+
+    def _poll_tick(self) -> None:
+        client, state = self._poll_client, self._poll_state
+        if client is None or not state:
+            return
+
+        def task():
+            return client.discord_poll(state).get("status", "expired")
+
+        def done(status, error):
+            if error is not None:
+                self._poll_failed("Could not reach the server. Try again.")
+                return
+            if status == "ok":
+                self._poll_verified()
+            elif status in ("denied", "expired"):
+                self._poll_failed(
+                    "Sign-in was not completed. Close the browser tab and try again.")
+            else:  # waiting
+                if time.monotonic() >= self._poll_deadline:
+                    self._poll_failed(
+                        "Sign-in timed out. Close the browser tab and try again.")
+                else:
+                    self._poll_timer.start()
+
+        self._host.run(task, done)
+
+    def _poll_verified(self) -> None:
+        client = self._poll_client
+
+        def task():
+            return client.me()
+
+        def done(result, error):
+            if error is not None:
+                self._poll_failed("Sign-in confirmed, but the session check "
+                                  "failed. Try again.")
+                return
+            self._poll_timer.stop()
+            self.client = client
+            self.accept()
+
+        self._host.run(task, done)
+
+    def _poll_failed(self, message: str) -> None:
+        self._poll_timer.stop()
+        self._set_discord_hint(message, danger=True)
+        self.discord_btn.setEnabled(True)
+
+    # -- token flow -------------------------------------------------------
     def start_login(self) -> None:
         token = self.token.text().strip()
         if not token:
-            self.hint.setText("Enter your operator token.")
-            self.hint.setStyleSheet(f"color:{T['rose']};")
+            self._set_discord_hint("Enter your operator token.", danger=True)
             return
         self.sign_btn.setEnabled(False)
-        self.hint.setText("Signing in…")
-        self.hint.setStyleSheet(f"color:{T['muted']};")
+        self._set_discord_hint("Signing in…")
         client = AdminClient(DEFAULT_URL)
 
         def task():
@@ -734,13 +888,17 @@ class LoginDialog(QDialog):
         def done(result, error):
             self.sign_btn.setEnabled(True)
             if error is not None:
-                self.hint.setText("Could not sign in. Check the token and try again.")
-                self.hint.setStyleSheet(f"color:{T['rose']};")
+                self._set_discord_hint("Could not sign in. Check the token "
+                                       "and try again.", danger=True)
                 return
             self.client = client
             self.accept()
 
         self._host.run(task, done)
+
+    def reject(self) -> None:  # also fired when the window close button is hit
+        self._poll_timer.stop()
+        super().reject()
 
 
 # ---------------------------------------------------------------------------

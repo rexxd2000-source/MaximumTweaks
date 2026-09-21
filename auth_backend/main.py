@@ -41,16 +41,21 @@ from __future__ import annotations
 
 import calendar
 import hashlib
+import html
 import json
 import logging
 import os
+import secrets
+import threading
 import time
 import hmac
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
@@ -253,6 +258,242 @@ def _admin_cookie_valid(value: str | None) -> bool:
 
 def _now_ts() -> float:
     return time.time()
+
+
+# ---------------------------------------------------------------------------
+# Discord OAuth admin login
+#
+# Admins sign in with their Discord account instead of typing the shared
+# ADMIN_TOKEN. The desktop app opens a browser to Discord's authorize page;
+# the callback (hosted here) exchanges the code, looks the user up, and checks
+# the Discord user ID against DISCORD_ADMIN_IDS. The desktop then polls the
+# /admin/discord/poll endpoint, which hands it the same HttpOnly ``adm``
+# session cookie the token login uses — so ADMIN_TOKEN never leaves the server.
+#
+# env:
+#   DISCORD_CLIENT_ID      Discord application client id
+#   DISCORD_CLIENT_SECRET  Discord application client secret (server-only)
+#   DISCORD_ADMIN_IDS      comma-separated Discord user IDs allowed to sign in
+#   DISCORD_ADMIN_NAMES    optional "id:Display Name" pairs for nicer labels
+#   DISCORD_REDIRECT       optional override; defaults to
+#                          <request base>/admin/discord/callback
+#
+# Register `https://<your-domain>/admin/discord/callback` as an OAuth2
+# redirect URI in the Discord Developer Portal.
+# ---------------------------------------------------------------------------
+
+_DISCORD_API = "https://discord.com/api"
+_DISCORD_STATE_TTL = 300            # seconds a sign-in request stays valid
+_DISCORD_STATES: dict[str, dict] = {}
+_DISCORD_LOCK = threading.Lock()
+
+
+def _discord_config() -> dict:
+    """Read Discord credentials + allowlist live from the environment so tests
+    and deployments can set/change them without a restart."""
+    return {
+        "client_id": os.environ.get("DISCORD_CLIENT_ID", "").strip(),
+        "client_secret": os.environ.get("DISCORD_CLIENT_SECRET", "").strip(),
+        "admin_ids": {x.strip() for x in
+                      os.environ.get("DISCORD_ADMIN_IDS", "").split(",")
+                      if x.strip()},
+    }
+
+
+def _discord_enabled() -> bool:
+    cfg = _discord_config()
+    return bool(cfg["client_id"] and cfg["client_secret"] and cfg["admin_ids"])
+
+
+def _discord_admin_names() -> dict[str, str]:
+    """Optional "id:Display Name" mapping used only for friendly labels."""
+    names: dict[str, str] = {}
+    for part in os.environ.get("DISCORD_ADMIN_NAMES", "").split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        uid, name = part.split(":", 1)
+        names[uid.strip()] = name.strip()
+    return names
+
+
+def _discord_state_new() -> str:
+    state = secrets.token_urlsafe(24)
+    with _DISCORD_LOCK:
+        _DISCORD_STATES[state] = {
+            "exp": time.time() + _DISCORD_STATE_TTL,
+            "status": "waiting", "name": None,
+        }
+    return state
+
+
+def _discord_state_get(state: str) -> dict | None:
+    with _DISCORD_LOCK:
+        entry = _DISCORD_STATES.get(state)
+        if entry is None:
+            return None
+        if entry["exp"] < time.time():
+            _DISCORD_STATES.pop(state, None)
+            return None
+        return entry
+
+
+def _discord_state_set(state: str, **kw: object) -> None:
+    with _DISCORD_LOCK:
+        entry = _DISCORD_STATES.get(state)
+        if entry is not None:
+            entry.update(kw)
+
+
+def _discord_exchange(code: str, redirect_uri: str) -> dict:
+    """Exchange the OAuth code for an access token (stdlib-only; patched in
+    tests so the suite never touches Discord)."""
+    cfg = _discord_config()
+    if not cfg["client_id"] or not cfg["client_secret"]:
+        return {}
+    data = urllib.parse.urlencode({
+        "client_id": cfg["client_id"],
+        "client_secret": cfg["client_secret"],
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }).encode("utf-8")
+    req = urllib.request.Request(f"{_DISCORD_API}/oauth2/token", data=data,
+                                 method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001
+        logger.exception("discord: token exchange failed")
+        return {}
+
+
+def _discord_user(access_token: str) -> dict:
+    """Fetch the Discord account behind an access token (patched in tests)."""
+    req = urllib.request.Request(f"{_DISCORD_API}/users/@me")
+    req.add_header("Authorization", f"Bearer {access_token}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _discord_page(title: str, body: str) -> HTMLResponse:
+    """Tiny brand-consistent page shown in the browser at the end of login."""
+    e_title = html.escape(title)
+    e_body = html.escape(body)
+    return HTMLResponse(f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{e_title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#061a1d;
+     color:#efe8d8;display:flex;align-items:center;justify-content:center;
+     min-height:100vh}}
+.card{{max-width:440px;padding:40px;text-align:center}}
+h1{{font-family:Georgia,serif;font-weight:400;color:#e6cc92;margin:0 0 12px}}
+p{{color:#8ea3a0;line-height:1.6}}
+.sub{{font-size:12px;color:#8ea3a0;margin-top:24px}}
+</style></head><body><div class="card">
+<h1>{e_title}</h1><p>{e_body}</p>
+<div class="sub">Maximum Tweaks \u2014 Sigil license admin</div>
+</div></body></html>""")
+
+
+@app.post("/admin/discord/start")
+def discord_start(request: Request):
+    """Begin a Discord sign-in: returns the Discord authorize URL + state the
+    desktop app opens in the browser and then polls."""
+    if not _discord_enabled():
+        raise _err("discord_disabled",
+                   "Discord login is not configured on the server.", 403)
+    state = _discord_state_new()
+    cfg = _discord_config()
+    redirect_uri = (os.environ.get("DISCORD_REDIRECT", "").strip()
+                    or str(request.base_url).rstrip("/")
+                    + "/admin/discord/callback")
+    params = urllib.parse.urlencode({
+        "client_id": cfg["client_id"],
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "identify",
+        "state": state,
+    })
+    return {"ok": True,
+            "url": "https://discord.com/oauth2/authorize?" + params,
+            "state": state}
+
+
+@app.get("/admin/discord/callback")
+def discord_callback(request: Request, code: str = "", state: str = ""):
+    """Discord redirects the browser here after the user authorizes. Validates
+    the account against the allowlist and flips the poll status to ok."""
+    entry = _discord_state_get(state)
+    if entry is None:
+        return _discord_page(
+            "Sign-in link expired",
+            "This sign-in link is no longer valid. Close this window, go "
+            "back to the admin app and try again.")
+    if not code:
+        _discord_state_set(state, status="denied")
+        return _discord_page(
+            "Sign-in cancelled",
+            "Discord sign-in was cancelled. Close this window and go "
+            "back to the admin app.")
+    redirect_uri = (os.environ.get("DISCORD_REDIRECT", "").strip()
+                    or str(request.base_url).rstrip("/")
+                    + "/admin/discord/callback")
+    token_body = _discord_exchange(code, redirect_uri)
+    access_token = token_body.get("access_token")
+    if not access_token:
+        _discord_state_set(state, status="denied")
+        return _discord_page(
+            "Discord sign-in failed",
+            "Discord could not complete the sign-in. Close this window and "
+            "try again.")
+    user = _discord_user(access_token)
+    uid = str(user.get("id") or "")
+    username = user.get("username") or uid or "Unknown"
+    cfg = _discord_config()
+    if uid not in cfg["admin_ids"]:
+        _discord_state_set(state, status="denied")
+        logger.warning("discord: non-admin login attempt uid=%s user=%s",
+                       uid, username)
+        return _discord_page(
+            "Access denied",
+            f"Hi {username} \u2014 this Discord account is not one of the "
+            "allowed admins. Close this window.")
+    _discord_state_set(state, status="ok", name=username)
+    logger.info("discord: admin login uid=%s user=%s", uid, username)
+    names = _discord_admin_names()
+    pretty = names.get(uid, username)
+    return _discord_page(
+        "You\u2019re signed in",
+        f"Welcome, {pretty}. You can close this window and go back to the "
+        "admin app.")
+
+
+@app.get("/admin/discord/poll/{state}")
+def discord_poll(state: str, request: Request):
+    """The desktop app polls this while the browser flow runs. On success the
+    response carries the HttpOnly ``adm`` cookie so the desktop client is
+    authorized for every /admin/* call without ever holding ADMIN_TOKEN."""
+    entry = _discord_state_get(state)
+    if entry is None:
+        return {"ok": True, "status": "expired"}
+    if entry["status"] == "ok":
+        secure = request.url.scheme == "https"
+        response = JSONResponse({"ok": True, "status": "ok",
+                                 "user": entry.get("name") or ""})
+        response.set_cookie(
+            ADMIN_COOKIE, _sign_admin_cookie(),
+            max_age=ADMIN_SESSION_HOURS * 3600, httponly=True, samesite="lax",
+            secure=secure, path="/")
+        return response
+    if entry["status"] == "denied":
+        return {"ok": True, "status": "denied"}
+    return {"ok": True, "status": "waiting"}
 
 
 def _iso_to_ts(value: str) -> float:
@@ -575,8 +816,17 @@ def admin_root():
     """Root admin probe: confirms the API is up and reports the prefix. The
     browser panel no longer exists; admin UIs authenticate via the endpoints
     below."""
-    return {"ok": True, "admin": True, "configured_prefix": KEY_PREFIX,
+    body = {"ok": True, "admin": True, "configured_prefix": KEY_PREFIX,
             "panel": "desktop"}
+    if _discord_enabled():
+        cfg = _discord_config()
+        names = _discord_admin_names()
+        body["auth"] = "discord"
+        body["admins"] = [names.get(uid, uid)
+                          for uid in sorted(cfg["admin_ids"])]
+    else:
+        body["auth"] = "token"
+    return body
 
 
 @app.get("/admin/me")
