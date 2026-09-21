@@ -519,10 +519,19 @@ def discord_callback(request: Request, code: str = "", state: str = ""):
     logger.info("discord: admin login uid=%s user=%s", uid, username)
     names = _discord_admin_names()
     pretty = names.get(uid, username)
-    return _discord_page(
+    response = _discord_page(
         "You\u2019re signed in",
         f"Welcome, {pretty}. You can close this window and go back to the "
         "admin app.")
+    # The browser/wrapper flow gets its session here (the callback auto-
+    # redirects back to / after 1400ms); the desktop app still polls
+    # /admin/discord/poll/{state} for its own copy of the cookie.
+    secure = request.url.scheme == "https"
+    response.set_cookie(
+        ADMIN_COOKIE, _sign_admin_cookie(),
+        max_age=ADMIN_SESSION_HOURS * 3600, httponly=True, samesite="lax",
+        secure=secure, path="/")
+    return response
 
 
 @app.get("/admin/discord/poll/{state}")

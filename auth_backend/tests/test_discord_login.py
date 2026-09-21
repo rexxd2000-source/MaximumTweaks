@@ -99,6 +99,9 @@ def test_successful_login_sets_admin_cookie(monkeypatch):
     r = client.get(f"/admin/discord/callback?code=abc&state={state}")
     assert r.status_code == 200
     assert "signed in" in r.text.lower()
+    # The browser/wrapper flow must get the cookie on the callback itself
+    # (it auto-redirects to / after 1400ms), not only via the desktop poll.
+    assert "adm=" in r.headers.get("set-cookie", "")
 
     poll = client.get(f"/admin/discord/poll/{state}")
     body = poll.json()

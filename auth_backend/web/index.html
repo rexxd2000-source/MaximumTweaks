@@ -349,7 +349,7 @@ dialog[open]{animation:pop .22s ease}
       Sigil
     </div>
     <h2>Admin sign-in</h2>
-    <p class="lead">Sign in to manage license keys for your customers.</p>
+    <p class="lead" id="loginLead">Sign in to manage license keys for your customers.</p>
     <button class="btn btn-gold" id="discBtn" hidden>Continue with Discord</button>
     <div class="or" id="orDiv" hidden><span>or</span></div>
     <div class="field" id="tokBox">
@@ -523,8 +523,8 @@ dialog[open]{animation:pop .22s ease}
 
   /* ---------- auth ---------- */
   let authMode = 'token';
-  const discOnly = new URLSearchParams(location.search).get('admin') === 'discord';
-  function showApp(){ $('#appMain').hidden = false; $('#topAct').hidden = false; $('#login').hidden = true; }
+  const discOnly = new URLSearchParams(location.search).get('admin') === 'discord' || localStorage.getItem('sigil_disconly') === '1';
+  function showApp(){ $('#appMain').hidden = false; $('#topAct').hidden = false; $('#signOut').hidden = false; $('#login').hidden = true; }
   function showLogin(notice){
     $('#appMain').hidden = true; $('#topAct').hidden = true;
     const isDisc = authMode === 'discord';
@@ -825,7 +825,7 @@ dialog[open]{animation:pop .22s ease}
   $('#tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('#signIn').click(); });
   $('#tok').addEventListener('input', () => $('#tokErr').textContent = '');
   $('#discBtn').addEventListener('click', async () => {
-    try { const r = await post('/admin/discord/start'); window.location.href = r.url; }
+    try { const r = await post('/admin/discord/start'); localStorage.setItem('sigil_disconly', '1'); window.location.href = r.url; }
     catch (e) { if (e && e.message !== 'session') toast(e.message); }
   });
   $('#signOut').addEventListener('click', async () => {
