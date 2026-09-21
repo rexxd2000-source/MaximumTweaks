@@ -1071,6 +1071,7 @@ def admin_keys(_: None = Depends(_admin_guard)):
             "created_at": k.get("created_at"),
             "activated_at": k.get("activated_at"),
             "expires_at": k.get("expires_at"),
+            "revoked_at": k.get("revoked_at"),
             "last_seen": k.get("last_seen"),
             "max_pcs": int(k.get("max_pcs") or 1),
             "used_pcs": len(k.get("pcs", [])),
