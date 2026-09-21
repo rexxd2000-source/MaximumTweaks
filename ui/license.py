@@ -195,9 +195,17 @@ def start_heartbeat(on_refused=None, parent=None, interval_ms: int = 300000):
 
 
 def pulse_heartbeat():
-    """One heartbeat round, off the UI thread (no-op until authorized)."""
+    """One heartbeat round, off the UI thread.
+
+    Attempted whenever a session exists.  Normally that means the app is
+    authorized and the checkin keeps ``last_validation`` fresh; after the
+    30-day offline grace expires mid-session the same heartbeat becomes the
+    re-verification path — the moment the server answers it refreshes the
+    session and the app stays (or gets) unlocked, no restart required.  A
+    refused response clears the session and relocks immediately.
+    """
     global _HEARTBEAT_WORKER
-    if not license_mgr.is_authorized():
+    if not license_mgr.session():
         return
     if _HEARTBEAT_WORKER is not None and _HEARTBEAT_WORKER.isRunning():
         return

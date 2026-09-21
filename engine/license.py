@@ -136,6 +136,23 @@ def _last_validation_age_hours(sess: dict) -> float | None:
         return None
 
 
+def _grace_exhausted(sess: dict) -> bool:
+    """True when the offline grace window has fully run out.
+
+    Any stored session (lifetime key or not) is worth ``_OFFLINE_GRACE_HOURS``
+    of offline trust after the last successful server confirmation.  Once that
+    clock hits zero the app must re-verify with the server rather than keep
+    running on a cache that could belong to a revoked / re-sold / over-limit
+    key.  Sessions without a validation timestamp at all (legacy / pre-check-in
+    builds) cannot be measured, so they are left authorized until the next
+    successful heartbeat or validation stamps one.
+    """
+    age = _last_validation_age_hours(sess)
+    if age is None:
+        return False
+    return age >= _OFFLINE_GRACE_HOURS
+
+
 def is_authorized() -> bool:
     """Can the app run right now without re-activating?
 
@@ -150,6 +167,13 @@ def is_authorized() -> bool:
     the app continues to trust a locally-stored session for up to 30 days after
     the last successful server confirmation.  This prevents transient outages,
     Render cold-starts, and network issues from locking users out.
+
+    The 30-day window applies to ALL keys, not only expired ones: a lifetime
+    key that has not been confirmed by the server for over a month must be
+    re-verified (the cached session could belong to a key that was later
+    revoked / re-sold / over its PC limit).  The gate presents a "reconnect to
+    verify" flow instead of a fresh-key prompt, so a legitimate owner who was
+    simply offline is back in with one click as soon as the server responds.
     Revocation is re-checked the next time the server is reachable during an
     explicit activation attempt.
     """
@@ -176,7 +200,31 @@ def is_authorized() -> bool:
                         f"confirm was {age:.0f}h ago, staying authorized")
             return True
         return False
+    if _grace_exhausted(sess):
+        logger.warn("license: offline grace window complete — "
+                    "re-verification required")
+        return False
     return True
+
+
+def needs_reverify() -> bool:
+    """True when the only thing standing between the session and "authorized"
+    is the exhausted offline-grace clock.
+
+    Used by the gate to offer a ``Reconnect to verify`` flow instead of a fresh
+    activation prompt: the user already owns a session that is otherwise intact
+    (device matches, not expired) — it just has not heard from the server in
+    over ``_OFFLINE_GRACE_HOURS``.  As soon as a checkin reaches the server the
+    session refreshes and the app unlocks with one click, no key re-entry.
+    """
+    sess = session()
+    if not sess:
+        return False
+    if not is_configured():
+        return False
+    if _license_expired(sess):
+        return False  # plainly expired → normal key prompt handles it
+    return _grace_exhausted(sess)
 
 
 # ---------------------------------------------------------------------------

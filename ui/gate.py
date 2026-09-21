@@ -3,10 +3,16 @@
 Shown at every launch until a valid license session exists. Users without a
 license never reach the main UI — the whole app is locked behind this screen.
 Enter a key, activate it against the license server, and the app unlocks.
+
+When a session exists but its 30-day offline grace has run out (the server has
+not been reached in a month), the gate presents a ``Reconnect to verify`` flow
+instead of a key prompt: one button re-checks in with the server and the app
+unlocks as soon as it responds — no key re-entry for a legitimate owner who was
+simply offline.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,7 +29,7 @@ from config.app_config import (
     current_windows_user,
 )
 from engine import license as license_mgr
-from ui.license import LicenseActivateWorker, publish_identity
+from ui.license import LicenseHeartbeatWorker, LicenseActivateWorker, publish_identity
 from ui.widgets import qss_rgba, toast
 
 ACCENT = T["accent"]
@@ -128,6 +134,59 @@ class GateWindow(QWidget):
             "QPushButton:disabled { color: #6E8295; }")
         self.activate_btn.clicked.connect(self._on_activate)
         pl.addWidget(self.activate_btn)
+
+        # Reconnect-to-verify block: shown instead of the key prompt when a
+        # session exists but the 30-day offline grace has run out. One click
+        # re-checks in with the server; a reachable server refreshes the
+        # session and unlocks the app without re-entering the key.
+        self.reconnect_box = QFrame()
+        self.reconnect_box.setStyleSheet(
+            "QFrame#ReconnectBox { background-color: #0D1219;"
+            " border: 1px solid #26313E; border-radius: 12px; }")
+        rl = QVBoxLayout(self.reconnect_box)
+        rl.setContentsMargins(20, 16, 20, 16)
+        rl.setSpacing(10)
+
+        rt = QLabel("RECONNECT TO VERIFY")
+        rt.setAlignment(Qt.AlignCenter)
+        rt.setStyleSheet(
+            f"color: {T['warning']}; font-size: 11px; font-weight: 700;"
+            " letter-spacing: 1px;")
+        rl.addWidget(rt)
+
+        rd = QLabel(
+            "This license has not been confirmed by the license server in "
+            "over 30 days. It stays active while the app is off the network, "
+            "but reconnecting will verify it.\n\nConnect to the internet and "
+            "try again — once the server answers, Maximum Tweaks unlocks "
+            "right away.")
+        rd.setAlignment(Qt.AlignCenter)
+        rd.setWordWrap(True)
+        rd.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 12.5px;")
+        rl.addWidget(rd)
+
+        self.reconnect_btn = QPushButton("TRY AGAIN")
+        self.reconnect_btn.setObjectName("Primary")
+        self.reconnect_btn.setMinimumHeight(44)
+        self.reconnect_btn.setStyleSheet(
+            "QPushButton { font-size: 13px; font-weight: 700;"
+            " letter-spacing: 0.4px; border-radius: 10px;"
+            " padding: 0 20px; qproperty-cursor: pointinghand; }"
+            "QPushButton:disabled { color: #6E8295; }")
+        self.reconnect_btn.clicked.connect(self._on_reconnect)
+        rl.addWidget(self.reconnect_btn)
+
+        self.reconnect_status = QLabel("")
+        self.reconnect_status.setAlignment(Qt.AlignCenter)
+        self.reconnect_status.setWordWrap(True)
+        self.reconnect_status.setStyleSheet(
+            f"color: {T['danger']}; font-size: 12px; font-weight: 700;")
+        self.reconnect_status.hide()
+        rl.addWidget(self.reconnect_status)
+
+        self.reconnect_box.hide()
+        pl.addWidget(self.reconnect_box)
 
         self.busy_label = QLabel("Contacting the license server \u2026")
         self.busy_label.setAlignment(Qt.AlignCenter)
@@ -240,17 +299,32 @@ class GateWindow(QWidget):
 
     def _refresh_config_state(self):
         configured = license_mgr.is_configured()
-        self.key_input.setVisible(configured)
-        self.activate_btn.setVisible(configured)
+        # Distinguish "reconnect to verify" (session exists, grace ran out)
+        # from "no license yet/expired" (fresh-key prompt).
+        self._reconnect_required = (
+            configured and license_mgr.needs_reverify())
+        show_key_flow = configured and not self._reconnect_required
+        self.key_input.setVisible(show_key_flow)
+        self.activate_btn.setVisible(show_key_flow)
+        self.reconnect_box.setVisible(
+            configured and self._reconnect_required and not self._busy)
         self.config_note.setVisible(not configured)
         # Dev-only bypass: never visible in a production (frozen) build.
         self.owner_btn.setVisible(not configured
                                   and license_mgr.dev_bypass_enabled())
+        if self._reconnect_required and not self._busy:
+            # Allow an auto-reconnect attempt so an already-online owner on
+            # splash hand-off is unlocked without clicking anything.
+            self.reconnect_status.hide()
+            QTimer.singleShot(0, self._on_reconnect)
 
     def set_busy(self, busy: bool):
         self._busy = busy
         self.activate_btn.setEnabled(not busy)
         self.key_input.setEnabled(not busy)
+        self.reconnect_btn.setEnabled(not busy)
+        self.reconnect_box.setVisible(
+            getattr(self, "_reconnect_required", False) and not busy)
         if busy:
             self.busy_label.show()
             self.error_label.hide()
@@ -272,6 +346,56 @@ class GateWindow(QWidget):
         self._license_worker = worker
         worker.done.connect(self._on_done)
         worker.start()
+
+    def _on_reconnect(self):
+        """One reconnect-to-verify round: check in with the server.
+
+        Fired automatically when the gate appears with an intact-but-graced-out
+        session, and again whenever the user clicks TRY AGAIN. A "refused"
+        response means the key really is no longer good on this PC — fall back
+        to the fresh-key prompt so the owner can see why. "offline" keeps the
+        session (pure connectivity hiccup) and lets the user retry.
+        """
+        if self._busy:
+            return
+        if not license_mgr.is_configured():
+            self._refresh_config_state()
+            return
+        self.set_busy(True)
+        self.reconnect_status.hide()
+        worker = LicenseHeartbeatWorker(self)
+        self._reconnect_worker = worker
+        worker.done.connect(self._on_reconnect_done)
+        worker.start()
+
+    def _on_reconnect_done(self, status, message):
+        self.set_busy(False)
+        if status == "ok":
+            # Server confirmed the key: the checkin refreshed the persisted
+            # session's last_validation, so the grace clock is reset and the
+            # app is authorized again. Unlock without touching the key prompt.
+            sess = license_mgr.session()
+            publish_identity()
+            toast("License re-verified \u2014 welcome back",
+                  "success", self)
+            self.unlocked.emit(sess)
+            return
+        if status == "refused":
+            # The key is genuinely gone on the server's side — clear the stale
+            # session and drop to the normal key prompt with the reason shown.
+            license_mgr.set_session(None)
+            publish_identity()
+            self._reconnect_required = False
+            self._refresh_config_state()
+            self.error_label.setText(message or
+                                     "This license is no longer valid on this PC.")
+            self.error_label.show()
+            return
+        # offline / transient — keep the session (offline grace), just report.
+        self.reconnect_status.setText(
+            message or "Couldn't reach the license server. Check your "
+                       "internet connection and try again.")
+        self.reconnect_status.show()
 
     def _on_done(self, sess, error):
         self.set_busy(False)
