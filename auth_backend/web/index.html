@@ -54,6 +54,7 @@ h1,h2,h3,p{margin:0}
 /* header */
 .top{display:flex;align-items:center;justify-content:space-between;padding:24px 0 8px}
 .brand{display:flex;align-items:center;gap:12px;font-family:var(--serif);font-size:30px;letter-spacing:.01em}
+.brand-logo{border-radius:9px;flex:none;display:block}
 .title{padding:38px 0 30px}
 .title h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,5.4vw,64px);line-height:1.02;letter-spacing:-.012em}
 .title p{margin-top:14px;max-width:54ch;color:var(--muted);font-size:16px}
@@ -352,11 +353,7 @@ dialog[open]{animation:pop .22s ease}
 <div class="app wrap">
   <header class="top">
     <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-        <circle cx="14" cy="14" r="13" stroke="#e6cc92" stroke-opacity=".5"/>
-        <circle cx="11" cy="11" r="4" stroke="#e6cc92" stroke-width="1.6"/>
-        <path d="M14 14l7 7m-3-3l2-2m0 4l2-2" stroke="#e6cc92" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>
+      <img src="/assets/logo.png" width="32" height="32" alt="Maximum Tweaks" class="brand-logo">
       Sigil
     </div>
     <div class="top-act" id="topAct">
@@ -370,11 +367,7 @@ dialog[open]{animation:pop .22s ease}
 
   <section class="panel login" id="login" hidden aria-label="Sign in">
     <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-        <circle cx="14" cy="14" r="13" stroke="#e6cc92" stroke-opacity=".5"/>
-        <circle cx="11" cy="11" r="4" stroke="#e6cc92" stroke-width="1.6"/>
-        <path d="M14 14l7 7m-3-3l2-2m0 4l2-2" stroke="#e6cc92" stroke-width="1.6" stroke-linecap="round"/>
-      </svg>
+      <img src="/assets/logo.png" width="32" height="32" alt="Maximum Tweaks" class="brand-logo">
       Sigil
     </div>
     <h2>Admin sign-in</h2>
@@ -629,6 +622,10 @@ dialog[open]{animation:pop .22s ease}
   function start(){
     showApp();
     refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); });
+    setInterval(() => {
+      if (document.hidden) return;
+      refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); });
+    }, 60000);
   }
 
   async function refreshAll(){
