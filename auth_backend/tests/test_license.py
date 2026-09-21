@@ -524,12 +524,12 @@ def test_admin_generate_computed_keys_activate():
 
 
 def test_admin_root_removed_web_panel():
-    """The browser admin panel was removed; /admin is now a JSON probe only."""
+    """The web panel is served from the SPA at /; /admin is a JSON probe."""
     resp = client.get("/admin")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["panel"] == "desktop"
+    assert body["panel"] == "web"
 
 
 def test_unhandled_500_returns_friendly_envelope():

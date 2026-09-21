@@ -79,19 +79,19 @@ refused (its existing PCs keep working) and the attempt is logged to
 `key_blocked`, which powers the "X blocked attempts this week" warning in the
 admin app — rather than silently displacing an active user.
 
-**Admin UI.** The browser admin panel (`admin_panel.html` at `/admin`) was
-removed. Administer licenses from the **native desktop app**
-(`../admin_desktop/`, built to `MaximumTweaksAdmin.exe`), which talks to the
-JSON endpoints above. Two sign-in paths, chosen by the server:
-`auth: "discord"` (preferred) or `auth: "token"`.
+**Admin UI.** The license manager is a **web app** (React SPA built from
+`../rex-tweaks-ui`, copied into `auth_backend/web/` and served at `/`),
+styled as the operator dashboard. It talks to the JSON endpoints above from
+the browser, authenticated with the HttpOnly `adm` session cookie. Two
+sign-in paths, chosen by the server: `auth: "discord"` (preferred) or
+`auth: "token"`.
 
-With **Discord login**, the desktop app opens the server's authorize URL,
-Discord redirects the browser back to `/admin/discord/callback`, the server
-checks the account against `DISCORD_ADMIN_IDS`, and the desktop polls
-`/admin/discord/poll/{state}` until the handshake completes — the poll
-response delivers the HttpOnly `adm` session cookie. The raw `ADMIN_TOKEN`
-never reaches the desktop. When Discord is not configured, `/admin` reports
-`auth: "token"` and the app falls back to the operator-token box.
+With **Discord login**, the browser is taken to the server's authorize URL,
+Discord redirects it back to `/admin/discord/callback`, the server checks the
+account against `DISCORD_ADMIN_IDS`, sets the HttpOnly `adm` cookie, and
+redirects back to `/`. The raw `ADMIN_TOKEN` never reaches the browser. When
+Discord is not configured, `/admin` reports `auth: "token"` and the panel
+falls back to the operator-token box.
 
 Every `/admin/*` API route is independently authenticated server-side with a
 constant-time token/cookie check.
@@ -206,9 +206,13 @@ as-is, so always pair it with a throwaway `TEST_DATABASE_URL`.
   `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ADMIN_IDS`
   (`458618658390933507,924289061907218462`) and optionally
   `DISCORD_ADMIN_NAMES` in the Render environment. Until they are set, the
-  server keeps reporting `auth: "token"` and the desktop app shows the
+  server keeps reporting `auth: "token"` and the panel shows the
   operator-token box.
-- The desktop app talks to the same HTTPS origin (`LICENSE_API_URL` in
+- **Web panel** (this repo): build `../rex-tweaks-ui` with `npm run build` and
+  copy `dist/*` into `auth_backend/web/` before deploying — `/` then serves the
+  admin SPA. If `auth_backend/web` is absent, `/` returns a build-missing JSON
+  notice but every API still works.
+- The customer app talks to the same HTTPS origin (`LICENSE_API_URL` in
   `config/app_config.py`), default `https://maximumtweaks.onrender.com`.
 - After deploy, `GET /health` must return `{"status":"ok"}` — the app refuses
   keys when the license service is unreachable.
@@ -216,7 +220,8 @@ as-is, so always pair it with a throwaway `TEST_DATABASE_URL`.
 ## Security notes
 
 - `LICENSE_SECRET` and `ADMIN_TOKEN` live **only** in the backend environment.
-  Nothing is bundled into the desktop EXE.
+  They are never bundled or committed; the web panel and customer app hold
+  nothing but the HttpOnly session cookie.
 - Keys are generated with `secrets` and formatted `PREFIX-XXXX-XXXX-XXXX` where
   `PREFIX` is `LICENSE_KEY_PREFIX` (default `MAX`, e.g. `MAX-XXXX-XXXX-XXXX`, 60
   bits of entropy). Keys never encode their plan/duration — that lives in the DB

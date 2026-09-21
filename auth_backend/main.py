@@ -55,7 +55,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
@@ -102,6 +103,31 @@ _DB = LicenseDB()
 _OK = {"status": "ok", "service": "maximumtweaks-licenses"}
 
 app = FastAPI(title="Maximum Tweaks License Server", version="1.2.0")
+
+# ---------------------------------------------------------------------------
+# Web admin panel (React SPA)
+#
+# The license manager UI is a single-page app built from ../rex-tweaks-ui
+# (``npm run build``) and copied into ./web. It talks to the /admin/* JSON
+# endpoints below using the same HttpOnly ``adm`` cookie the token/Discord
+# logins issue, so credentials never live in the browser.
+# ---------------------------------------------------------------------------
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_WEB_DIR = os.path.join(_BASE_DIR, "web")
+_WEB_INDEX = os.path.join(_WEB_DIR, "index.html")
+_ASSETS_DIR = os.path.join(_WEB_DIR, "assets")
+
+if os.path.isdir(_ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="webassets")
+
+
+@app.get("/", include_in_schema=False)
+def web_root():
+    if os.path.isfile(_WEB_INDEX):
+        return FileResponse(_WEB_INDEX)
+    return JSONResponse({"status": "ok", "service": "maximumtweaks-licenses",
+                         "panel": "not_built"})
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +427,9 @@ def _discord_user(access_token: str) -> dict:
 
 
 def _discord_page(title: str, body: str) -> HTMLResponse:
-    """Tiny brand-consistent page shown in the browser at the end of login."""
+    """Tiny brand-consistent page shown in the browser at the end of login.
+    Auto-redirects back to the web admin panel (the SPA at /) so the login
+    cookie takes effect without the user touching anything."""
     e_title = html.escape(title)
     e_body = html.escape(body)
     return HTMLResponse(f"""<!doctype html>
@@ -416,9 +444,10 @@ h1{{font-family:Georgia,serif;font-weight:400;color:#e6cc92;margin:0 0 12px}}
 p{{color:#8ea3a0;line-height:1.6}}
 .sub{{font-size:12px;color:#8ea3a0;margin-top:24px}}
 </style></head><body><div class="card">
-<h1>{e_title}</h1><p>{e_body}</p>
-<div class="sub">Maximum Tweaks \u2014 Sigil license admin</div>
-</div></body></html>""")
+<h1>{e_title}</h1><p>{e_body}<br><span class="sub">
+\u2192 taking you back to the admin panel\u2026</span></p>
+</div><script>setTimeout(function(){{location.href='/'}},1400);</script>
+</body></html>""")
 
 
 @app.post("/admin/discord/start")
@@ -828,18 +857,18 @@ def checkin(payload: CheckinRequest):
 # ---------------------------------------------------------------------------
 # Admin API (server-side auth: Bearer ADMIN_TOKEN or adm cookie)
 #
-# Note: the old browser admin panel (admin_panel.html served at /admin) was
-# removed by request — the admin UI is now the native desktop app
-# (admin_desktop/) which talks to these JSON endpoints only.
+# The web admin panel (SPA at /) authenticates by exchanging the ADMIN_TOKEN
+# or a Discord login for the HttpOnly ``adm`` cookie, then calls these JSON
+# endpoints with the browser's own cookie.
 # ---------------------------------------------------------------------------
 
 @app.get("/admin")
 def admin_root():
     """Root admin probe: confirms the API is up and reports the prefix. The
-    browser panel no longer exists; admin UIs authenticate via the endpoints
+    admin UI is the web panel (SPA served at /) which talks to the endpoints
     below."""
     body = {"ok": True, "admin": True, "configured_prefix": KEY_PREFIX,
-            "panel": "desktop"}
+            "panel": "web"}
     if _discord_enabled():
         cfg = _discord_config()
         names = _discord_admin_names()
