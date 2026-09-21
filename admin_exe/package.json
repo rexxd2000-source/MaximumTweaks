@@ -1,0 +1,29 @@
+{
+  "name": "sigil-admin",
+  "version": "1.0.0",
+  "description": "Sigil license admin for Maximum Tweaks",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.maximumtweaks.sigiladmin",
+    "productName": "Sigil Admin",
+    "files": [
+      "main.js"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "SigilAdmin.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3"
+  }
+}
