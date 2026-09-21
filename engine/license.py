@@ -199,6 +199,8 @@ def _friendly(code: str, server_message: str = "") -> str:
                             "it and try again, or contact support."),
         "license_revoked": "This license key has been revoked. Contact support for help.",
         "license_expired": "This license key has expired.",
+        "license_suspended": ("This license is temporarily suspended by the "
+                              "operator. It resumes automatically."),
         "device_mismatch": ("This license is already activated on another PC. "
                             "Changed computers? Contact support to unlock it."),
         "rate_limited": "Too many attempts — please wait a few minutes.",
@@ -410,10 +412,12 @@ def validate() -> tuple[bool, str]:
                         f"{exc.message}")
             return False, exc.message
 
-    # Server says key is revoked / expired / bound elsewhere — log but do NOT
-    # clear.  The session stays so the app survives restarts.  Revocation is
-    # re-checked when the user next explicitly activates.
-    if code in ("license_revoked", "license_expired", "device_mismatch",
+    # Server says key is revoked / expired / suspended / bound elsewhere —
+    # log but do NOT clear.  The session stays so the app survives restarts.
+    # Revocation/suspension is re-checked when the user next explicitly
+    # activates.
+    if code in ("license_revoked", "license_expired", "license_suspended",
+                "device_mismatch",
                 "REVOKED", "EXPIRED", "DEVICE_MISMATCH"):
         logger.warn(f"license: server reports {code} during background refresh "
                     f"— session retained for offline grace")
@@ -457,7 +461,7 @@ def checkin() -> tuple[str, str]:
     if not code:
         return "offline", message
     if code in ("invalid_license", "license_revoked", "license_expired",
-                "over_limit", "device_mismatch",
+                "license_suspended", "over_limit", "device_mismatch",
                 "INVALID_KEY", "REVOKED", "EXPIRED",
                 "DEVICE_MISMATCH"):
         logger.warn(f"license: heartbeat refused ({code})")

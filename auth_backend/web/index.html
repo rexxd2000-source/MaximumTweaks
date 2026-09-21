@@ -48,7 +48,7 @@ h1,h2,h3,p{margin:0}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.wrap{max-width:1320px;margin:0 auto;padding:0 28px}
+.wrap{max-width:1560px;margin:0 auto;padding:0 28px}
 .app{position:relative;z-index:1;padding-bottom:56px}
 
 /* header */
@@ -93,7 +93,7 @@ h1,h2,h3,p{margin:0}
 .stat .lbl{margin-top:8px;color:var(--muted);font-size:13.5px}
 
 /* layout */
-.main{display:grid;grid-template-columns:minmax(0,1fr) 480px;gap:22px;align-items:start;margin-top:22px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 540px;gap:22px;align-items:start;margin-top:22px}
 
 /* list */
 .list{overflow:hidden}
@@ -116,7 +116,7 @@ h1,h2,h3,p{margin:0}
 .search input:focus{outline:none;border-color:var(--gold)}
 
 .colhead,.row{
-  display:grid;grid-template-columns:minmax(0,1.5fr) 92px 56px 96px 118px 84px;gap:14px;align-items:center;padding:0 24px;
+  display:grid;grid-template-columns:minmax(0,1.25fr) 88px 54px 128px 110px 250px;gap:14px;align-items:center;padding:0 24px;
 }
 .colhead{margin-top:16px;padding-top:11px;padding-bottom:11px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .rows{list-style:none;margin:0;padding:0}
@@ -144,9 +144,13 @@ h1,h2,h3,p{margin:0}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--live);animation:pulse 2.4s infinite;flex:none}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(127,224,176,.55)}70%{box-shadow:0 0 0 7px rgba(127,224,176,0)}100%{box-shadow:0 0 0 0 rgba(127,224,176,0)}}
 .act{text-align:right}
+.acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.acts .btn{padding:5px 9px;font-size:12px}
 .state{font-size:13px;font-weight:600}
 .state.expired{color:var(--warn)}
 .state.revoked{color:var(--rose)}
+.state.banned{color:var(--rose);font-weight:700}
+.state.suspended{color:var(--warn)}
 .empty{padding:44px 24px;text-align:center;color:var(--muted);border-top:1px solid var(--line)}
 .empty p{margin-bottom:16px}
 
@@ -159,6 +163,8 @@ h1,h2,h3,p{margin:0}
 .pill.active{color:var(--live);border-color:rgba(127,224,176,.35);background:rgba(127,224,176,.08)}
 .pill.expired{color:var(--warn);border-color:rgba(239,181,106,.35);background:rgba(239,181,106,.08)}
 .pill.revoked{color:var(--rose);border-color:rgba(236,118,134,.4);background:rgba(236,118,134,.08)}
+.pill.suspended{color:var(--warn);border-color:rgba(239,181,106,.4);background:rgba(239,181,106,.1)}
+.note.teal{color:#a7dcd7;border-color:rgba(95,196,192,.35);background:rgba(95,196,192,.07)}
 .keybox{
   margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:10px 10px 10px 18px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid var(--line);
@@ -274,6 +280,29 @@ dialog[open]{animation:pop .22s ease}
 .stepper button:hover{background:rgba(255,255,255,.07)}
 .stepper output{min-width:44px;text-align:center;font-weight:700;font-family:var(--mono)}
 .hint{color:var(--muted);font-size:13px;margin-top:8px}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+.chipbtn{display:block;cursor:pointer;padding:12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);transition:border-color .2s,background .2s;text-align:center}
+.chipbtn:hover{border-color:var(--line-2)}
+.chipbtn.on{border-color:var(--gold);background:rgba(230,204,146,.09)}
+.chipbtn b{display:block;font-size:15px;font-weight:700}
+.chipbtn small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.dbody-wide{min-width:min(640px,calc(100vw - 28px))}
+.inpc{display:inline-block;margin-left:3px;padding:0 7px 2px;width:34px;text-align:center}
+.log block{display:block;overflow:auto;max-width:100%;white-space:pre}
+.log block{margin:6px 0 0;font-family:var(--mono);font-size:12px;color:var(--ink-2);line-height:1.5}
+.log dt{display:flex;align-items:baseline;gap:8px;font-weight:600;font-size:13.5px}
+.log dt time{color:var(--muted);font-family:var(--mono);font-size:11.5px;font-weight:400;flex:none}
+.log dt .e{flex:1;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.05em}
+.e.crt{color:var(--live)}.e.actv{color:var(--live)}.e.chk{color:var(--live)}
+.e.rev{color:var(--rose)}.e.unrev{color:var(--warn)}.e.ban{color:var(--rose)}.e.unban{color:var(--live)}
+.e.susp{color:var(--warn)}.e.unsusp{color:var(--live)}.e.lock{color:var(--rose)}.e.rej{color:var(--rose)}
+.log dd{margin:3px 0 14px;color:var(--ink-2);font-size:13px;line-height:1.55;word-break:break-word}
+.tbl{width:100%;border-collapse:collapse;margin-top:4px;font-size:13px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-top:1px solid var(--line)}
+.tbl th{color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.tbl td .dl{display:block;color:var(--muted);font-size:12px;margin-top:2px;font-family:var(--mono)}
+.tbl tr.plug td{color:var(--warn);font-weight:600}
+.tbl tr.plug small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px}
 .dactions{display:flex;justify-content:flex-end;gap:10px;margin-top:30px}
 .bigkey{
   margin-top:22px;padding:22px;border-radius:16px;background:rgba(0,0,0,.32);border:1px solid var(--line-2);text-align:center;
@@ -444,6 +473,49 @@ dialog[open]{animation:pop .22s ease}
   </div>
 </dialog>
 
+<!-- Ban -->
+<dialog id="banDlg" aria-labelledby="banTitle">
+  <div class="dbody">
+    <h2 id="banTitle">Ban this key?</h2>
+    <p class="lead" id="banBody"></p>
+    <div class="field">
+      <label for="banWhy">Reason (shown in the key's inspect log)</label>
+      <input type="text" id="banWhy" placeholder="For example, chargeback" maxlength="60" autocomplete="off">
+    </div>
+    <div class="dactions">
+      <button class="btn btn-ghost" type="button" data-close="banDlg">Cancel</button>
+      <button class="btn btn-rose" type="button" id="banGo">Ban key</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Timeout -->
+<dialog id="timeoutDlg" aria-labelledby="timeoutTitle">
+  <div class="dbody">
+    <h2 id="timeoutTitle">Pause this key</h2>
+    <p class="lead" id="timeoutBody"></p>
+    <div class="field">
+      <span class="fl" id="timeoutLbl">For how long?</span>
+      <div class="chips" id="timeoutChips" role="radiogroup" aria-labelledby="timeoutLbl"></div>
+    </div>
+    <div class="dactions">
+      <button class="btn btn-ghost" type="button" data-close="timeoutDlg">Cancel</button>
+      <button class="btn btn-gold" type="button" id="timeoutGo">Pause key</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Inspect -->
+<dialog id="inspectDlg" aria-labelledby="inspectTitle">
+  <div class="dbody dbody-wide">
+    <div class="dh">
+      <div><h2 id="inspectTitle">Inspect key</h2><p class="lead" id="inspectWho"></p></div>
+      <span class="pill active" id="inspectPill">Active</span>
+    </div>
+    <div id="inspectBody"></div>
+  </div>
+</dialog>
+
 <script>
 (function(){
   const $ = s => document.querySelector(s);
@@ -497,7 +569,7 @@ dialog[open]{animation:pop .22s ease}
 
   /* ---------- state ---------- */
   let keys = [], stats = null, selectedId = null;
-  let tab = 'active', query = '', pendingRevoke = null, flashId = null;
+  let tab = 'active', query = '', pendingRevoke = null, flashId = null, pendingBan = null, pendingTimeout = null, pendingKey = null, tHours = 12;
   let actCache = {};
 
   const keyOf = id => keys.find(k => k.id === id);
@@ -516,10 +588,19 @@ dialog[open]{animation:pop .22s ease}
       status: r.status || 'active',
       usedPcs: r.used_pcs || pcs.length,
       createdAt: utc(r.created_at), expiresAt: utc(r.expires_at), revokedAt: utc(r.revoked_at),
+      revR: r.revoked_reason || '', susUntil: utc(r.suspended_until), susAt: utc(r.suspended_at),
       last: minsSince(utc(r.last_seen)),
       day_counts: r.day_counts || {}, pcs, act: false, blocked: []
     };
   }
+
+  const isBanned = k => k.status === 'revoked' && k.revR === 'banned';
+  const suspOf = k => !!(k.susUntil && k.susUntil.getTime() > Date.now());
+  const hrsLeft = d => {
+    const m = (d.getTime() - Date.now()) / 6e4;
+    if (m <= 0) return 'just now';
+    return m < 90 ? plural(Math.round(m), 'min') + ' left' : plural(Math.round(m / 60), 'hr') + ' left';
+  };
 
   /* ---------- auth ---------- */
   let authMode = 'token';
@@ -607,12 +688,21 @@ dialog[open]{animation:pop .22s ease}
     }
     let last;
     if (st === 'revoked') last = '<span class="mut">Signed out</span>';
-    else if (lm === null) last = '<span class="mut">Not used yet</span>';
-    else if (lm < 5) last = '<span class="live"><span class="dot"></span>Online now</span>';
+    else if (lm == null) last = '<span class="mut">Not used yet</span>';
+    else if (lm < 11) last = '<span class="live"><span class="dot"></span>Online now</span>';
     else last = `<span class="mut">${ago(lm)}</span>`;
-    const act = st === 'active'
-      ? `<button class="btn btn-rose-o sm" data-revoke="${esc(k.key)}" aria-label="Revoke key for ${esc(k.who)}">Revoke</button>`
-      : `<span class="state ${st}">${st === 'expired' ? 'Expired' : 'Revoked'}</span>`;
+    const ban = isBanned(k), susp = suspOf(k);
+    let act;
+    if (st === 'active'){
+      const ops = susp
+        ? `<button class="btn btn-ghost sm" data-unsuspend="${esc(k.key)}">Resume now</button><button class="btn btn-ghost sm" data-timeout="${esc(k.key)}">Timeout</button>`
+        : `<button class="btn btn-ghost sm" data-ban="${esc(k.key)}">Ban</button><button class="btn btn-ghost sm" data-timeout="${esc(k.key)}">Timeout</button><button class="btn btn-rose-o sm" data-revoke="${esc(k.key)}">Revoke</button>`;
+      act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button>${ops}</div>`;
+    } else {
+      act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button><span class="state ${ban?'banned':st}">${ban?'Banned':(st === 'expired' ? 'Expired' : 'Revoked')}</span></div>`;
+    }
+    if (susp) last = `<span class="state suspended">Paused · ${hrsLeft(k.susUntil)}</span>`;
+    else if (ban) last = '<span class="state banned">Banned</span>';
     const over = used > k.max;
     return `<li class="row ${k.id===selectedId?'sel':''} ${k.id===flashId?'flash':''}" data-id="${esc(k.key)}" tabindex="0" ${k.id===selectedId?'aria-current="true"':''}>
       <div class="who"><div class="nm">${esc(k.who)}</div><div class="ky">${esc(k.key)}</div></div>
@@ -665,16 +755,21 @@ dialog[open]{animation:pop .22s ease}
     const k = keyOf(selectedId);
     if (!k){ $('#detail').innerHTML = '<p class="mut">Select a key to see its activity.</p>'; return; }
     const st = k.status, P = PLAN[k.plan], n = k.pcs.length, used = usedPcsOf(k), lm = k.last;
+    const ban = isBanned(k), susp = suspOf(k);
     const left = k.expiresAt ? Math.ceil((k.expiresAt - Date.now()) / DAY) : null;
     let expSub = '';
     if (left !== null) expSub = left > 0 ? 'in ' + plural(left,'day') : plural(-left,'day') + ' ago';
     let lastTxt = 'Not used yet';
-    if (lm !== null) lastTxt = st === 'revoked' ? 'Signed out' : (lm < 5 ? 'Online now' : ago(lm));
+    if (lm != null) lastTxt = st === 'revoked' ? 'Signed out' : (lm < 11 ? 'Online now' : ago(lm));
+    if (susp) lastTxt = `Paused — resumes ${hrsLeft(k.susUntil)}`;
     const activeDays = Array.from({length:30}, (_,i) => dayCountOf(k, i) > 0).filter(Boolean).length;
 
     let banner = '';
-    if (st === 'revoked') banner = `<div class="note rose">Revoked on ${fmt(k.revokedAt)}. Every PC on this key was signed out and can't use it again.</div>`;
-    if (st === 'expired') banner = `<div class="note amber">This key ran out on ${fmt(k.expiresAt)}. PCs on it can no longer open the app.</div>`;
+    if (susp) banner = `<div class="note amber">Suspended by the operator on ${fmt(k.susAt)} until ${fmt(k.susUntil)}. The app is locked on this key until then.</div>`;
+    else if (st === 'revoked') banner = ban
+      ? `<div class="note rose">Banned on ${fmt(k.revokedAt)}. Every PC on this key is blocked from activating or checking in.</div>`
+      : `<div class="note rose">Revoked on ${fmt(k.revokedAt)}. Every PC on this key was signed out and can't use it again.</div>`;
+    else if (st === 'expired') banner = `<div class="note amber">This key ran out on ${fmt(k.expiresAt)}. PCs on it can no longer open the app.</div>`;
 
     const noActivity = !n && !Object.keys(k.day_counts || {}).length;
     const activity = noActivity
@@ -684,8 +779,9 @@ dialog[open]{animation:pop .22s ease}
     const pcRows = k.pcs.map(pc => {
       const daysOn = k.act ? Object.keys(pc.days).filter(d => pc.days[d]).length : 0;
       let s, sub;
-      if (st === 'revoked'){ s = '<span style="color:var(--rose)">Signed out</span>'; sub = 'Last seen ' + ago(pc.last); }
-      else if (pc.last != null && pc.last < 5){ s = '<span class="live"><span class="dot"></span>Online now</span>'; sub = ''; }
+      if (susp){ s = '<span class="state suspended">Paused</span>'; sub = 'Last seen ' + ago(pc.last); }
+      else if (st === 'revoked'){ s = '<span style="color:var(--rose)">Signed out</span>'; sub = 'Last seen ' + ago(pc.last); }
+      else if (pc.last != null && pc.last < 11){ s = '<span class="live"><span class="dot"></span>Online now</span>'; sub = ''; }
       else if (pc.last != null){ s = 'Seen ' + ago(pc.last); sub = ''; }
       else { s = 'Not seen yet'; sub = ''; }
       const daysTxt = k.act ? `Active ${daysOn} of 30 days` : '';
@@ -694,13 +790,34 @@ dialog[open]{animation:pop .22s ease}
         <div class="ps">${s}<small>${sub ? sub + '. ' : ''}${daysTxt}</small></div></div>`;
     }).join('');
 
-    const revoke = st === 'active'
-      ? `<div class="dfoot"><span>Revoking stops this key right away.</span><button class="btn btn-rose-o" data-revoke="${esc(k.key)}">Revoke key</button></div>` : '';
+    let foot = '';
+    if (st === 'active'){
+      if (susp){
+        foot = `<div class="dfoot"><span>Resuming lets the app come back on this key immediately.</span>
+          <button class="btn btn-gold" data-unsuspend="${esc(k.key)}">Resume now</button>
+          <button class="btn btn-ghost" data-timeout="${esc(k.key)}">Change timeout</button></div>`;
+      } else {
+        foot = `<div class="dfoot"><span>Manage this key: revoke stops it now, ban locks it for good, timeout pauses it for a set number of hours.</span>
+          <button class="btn btn-rose-o" data-revoke="${esc(k.key)}">Revoke key</button>
+          <button class="btn btn-rose-o" data-ban="${esc(k.key)}">Ban key</button>
+          <button class="btn btn-ghost" data-timeout="${esc(k.key)}">Timeout</button></div>`;
+      }
+    } else if (ban){
+      foot = `<div class="dfoot"><span>A banned key can't activate or check in. Unban restores it fully.</span>
+        <button class="btn btn-gold" data-unban="${esc(k.key)}">Unban key</button></div>`;
+    } else if (st === 'revoked'){
+      foot = `<div class="dfoot"><span>Restoring lets the key work again on its PCs right away.</span>
+        <button class="btn btn-gold" data-unrevoke="${esc(k.key)}">Restore key</button></div>`;
+    } else if (st === 'expired'){
+      foot = `<div class="dfoot"><span>An expired key can be renewed by creating a new one. This one stays in the list as history.</span></div>`;
+    }
+
+    const pillTxt = susp ? 'Suspended' : (st === 'active' ? 'Active' : (ban ? 'Banned' : (st === 'expired' ? 'Expired' : 'Revoked')));
 
     $('#detail').innerHTML = `
       <div class="dh">
         <div><h2>${esc(k.who)}</h2><div class="sub">Created ${fmt(k.createdAt)}</div></div>
-        <span class="pill ${st}">${st==='active'?'<span class="dot"></span>':''}${st==='active'?'Active':st==='expired'?'Expired':'Revoked'}</span>
+        <span class="pill ${susp ? 'suspended' : st}">${st==='active' && !susp?'<span class="dot"></span>':''}${pillTxt}</span>
       </div>
       <div class="keybox"><code>${esc(k.key)}</code><button class="btn btn-ghost sm" data-copy="${esc(k.key)}">Copy</button></div>
       ${banner}
@@ -716,7 +833,7 @@ dialog[open]{animation:pop .22s ease}
         ${activity}
       </div>
       ${n ? `<div class="sec"><h3>PCs on this key</h3><div class="pclist">${pcRows}</div></div>` : ''}
-      ${revoke}`;
+      ${foot}`;
   }
 
   /* ---------- toast + copy ---------- */
@@ -810,6 +927,163 @@ dialog[open]{animation:pop .22s ease}
     finally { btn.disabled = false; }
   }
 
+  /* ---------- ban ---------- */
+  function openBan(key){
+    const k = keyOf(key); if (!k) return;
+    pendingBan = key;
+    $('#banBody').innerHTML = `<b>${esc(k.who)}</b> (${esc(k.key)}) is blocked for good. Every PC on this key is banned from activating or checking in, and the ban stays in the log.`;
+    $('#banWhy').value = '';
+    banDlg.showModal();
+    setTimeout(() => $('#banWhy').focus(), 30);
+  }
+  async function doBan(){
+    const btn = $('#banGo'); btn.disabled = true;
+    try {
+      try { await post('/admin/ban', { key: pendingBan, reason: $('#banWhy').value.trim() }); }
+      catch (err){ if (!err || err.message !== 'session') { throw err; } }
+      banDlg.close(); pendingBan = null; actCache = {};
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast('Key banned');
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    finally { btn.disabled = false; }
+  }
+  async function doUnban(){
+    try {
+      await post('/admin/unban', { key: pendingKey });
+      pendingKey = null;
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast('Key unbanned — activations allowed again');
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+  }
+
+  /* ---------- timeout ---------- */
+  const TIMEOUTS = [[1,'1 hour'],[6,'6 hours'],[12,'12 hours'],[24,'24 hours'],[48,'48 hours'],[72,'3 days']];
+  function renderTimeoutChips(){
+    $('#timeoutChips').innerHTML = TIMEOUTS.map(([h, lbl]) =>
+      `<button type="button" role="radio" aria-checked="${tHours===h}" class="chipbtn ${tHours===h?'on':''}" data-thours="${h}">
+        <b>${h}</b><small>${lbl}</small></button>`).join('');
+  }
+  function openTimeout(key){
+    const k = keyOf(key); if (!k) return;
+    pendingTimeout = key; tHours = 12;
+    $('#timeoutBody').innerHTML = `<b>${esc(k.who)}</b> (${esc(k.key)}) is paused for the chosen time. Their app stays locked until the pause ends on its own.`;
+    renderTimeoutChips();
+    timeoutDlg.showModal();
+    if (suspOf(k)) $('#timeoutBody').innerHTML += `<div class="note amber">This key is already paused — picking a new length replaces it.</div>`;
+  }
+  async function doTimeout(){
+    const btn = $('#timeoutGo'); btn.disabled = true;
+    try {
+      await post('/admin/suspend', { key: pendingTimeout, hours: tHours });
+      timeoutDlg.close(); pendingTimeout = null; actCache = {};
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast(`Key paused for ${plural(tHours,'hour')}`);
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    finally { btn.disabled = false; }
+  }
+  async function doUnsuspend(){
+    try {
+      await post('/admin/unsuspend', { key: pendingKey });
+      pendingKey = null;
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast('Key resumed — app unlocks on the next check-in');
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+  }
+  async function doUnrevoke(){
+    try {
+      await post('/admin/unrevoke', { key: pendingKey });
+      pendingKey = null;
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast('Key restored');
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+  }
+
+  /* ---------- inspect ---------- */
+  async function openInspect(key){
+    const k = keyOf(key); if (!k) return;
+    $('#inspectWho').innerHTML = `<b>${esc(k.who)}</b> · ${esc(k.key)}`;
+    const pill = $('#inspectPill');
+    const ban = isBanned(k), susp = suspOf(k);
+    pill.textContent = susp ? 'Suspended' : (ban ? 'Banned' : (k.status === 'expired' ? 'Expired' : (k.status === 'revoked' ? 'Revoked' : 'Active')));
+    pill.className = 'pill ' + (susp ? 'suspended' : ban ? 'revoked' : k.status);
+    $('#inspectBody').innerHTML = '<p class="mut">Loading…</p>';
+    inspectDlg.showModal();
+    try {
+      const r = await api('/admin/keys/' + encodeURIComponent(key) + '/inspect');
+      if (!r || !r.inspect) { $('#inspectBody').innerHTML = '<p class="mut">Nothing to show yet.</p>'; return; }
+      $('#inspectBody').innerHTML = renderInspect(r.inspect);
+    } catch (e) { $('#inspectBody').innerHTML = '<p class="mut">' + esc(e && e.message && e.message !== 'session' ? e.message : 'Could not load this key.') + '</p>'; }
+  }
+  function renderInspect(info){
+    const meta = info.meta || {};
+    const ban = (meta.revoked_reason || '') === 'banned';
+    const susp = !!(meta.suspended_until && utc(meta.suspended_until) && utc(meta.suspended_until).getTime() > Date.now());
+    const blockedByHw = {};
+    (info.blocked || []).forEach(b => { blockedByHw[b.pc_hwid] = b.reason || 'banned'; });
+    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || '—');
+    let pcRows = (info.pcs || []).map(pc => {
+      const ls = utc(pc.last_seen);
+      const seen = ls ? `Seen ${ago(minsSince(ls))}` : 'Not seen yet';
+      const lock = blockedByHw[pc.pc_hwid];
+      return `<tr>
+        <td>${esc(pc.pc_name || 'PC')}<span class="dl">${esc(pc.pc_hwid)}</span></td>
+        <td><span class="live">Active</span><span class="dl">${seen}</span></td>
+        <td>${pc.days_on || 0}<span class="dl">of 30 at least once</span></td>
+        <td>${lock ? '<span style="color:var(--rose)">Locked</span>' : '<span class="live">OK</span>'}</td>
+        <td>${lock ? esc(lock) : '—'}</td>
+      </tr>`;
+    }).join('');
+    if (!pcRows) pcRows = '<tr><td colspan="5" class="mut">No PCs have checked in yet.</td></tr>';
+    const EV = {activated:'Activated', revoked:'Revoked', unrevoked:'Restored', banned:'Banned', unbanned:'Unbanned', suspended:'Paused', unsuspended:'Resumed', refused:'Refused', unbound:'PC slot freed', applied:'Applied tweaks'};
+    let logRows = (info.events || []).map(ev => {
+      const ts = utc(ev.at);
+      const when = ts ? ts.toLocaleString('en-GB', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : (ev.at || '');
+      const kind = String(ev.event || '').toLowerCase();
+      const body = ev.detail ? `<dd>${esc(ev.detail)}</dd>` : '';
+      return `<dt>${esc(EV[kind] || ev.event || 'event')} <time>${when}</time> <span class="e ${kind}">${esc(kind.toUpperCase())}</span></dt>${body}`;
+    }).join('');
+    if (!logRows) logRows = '<p class="mut">No events logged for this key yet.</p>';
+    return `
+      <div class="facts">
+        <div><dt>Customer</dt><dd>${esc(meta.customer || '—')}</dd></div>
+        <div><dt>Plan</dt><dd>${esc((PLAN[meta.plan] ? PLAN[meta.plan].label : 'Lifetime'))}</dd></div>
+        <div><dt>Status</dt><dd>${esc(ban ? 'Banned' : (susp ? 'Suspended' : stMeta))}</dd></div>
+        <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : '—'}</dd></div>
+        <div><dt>Created</dt><dd>${fmt(utc(meta.created_at)) || '—'}</dd></div>
+        <div><dt>Expires</dt><dd>${fmt(utc(meta.expires_at)) || 'Never'}</dd></div>
+      </div>
+      ${ban ? `<div class="note rose">This key is banned. The next time any of these PCs checks in, it is refused and stays locked.</div>` : ''}
+      ${susp ? `<div class="note amber">Paused by the operator ${fmt(utc(meta.suspended_until))} · ${hrsLeft(utc(meta.suspended_until))}. The app stays locked on this key until then.</div>` : ''}
+      <div class="sec">
+        <h3>PCs linked to this key</h3>
+        <p class="sum">Machines bound to this key and whether they can still check in.</p>
+        <table class="tbl">
+          <thead><tr><th>PC</th><th>Last check-in</th><th>Active days</th><th>Status</th><th>Lock reason</th></tr></thead>
+          <tbody>${pcRows}</tbody>
+        </table>
+      </div>
+      <div class="sec">
+        <h3>Key log</h3>
+        <p class="sum">Every event on this key — activations, check-ins, revokes, bans and pauses.</p>
+        <dl class="log" id="inspectLog">${logRows}</dl>
+      </div>`;
+  }
+
   /* ---------- login ---------- */
   $('#signIn').addEventListener('click', async () => {
     const t = $('#tok').value.trim();
@@ -848,6 +1122,13 @@ dialog[open]{animation:pop .22s ease}
       return;
     }
     if ((el = t.closest('[data-revoke]'))){ e.stopPropagation(); openRevoke(el.dataset.revoke); return; }
+    if ((el = t.closest('[data-ban]'))){ e.stopPropagation(); openBan(el.dataset.ban); return; }
+    if ((el = t.closest('[data-timeout]'))){ e.stopPropagation(); openTimeout(el.dataset.timeout); return; }
+    if ((el = t.closest('[data-thours]'))){ tHours = +el.dataset.thours; renderTimeoutChips(); return; }
+    if ((el = t.closest('[data-inspect]'))){ e.stopPropagation(); openInspect(el.dataset.inspect); return; }
+    if ((el = t.closest('[data-unsuspend]'))){ e.stopPropagation(); pendingKey = el.dataset.unsuspend; doUnsuspend(); return; }
+    if ((el = t.closest('[data-unban]'))){ e.stopPropagation(); pendingKey = el.dataset.unban; doUnban(); return; }
+    if ((el = t.closest('[data-unrevoke]'))){ e.stopPropagation(); pendingKey = el.dataset.unrevoke; doUnrevoke(); return; }
     if ((el = t.closest('[data-open-create]'))){ openCreate(); return; }
     if ((el = t.closest('[data-close]'))){ document.getElementById(el.dataset.close).close(); return; }
     if ((el = t.closest('[data-tab]'))){ tab = el.dataset.tab; renderTabs(); renderList(); return; }
@@ -870,7 +1151,10 @@ dialog[open]{animation:pop .22s ease}
   $('#cWho').addEventListener('keydown', e => { if (e.key === 'Enter') createKey(); });
   $('#createGo').addEventListener('click', createKey);
   $('#revokeGo').addEventListener('click', doRevoke);
-  [createDlg, revokeDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+  $('#banGo').addEventListener('click', doBan);
+  $('#banWhy').addEventListener('keydown', e => { if (e.key === 'Enter') doBan(); });
+  $('#timeoutGo').addEventListener('click', doTimeout);
+  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
 
   /* ---------- engraved rosette background ---------- */
   (function(){

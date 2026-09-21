@@ -181,6 +181,17 @@ class RevokeRequest(BaseModel):
     reason: str = ""
 
 
+class BanRequest(BaseModel):
+    key: str
+    reason: str = ""
+
+
+class SuspendRequest(BaseModel):
+    key: str
+    hours: int = 12
+    reason: str = ""
+
+
 class KeyRequest(BaseModel):
     key: str
 
@@ -206,6 +217,28 @@ def _err(code: str, message: str, status: int = 403) -> HTTPException:
     """
     return HTTPException(status_code=status, detail={
         "success": False, "valid": False, "error": code, "message": message})
+
+
+def _utc_now_iso(seconds_ahead: int = 0) -> str:
+    """UTC 'YYYY-MM-DD HH:MM:SS' now, optionally offset by seconds."""
+    return (datetime.now(timezone.utc)
+            + timedelta(seconds=seconds_ahead)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+SUSPENDED_MAX_HOURS = 168
+
+
+def _raise_if_suspended(rec: dict) -> None:
+    """Refuse a license while it is suspended by the operator. Past-due
+    suspensions are silently cleared so the key resumes automatically."""
+    until = (rec.get("suspended_until") or "").strip()
+    if not until:
+        return
+    if _iso_to_ts(until) > _now_ts():
+        raise _err("license_suspended",
+                   f"This license is temporarily suspended by the operator "
+                   f"until {until} (UTC). It resumes automatically.")
+    _DB.unsuspend(rec["license_key"], detail="auto-resumed")
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -768,6 +801,7 @@ def activate(payload: ActivateRequest, request: Request):
                    "This license key has been revoked. Contact support for help.")
     if rec["status"] == "expired":
         raise _err("license_expired", "This license key has expired.")
+    _raise_if_suspended(rec)
 
     if rec["status"] == "active":
         if rec["device_id"] != device_id:
@@ -806,6 +840,7 @@ def validate(payload: ValidateRequest):
         raise _err("license_revoked", "This license key has been revoked.", 403)
     if rec["status"] == "expired":
         raise _err("license_expired", "This license key has expired.", 403)
+    _raise_if_suspended(rec)
     if rec["device_id"] and rec["device_id"] != payload.device_id:
         raise _err("device_mismatch",
                    "This license is bound to a different PC.", 403)
@@ -988,6 +1023,50 @@ def admin_unrevoke(payload: KeyRequest, _: None = Depends(_admin_guard)):
     return {"ok": True, "license": _session_payload(rec)}
 
 
+@app.post("/admin/ban")
+def admin_ban(payload: BanRequest, _: None = Depends(_admin_guard)):
+    """Hard-ban a key: revoke it and log every PC so re-activation and
+    check-ins all refuse. Unban restores the key."""
+    rec = _DB.ban(payload.key, (payload.reason or "").strip())
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec),
+            "revoked_reason": rec.get("revoked_reason", "")}
+
+
+@app.post("/admin/unban")
+def admin_unban(payload: KeyRequest, _: None = Depends(_admin_guard)):
+    rec = _DB.unban(payload.key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}
+
+
+@app.post("/admin/suspend")
+def admin_suspend(payload: SuspendRequest,
+                  _: None = Depends(_admin_guard)):
+    """Suspend a key for *hours* (1..168). The client is refused
+    ``license_suspended`` during the window and resumes automatically."""
+    hours = int(payload.hours or 0)
+    if not 1 <= hours <= SUSPENDED_MAX_HOURS:
+        raise _err("invalid_hours",
+                   f"hours must be between 1 and {SUSPENDED_MAX_HOURS}.", 400)
+    until = _utc_now_iso(hours * 3600)
+    rec = _DB.suspend(payload.key, until)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "suspended_until": until,
+            "license": _session_payload(rec)}
+
+
+@app.post("/admin/unsuspend")
+def admin_unsuspend(payload: KeyRequest, _: None = Depends(_admin_guard)):
+    rec = _DB.unsuspend(payload.key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}
+
+
 @app.post("/admin/unbind")
 def admin_unbind(payload: KeyRequest, _: None = Depends(_admin_guard)):
     """Support-only PC-change action: frees the key for a new device."""
@@ -1060,7 +1139,10 @@ def admin_keys(_: None = Depends(_admin_guard)):
         key_today = []
         for p in k.get("pcs", []):
             last = _iso_to_ts(p.get("last_seen") or "")
-            if last > now_ts - 300:
+            # Clients heartbeat every 5 min; 660s (11 min) is 2x + slack so a
+            # steady heartbeater is counted as online instead of falling in
+            # and out of the window.
+            if last > now_ts - 660:
                 key_online.append(p)
             if (p.get("last_seen") or "")[:10] == today:
                 key_today.append(p)
@@ -1081,6 +1163,9 @@ def admin_keys(_: None = Depends(_admin_guard)):
             "activated_at": k.get("activated_at"),
             "expires_at": k.get("expires_at"),
             "revoked_at": k.get("revoked_at"),
+            "revoked_reason": k.get("revoked_reason", ""),
+            "suspended_at": k.get("suspended_at"),
+            "suspended_until": k.get("suspended_until"),
             "last_seen": k.get("last_seen"),
             "max_pcs": int(k.get("max_pcs") or 1),
             "used_pcs": len(k.get("pcs", [])),
@@ -1100,6 +1185,16 @@ def admin_keys(_: None = Depends(_admin_guard)):
             "expiring_7d": expiring_7d,
         },
     }
+
+
+@app.get("/admin/keys/{key}/inspect")
+def admin_inspect(key: str, _: None = Depends(_admin_guard)):
+    """Full Inspect sheet for a key: license row, per-PC activity, refusals,
+    and the ops/client event timeline (ban/suspend/revoke/applied-tweaks)."""
+    data = _DB.inspect(key)
+    if data is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "inspect": data}
 
 
 @app.get("/admin/keys/{key}/activity")
