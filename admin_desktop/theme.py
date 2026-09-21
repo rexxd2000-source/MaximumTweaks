@@ -1,363 +1,415 @@
-"""Maximum Tweaks Admin - red/black theme tokens + QSS.
+"""Maximum Tweaks Admin - "Sigil" theme: teal surface, gold accents, serif.
 
-Independent design system for the desktop admin app. Surfaces are obsidian
-blacks with a ruby tint; the single accent is signal red:
-  red = primary / action / active      amber = warning / expiring
-  dim  = muted / inactive              muted-red = danger / revoked
+Design tokens taken from the key-manager.html mockup (teal/ink background,
+gold serif headings, cream ink, live-green/warn-amber/rose states, IBM Plex
+Mono key labels) so the native desktop admin panel matches the mockup 1:1.
+
+Fonts are bundled under ``assets/fonts`` and registered via QFontDatabase so
+the EXE carries the same typography without any web dependency; they fall back
+to Georgia/Segoe UI/Consolas when missing.
 """
 from __future__ import annotations
 
-# --- tokens -------------------------------------------------------------
-RED_BLACK = {
-    "bg": "#090404",
-    "bg_alt": "#0F0606",
-    "sidebar": "#0B0505",
-    "card": "#130A0A",
-    "card_alt": "#1B0E0E",
-    "card_hover": "#231212",
-    "border": "#2C1414",
-    "border_soft": "#1E0C0C",
-    "text": "#F8F2F2",
-    "text_dim": "#B3A0A0",
-    "text_faint": "#6E5555",
-    "accent": "#E51E2A",
-    "accent_hover": "#FF3B47",
-    "accent_press": "#A40F18",
-    "accent_dark": "#1A0203",
-    "danger": "#FF4D4D",
-    "warning": "#FFB454",
-    "amber": "#FFB454",
+import sys
+from pathlib import Path
+
+# --- tokens ----------------------------------------------------------------
+
+SIGIL = {
+    "bg": "#061a1d",
+    "bg_end": "#051417",
+    "ink": "#efe8d8",
+    "ink_2": "#c9c3b3",
+    "muted": "#8ea3a0",
+    "line": "rgba(232, 214, 168, 38)",
+    "line_dim": "rgba(232, 214, 168, 22)",
+    "line_soft": "rgba(232, 214, 168, 12)",
+    "line_gold": "#e6cc92",
+    "gold": "#e6cc92",
+    "gold_deep": "#b18f52",
+    "gold_hi": "#f2dfb2",
+    "live": "#7fe0b0",
+    "warn": "#efb56a",
+    "rose": "#ec7686",
+    "teal": "#5fc4c0",
+    "chip_bg": "rgba(95, 196, 192, 32)",
+    "field": "rgba(0, 0, 0, 0.28)",
+    "panel_a": "rgba(255, 255, 255, 22)",
+    "panel_b": "rgba(255, 255, 255, 10)",
+    "panel_border": "rgba(232, 214, 168, 38)",
 }
 
+# --- font helpers -----------------------------------------------------------
 
-def _alpha(color: str, opacity: float) -> str:
-    if color.startswith("#") and len(color) == 7:
-        r = int(color[1:3], 16)
-        g = int(color[3:5], 16)
-        b = int(color[5:7], 16)
-        return f"rgba({r}, {g}, {b}, {opacity:.2f})"
-    return color
+_FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+
+FONT_FILES = (
+    "InstrumentSerif-Regular.ttf",
+    "InstrumentSerif-Italic.ttf",
+    "Manrope-Regular.ttf",
+    "IBMPlexMono-Regular.ttf",
+    "IBMPlexMono-Medium.ttf",
+)
+
+SERIF = "Instrument Serif"
+SANS = "Manrope"
+MONO = "IBM Plex Mono"
 
 
-def build_admin_qss(t: dict | None = None) -> str:
-    T = t or RED_BLACK
-    accent_08 = _alpha(T["accent"], 0.08)
-    accent_12 = _alpha(T["accent"], 0.12)
-    accent_18 = _alpha(T["accent"], 0.18)
-    accent_30 = _alpha(T["accent"], 0.30)
-    accent_40 = _alpha(T["accent"], 0.40)
-    accent_60 = _alpha(T["accent"], 0.60)
+def register_fonts() -> None:
+    """Load the bundled fonts into this process so QSS family names resolve."""
+    from PySide6.QtGui import QFontDatabase  # local import (PyInstaller safety)
+
+    for name in FONT_FILES:
+        path = _FONT_DIR / name
+        if path.exists():
+            QFontDatabase.addApplicationFont(str(path))
+
+
+def resource_path(rel: str) -> str:
+    """Resolve bundled assets in both dev (source tree) and one-file EXE mode."""
+    try:
+        # PyInstaller one-file: bundled assets are extracted next to sys._MEIPASS
+        import sys as _sys
+        if getattr(_sys, "frozen", False):
+            base = Path(_sys._MEIPASS)
+        else:
+            base = Path(__file__).resolve().parent
+    except Exception:  # noqa: BLE001
+        base = Path(__file__).resolve().parent
+    return str(base / rel)
+
+
+ICON_PATH = resource_path("assets/app.ico")
+
+
+def rgba(hex_color: str, alpha: float) -> str:
+    """rgba() for the QSS variants; hex must be #rrggbb."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return hex_color
+    return (f"rgba({int(hex_color[0:2], 16)}, {int(hex_color[2:4], 16)}, "
+            f"{int(hex_color[4:6], 16)}, {alpha:.2f})")
+
+
+# --- QSS ---------------------------------------------------------------------
+
+def build_qss(t: dict | None = None) -> str:
+    T = t or SIGIL
     return f"""
 * {{
-    font-family: "Segoe UI", "Inter", sans-serif;
+    font-family: "{SANS}", "Segoe UI", sans-serif;
     font-size: 13px;
-    font-weight: 600;
-    color: {T["text"]};
+    color: {T["ink"]};
 }}
-QMainWindow, QDialog {{
-    background-color: {T["bg"]};
+QMainWindow {{
+    background: {T["bg"]};
 }}
 QWidget {{
-    background-color: transparent;
+    background: transparent;
 }}
-QLabel {{
-    background-color: transparent;
+QDialog {{
+    background: #0d282d;
 }}
+::placeholder {{ color: {T["muted"]}; }}
 
-/* ---------------- header ------------------ */
+/* ---------- header ---------- */
 #Header {{
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #110606, stop:1 #0A0404);
-    border-bottom: 1px solid {T["border"]};
+    background: {T["bg"]};
+    border-bottom: 1px solid {T["line_soft"]};
 }}
-#BrandMark {{
-    color: #FF6B70;
-    font-family: "Segoe UI", "Space Grotesk", sans-serif;
-    font-size: 19px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
+#Brand {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 24px;
+    color: {T["ink"]};
 }}
+#BrandWord {{ color: {T["gold"]}; }}
 #BrandSub {{
-    color: {T["text_faint"]};
-    font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+    font-family: "{MONO}", Consolas, monospace;
     font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.8px;
-}}
-#ServerPill {{
-    background-color: {T["card"]};
-    border: 1px solid {T["border"]};
-    border-radius: 100px;
-    padding: 5px 12px;
-    color: {T["text_dim"]};
-    font-size: 11px;
-    font-family: "JetBrains Mono", "Cascadia Mono", monospace;
-}}
-#ConnDot {{
-    border-radius: 5px;
+    color: {T["muted"]};
+    letter-spacing: 3px;
 }}
 
-/* ---------------- cards ---------------- */
-#Card {{
-    background-color: {T["card"]};
-    border: 1px solid {T["border"]};
-    border-radius: 14px;
+/* ---------- hero title ---------- */
+#HeroTitle {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 30px;
+    color: {T["ink"]};
 }}
-#CardTitle {{
-    font-size: 14px;
-    font-weight: 700;
-    color: {T["text"]};
+#HeroSub {{
+    color: {T["muted"]};
+    font-size: 13px;
 }}
-#CardSub {{
-    font-size: 11px;
-    color: {T["text_faint"]};
+
+/* ---------- panels ---------- */
+#Panel {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {T["panel_a"]}, stop:1 {T["panel_b"]});
+    border: 1px solid {T["line"]};
+    border-radius: 18px;
 }}
-#StatValue {{
-    font-size: 25px;
-    font-weight: 800;
-    color: {T["text"]};
+
+/* ---------- stats ---------- */
+#Stat {{ border-left: 1px solid {T["line_soft"]}; }}
+#Stat:first-child {{ border-left: none; }}
+#StatNum {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 30px;
+    color: {T["ink"]};
 }}
 #StatLabel {{
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    color: {T["text_faint"]};
-}}
-#StatCard {{
-    background-color: {T["card_alt"]};
-    border: 1px solid {T["border"]};
-    border-radius: 14px;
-}}
-#StatCard[active="true"] {{
-    border: 1px solid {accent_40};
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 {accent_12}, stop:1 {T["card_alt"]});
+    color: {T["muted"]};
+    font-size: 12px;
+    margin-top: 4px;
 }}
 
-/* ---------------- inputs ---------------- */
-QLineEdit, QSpinBox, QComboBox, QTextEdit {{
-    background-color: {T["bg_alt"]};
-    border: 1px solid {T["border"]};
-    border-radius: 9px;
-    padding: 8px 11px;
-    color: {T["text"]};
-    selection-background-color: {T["accent"]};
-    selection-color: #FFFFFF;
-}}
-QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
-    border: 1px solid {accent_60};
-}}
-QComboBox::drop-down {{
+/* ---------- tabs ---------- */
+#Tab {{
+    background: transparent;
     border: none;
-    width: 22px;
+    border-bottom: 2px solid transparent;
+    color: {T["muted"]};
+    font-weight: 600;
+    font-size: 13px;
+    padding: 6px 2px;
 }}
-QComboBox QAbstractItemView {{
-    background-color: {T["card_alt"]};
-    border: 1px solid {T["border"]};
-    selection-background-color: {accent_18};
-    color: {T["text"]};
+#Tab:hover {{ color: {T["ink_2"]}; }}
+#Tab:checked {{
+    color: {T["ink"]};
+    border-bottom: 2px solid {T["gold"]};
 }}
-QCheckBox {{
-    color: {T["text_dim"]};
-}}
-QCheckBox::indicator {{
-    width: 16px;
-    height: 16px;
-    border: 1px solid {T["border"]};
-    border-radius: 4px;
-    background-color: {T["bg_alt"]};
-}}
-QCheckBox::indicator:checked {{
-    background-color: {T["accent"]};
-    border-color: {T["accent"]};
+#TabCount {{
+    background: {rgba("#ffffff", 0.10)};
+    border-radius: 8px;
+    padding: 1px 7px;
+    color: {T["ink_2"]};
+    font-size: 11px;
+    font-weight: 600;
 }}
 
-/* ---------------- buttons ---------------- */
-QPushButton#Primary {{
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.5,
-        stop:0 #F02834, stop:1 #B3121B);
-    color: #FFFFFF;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 20px;
-    font-size: 12.5px;
+/* ---------- search ---------- */
+#Search {{
+    background: {rgba("#ffffff", 0.05)};
+    border: 1px solid {T["line"]};
+    border-radius: 20px;
+    padding: 7px 14px;
+    color: {T["ink"]};
+}}
+#Search:focus {{ border-color: {T["gold"]}; }}
+
+/* ---------- column header + list head ---------- */
+#ColHead {{
+    color: {T["muted"]};
+    font-size: 11.5px;
+}}
+#Key {{
+    color: {T["muted"]};
+    font-family: "{MONO}", Consolas, monospace;
+    font-size: 11.5px;
+}}
+
+/* ---------- chips ---------- */
+#Chip {{
     font-weight: 700;
-}}
-QPushButton#Primary:hover:enabled {{
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.5,
-        stop:0 #FF3F4B, stop:1 #C91822);
-}}
-QPushButton#Primary:disabled {{
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.5,
-        stop:0 rgba(240,40,52,0.45), stop:1 rgba(179,18,27,0.45));
-    color: rgba(255,255,255,0.55);
-}}
-QPushButton#Secondary {{
-    background-color: {T["card"]};
-    color: {T["text"]};
-    border: 1px solid {T["border"]};
-    border-radius: 10px;
-    padding: 8px 16px;
-    font-weight: 600;
-}}
-QPushButton#Secondary:hover:enabled {{
-    background-color: {T["card_alt"]};
-    border-color: {accent_40};
-}}
-QPushButton#Ghost {{
-    background: transparent;
-    color: {T["text_dim"]};
-    border: 1px solid transparent;
-    border-radius: 9px;
-    padding: 7px 13px;
-    font-weight: 600;
-}}
-QPushButton#Ghost:hover:enabled {{
-    color: {T["text"]};
-    background-color: {accent_08};
-}}
-QPushButton#DangerGhost {{
-    background: transparent;
-    color: {T["danger"]};
-    border: 1px solid {accent_30};
-    border-radius: 9px;
-    padding: 5px 10px;
-    font-size: 11px;
-    font-weight: 700;
-}}
-QPushButton#DangerGhost:hover:enabled {{
-    background-color: {accent_12};
-}}
-QPushButton#Chip {{
-    background-color: {T["card_alt"]};
-    color: {T["text_dim"]};
-    border: 1px solid {T["border"]};
+    font-size: 12px;
     border-radius: 7px;
     padding: 3px 9px;
-    font-size: 11px;
-    font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+    border: 1px solid;
 }}
-QPushButton#Chip:hover:enabled {{
-    color: {T["text"]};
-    border-color: {accent_40};
-}}
+#Chip.m1 {{ color: {T["teal"]}; border-color: {rgba("#5fc4c0", 0.40)}; background: {rgba("#5fc4c0", 0.10)}; }}
+#Chip.m6 {{ color: {T["gold"]}; border-color: {rgba("#e6cc92", 0.40)}; background: {rgba("#e6cc92", 0.10)}; }}
+#Chip.life {{ color: #2a1f08; border-color: transparent;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f2dfb2, stop:1 #cfab6b); }}
 
-/* ---------------- status filter buttons ---------------- */
-QPushButton#Filter {{
-    background-color: transparent;
-    color: {T["text_dim"]};
-    border: 1px solid {T["border"]};
-    border-radius: 100px;
-    padding: 7px 16px;
+/* ---------- buttons ---------- */
+QPushButton {{
+    border: 1px solid transparent;
+    border-radius: 18px;
+    padding: 8px 18px;
+    font-weight: 600;
+    font-size: 13px;
+}}
+QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
+#BtnGold {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f2dfb2, stop:1 #d3b071);
+    color: #241a06;
+}}
+#BtnGold:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f7e8c3, stop:1 #dcbb7d); }}
+#BtnGold:disabled {{ background: {rgba("#e6cc92", 0.35)}; color: {rgba("#241a06", 0.5)}; }}
+#BtnGhost {{
+    background: transparent;
+    border: 1px solid {rgba("#e8d6a8", 0.30)};
+    color: {T["ink"]};
+}}
+#BtnGhost:hover {{ background: {rgba("#ffffff", 0.06)}; }}
+#BtnRose {{
+    color: {T["rose"]};
+    border: 1px solid {rgba("#ec7686", 0.40)};
+    background: {rgba("#ec7686", 0.06)};
+    font-weight: 700;
     font-size: 12px;
+    border-radius: 16px;
+    padding: 5px 12px;
+}}
+#BtnRose:hover {{ background: {rgba("#ec7686", 0.18)}; border-color: {rgba("#ec7686", 0.7)}; }}
+#BtnRoseSolid {{
+    background: {T["rose"]};
+    color: #2b0a11;
     font-weight: 700;
 }}
-QPushButton#Filter:hover:enabled {{
-    border-color: {accent_40};
-    color: {T["text"]};
-}}
-QPushButton#Filter[checked="true"] {{
-    background-color: {accent_30};
-    border-color: {T["accent"]};
-    color: #FFFFFF;
-}}
+#BtnRoseSolid:hover {{ background: #f28d9a; }}
 
-/* ---------------- tables ---------------- */
-QTableWidget {{
-    background-color: {T["card"]};
-    alternate-background-color: {T["bg_alt"]};
-    border: 1px solid {T["border"]};
+/* ---------- list rows ---------- */
+#Row {{
+    border-bottom: 1px solid {T["line_soft"]};
+}}
+#Row:hover {{ background: {rgba("#ffffff", 0.03)}; }}
+#Row[selected="true"] {{ background: {rgba("#e6cc92", 0.075)}; }}
+#RowName {{ font-weight: 700; font-size: 13px; }}
+#RowLast {{ font-size: 12.5px; }}
+#Online {{ color: {T["live"]}; font-weight: 600; font-size: 12.5px; }}
+#Dot {{ background: {T["live"]}; border-radius: 3px; }}
+
+/* ---------- detail ---------- */
+#DetailTitle {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 25px;
+    color: {T["ink"]};
+}}
+#DetailSub {{ color: {T["muted"]}; font-size: 12.5px; }}
+#KeyBox {{
+    background: {rgba("#000000", 0.28)};
+    border: 1px solid {T["line"]};
+    border-radius: 13px;
+}}
+#KeyCode {{
+    font-family: "{MONO}", Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: {T["gold"]};
+}}
+#FactName {{ color: {T["muted"]}; font-size: 11.5px; }}
+#FactValue {{ font-weight: 600; font-size: 12.5px; }}
+#FactWarn {{ color: {T["warn"]}; font-weight: 600; font-size: 12.5px; }}
+#NoteRose {{
+    color: #f6b3bc;
+    border: 1px solid {rgba("#ec7686", 0.35)};
+    background: {rgba("#ec7686", 0.07)};
+    border-radius: 11px;
+    font-size: 12.5px;
+    padding: 10px 13px;
+}}
+#NoteAmber {{
+    color: #f3cf9d;
+    border: 1px solid {rgba("#efb56a", 0.35)};
+    background: {rgba("#efb56a", 0.07)};
+    border-radius: 11px;
+    font-size: 12.5px;
+    padding: 10px 13px;
+}}
+#SectionTitle {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 18px;
+    color: {T["ink"]};
+}}
+#SectionSum {{ color: {T["muted"]}; font-size: 12.5px; }}
+
+/* ---------- pill ---------- */
+#Pill {{
+    font-weight: 700;
+    font-size: 12px;
+    border-radius: 14px;
+    padding: 3px 12px;
+    border: 1px solid;
+}}
+#Pill[state="active"] {{ color: {T["live"]}; border-color: {rgba("#7fe0b0", 0.35)}; background: {rgba("#7fe0b0", 0.08)}; }}
+#Pill[state="expired"] {{ color: {T["warn"]}; border-color: {rgba("#efb56a", 0.35)}; background: {rgba("#efb56a", 0.08)}; }}
+#Pill[state="revoked"] {{ color: {T["rose"]}; border-color: {rgba("#ec7686", 0.40)}; background: {rgba("#ec7686", 0.08)}; }}
+
+/* ---------- PC rows ---------- */
+#PcvPC {{ border-bottom: 1px solid {T["line_soft"]}; }}
+#PcName {{ font-weight: 600; font-size: 13px; }}
+#PcHw {{ font-family: "{MONO}", Consolas, monospace; font-size: 11px; color: {T["muted"]}; }}
+#PcStatus {{ font-size: 12.5px; }}
+#PcStatus small {{ color: {T["muted"]}; font-size: 11.5px; }}
+#MiniStat {{ font-size: 12px; color: {T["muted"]}; }}
+#TextDi {{ color: {T["ink_2"]}; }}
+
+/* ---------- inputs ---------- */
+QLineEdit {{
+    background: {T["field"]};
+    border: 1px solid {T["line"]};
+    border-radius: 9px;
+    padding: 9px 12px;
+    color: {T["ink"]};
+    selection-background-color: {rgba("#e6cc92", 0.30)};
+}}
+QLineEdit:focus {{ border-color: {T["gold"]}; }}
+QSpinBox {{
+    background: {T["field"]};
+    border: 1px solid {T["line"]};
+    border-radius: 9px;
+    padding: 7px 10px;
+    color: {T["ink"]};
+}}
+QSpinBox:focus {{ border-color: {T["gold"]}; }}
+
+/* ---------- plan cards (create-key dialog) ---------- */
+#PlanCard {{
+    background: {T["field"]};
+    border: 1px solid {T["line"]};
     border-radius: 12px;
-    gridline-color: {T["border_soft"]};
 }}
-QTableWidget::item {{
-    padding: 4px 6px;
-    color: {T["text_dim"]};
+#PlanCard:hover {{ border-color: {rgba("#e6cc92", 0.45)}; }}
+#PlanCard[on="true"] {{
+    border-color: {T["gold"]};
+    background: {rgba("#e6cc92", 0.09)};
 }}
-QTableWidget::item:selected {{
-    background-color: {accent_18};
-    color: {T["text"]};
-}}
-QHeaderView::section {{
-    background-color: {T["card_alt"]};
-    color: {T["text_faint"]};
+
+/* ---------- list container ---------- */
+#KeyList QListWidget {{
     border: none;
-    border-bottom: 1px solid {T["border"]};
-    padding: 8px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    background: transparent;
 }}
+#KeyList::item {{ border: none; background: transparent; }}
+#KeyList::item:selected {{ background: transparent; }}
 
-/* ---------------- toast / status ---------------- */
-#Toast {{
-    background-color: #1A0A0A;
-    border: 1px solid #3A1B1B;
-    border-radius: 10px;
-}}
-#StatusBarWidget {{
-    background-color: {T["bg_alt"]};
-    border-top: 1px solid {T["border"]};
-}}
-#StatusText {{
-    color: {T["text_dim"]};
-    font-size: 11px;
-}}
-QLabel#KeyMono {{
-    font-family: "JetBrains Mono", "Cascadia Mono", monospace;
-    font-size: 12px;
-    color: {T["text"]};
-}}
-
-/* ---------------- status pills ---------------- */
-QLabel#Pill {{
-    padding: 2px 9px;
-    border-radius: 8px;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-}}
-QLabel#Pill[state="unused"] {{
-    color: {T["text_faint"]};
-    background-color: {_alpha(T["text_faint"], 0.10)};
-    border: 1px solid {_alpha(T["text_faint"], 0.25)};
-}}
-QLabel#Pill[state="active"] {{
-    color: #FF6B70;
-    background-color: {accent_12};
-    border: 1px solid {accent_40};
-}}
-QLabel#Pill[state="expired"] {{
-    color: #FFCB7A;
-    background-color: {_alpha("#FFB454", 0.10)};
-    border: 1px solid {_alpha("#FFB454", 0.30)};
-}}
-QLabel#Pill[state="revoked"] {{
-    color: {T["text_dim"]};
-    background-color: {_alpha("#FFFFFF", 0.04)};
-    border: 1px solid {T["border"]};
-    text-decoration: line-through;
-}}
-
-/* ---------------- scrollbars ---------------- */
-QScrollBar:vertical {{
-    background: transparent; width: 7px; margin: 0;
-}}
+/* ---------- scrollbars ---------- */
+QScrollBar:vertical {{ background: transparent; width: 8px; margin: 2px; }}
 QScrollBar::handle:vertical {{
-    background: rgba(255, 255, 255, 40); border-radius: 3px; min-height: 20px;
+    background: {rgba("#ffffff", 0.16)}; border-radius: 4px; min-height: 24px;
 }}
-QScrollBar::handle:vertical:hover {{ background: rgba(255, 255, 255, 70); }}
+QScrollBar::handle:vertical:hover {{ background: {rgba("#ffffff", 0.28)}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-QScrollBar:horizontal {{ background: transparent; height: 7px; margin: 0; }}
-QScrollBar::handle:horizontal {{ background: rgba(255, 255, 255, 40); border-radius: 3px; min-width: 20px; }}
-QScrollBar::handle:horizontal:hover {{ background: rgba(255, 255, 255, 70); }}
+QScrollBar:horizontal {{ background: transparent; height: 8px; margin: 2px; }}
+QScrollBar::handle:horizontal {{ background: {rgba("#ffffff", 0.16)}; border-radius: 4px; min-width: 24px; }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
+
+/* ---------- toast ---------- */
+#Toast {{
+    background: #10333a;
+    border: 1px solid {T["line"]};
+    border-radius: 18px;
+    padding: 9px 18px;
+    font-weight: 600;
+    font-size: 13px;
+}}
+#Toast[danger="true"] {{ color: #f6b3bc; border-color: {rgba("#ec7686", 0.4)}; }}
+
+QDialog #DialogTitle {{
+    font-family: "{SERIF}", Georgia, serif;
+    font-size: 22px;
+}}
+#DlgHint {{ color: {T["muted"]}; font-size: 13px; }}
+#DlgFieldName {{ font-size: 12.5px; font-weight: 600; }}
+#DlgErr {{ color: {T["rose"]}; font-size: 12px; }}
 """
 
 
-BASE_RED_QSS = build_admin_qss()
+SIGIL_QSS = build_qss()
 
 
 def repolish(widget) -> None:

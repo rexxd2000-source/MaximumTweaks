@@ -95,6 +95,26 @@ class AdminClient:
     def stats(self) -> dict:
         return self._request("GET", "/admin/stats")
 
+    def keys(self) -> dict:
+        """Full admin overview: keys + per-key activity aggregates + stats."""
+        return self._request("GET", "/admin/keys")
+
+    def key_activity(self, key: str, days: int = 30) -> dict:
+        return self._request(
+            "GET", "/admin/keys/" + urllib.parse.quote(key) + "/activity")
+
+    def create_key(self, customer: str = "", plan: str = "life",
+                   max_pcs: int = 1, note: str = "") -> dict:
+        return self._request("POST", "/admin/keys", {
+            "customer": customer or "", "plan": plan,
+            "max_pcs": max(1, min(int(max_pcs), 10)), "note": note or ""})
+
+    def remove_pc(self, key: str, hwid: str) -> dict:
+        return self._request(
+            "DELETE",
+            "/admin/keys/" + urllib.parse.quote(key) +
+            "/pcs/" + urllib.parse.quote(hwid))
+
     def licenses(self, status: str | None = None) -> list[dict]:
         q = f"?status={urllib.parse.quote(status)}" if status else ""
         data = self._request("GET", "/admin/licenses" + q)

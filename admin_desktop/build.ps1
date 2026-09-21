@@ -10,6 +10,17 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $exePath = Join-Path $root "dist\MaximumTweaksAdmin.exe"
 
+# Clean up any previous build first: PyInstaller refuses to overwrite a
+# running exe, and stale dist copies shadow the fresh build.
+Get-Process -Name "MaximumTweaksAdmin" -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+if (Test-Path $exePath) {
+    Remove-Item -LiteralPath $exePath -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path (Join-Path $root "build\MaximumTweaksAdmin")) {
+    Remove-Item -Recurse -Force (Join-Path $root "build\MaximumTweaksAdmin") -ErrorAction SilentlyContinue
+}
+
 Write-Host "[1/2] Building MaximumTweaksAdmin.exe (PyInstaller)..." -ForegroundColor Cyan
 Push-Location $root
 try {
