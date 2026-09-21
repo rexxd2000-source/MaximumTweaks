@@ -420,6 +420,51 @@ def validate() -> tuple[bool, str]:
     return False, message
 
 
+def checkin() -> tuple[str, str]:
+    """Heartbeat to the license server (every 5 min while the app runs).
+
+    Returns ``(status, message)``:
+      * ``("ok", "")``      — the server accepted this PC; refreshes the
+                              persisted session (owner/plan + last_validation,
+                              which also keeps the offline-grace clock fresh).
+      * ``("refused", msg)`` — the server says this key is no longer usable on
+                              this PC (revoked / expired / over the PC limit).
+                              The caller must clear the session and relock.
+      * ``("offline", msg)`` — network problem or unexpected response; the
+                              cached session stays valid (offline grace), the
+                              heartbeat is simply skipped.
+    """
+    sess = session()
+    if not sess or not sess.get("license"):
+        return "offline", "No session stored."
+    if not is_configured():
+        return "offline", "License server not configured."
+    dev = device_id()
+    pc_name = os.environ.get("COMPUTERNAME", "").strip()[:80]
+    base = LICENSE_API_URL.rstrip("/")
+    try:
+        status, data = _http_json(f"{base}/api/license/checkin",
+                                  {"key": sess.get("license"),
+                                   "device_id": dev, "pc_name": pc_name})
+    except LicenseError as exc:
+        return "offline", exc.message
+    if status == 200 and (data.get("success") or data.get("ok")):
+        _store_record(data, dev)
+        logger.info("license: heartbeat OK")
+        return "ok", ""
+    code = data.get("error") or data.get("code") or ""
+    message = _friendly(code, data.get("message", ""))
+    if not code:
+        return "offline", message
+    if code in ("invalid_license", "license_revoked", "license_expired",
+                "over_limit", "device_mismatch",
+                "INVALID_KEY", "REVOKED", "EXPIRED",
+                "DEVICE_MISMATCH"):
+        logger.warn(f"license: heartbeat refused ({code})")
+        return "refused", message
+    return "offline", message
+
+
 def deactivate() -> None:
     """Tell the server we're leaving (no self-unbind) and clear local session."""
     sess = session()

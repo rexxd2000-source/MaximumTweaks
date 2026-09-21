@@ -153,6 +153,73 @@ def validate_startup():
     _STARTUP_WORKER.start()
 
 
+# ---------------------------------------------------------------------------
+# Heartbeat (5-min check-in; drives the "PCs online now" admin panel)
+# ---------------------------------------------------------------------------
+
+class LicenseHeartbeatWorker(QThread):
+    done = Signal(str, str)  # status ("ok" | "refused" | "offline"), message
+
+    def run(self):
+        try:
+            status, message = license_mgr.checkin()
+        except Exception as exc:  # noqa: BLE001
+            self.done.emit("offline", str(exc) or "License check failed.")
+            return
+        self.done.emit(status, message)
+
+
+_HEARTBEAT_TIMER: QTimer | None = None
+_HEARTBEAT_WORKER: LicenseHeartbeatWorker | None = None
+_HEARTBEAT_ON_REFUSED = None
+
+
+def start_heartbeat(on_refused=None, parent=None, interval_ms: int = 300000):
+    """Begin the recurring license heartbeat.
+
+    Runs check-ins on a background thread every ``interval_ms`` (the backend
+    expects 5 minutes). Network hiccups are skipped silently so the cached
+    session stays valid; when the server refuses the key (revoked / expired /
+    over the PC limit) the local session is cleared immediately and
+    ``on_refused()`` is called so the app can lock itself.
+    """
+    global _HEARTBEAT_TIMER, _HEARTBEAT_ON_REFUSED
+    if _HEARTBEAT_TIMER is not None:
+        return
+    _HEARTBEAT_ON_REFUSED = on_refused
+    timer = QTimer(parent)
+    timer.setInterval(interval_ms)
+    timer.timeout.connect(pulse_heartbeat)
+    timer.start()
+    _HEARTBEAT_TIMER = timer
+
+
+def pulse_heartbeat():
+    """One heartbeat round, off the UI thread (no-op until authorized)."""
+    global _HEARTBEAT_WORKER
+    if not license_mgr.is_authorized():
+        return
+    if _HEARTBEAT_WORKER is not None and _HEARTBEAT_WORKER.isRunning():
+        return
+    worker = LicenseHeartbeatWorker()
+    _HEARTBEAT_WORKER = worker
+    worker.done.connect(_on_heartbeat_done)
+    worker.start()
+
+
+def _on_heartbeat_done(status, message):
+    if status == "ok":
+        return
+    if status != "refused":
+        return  # offline / transient — cached session stays valid
+    # The server says this key is no longer good on this PC. Lock now; the
+    # user goes back through the gate where re-activation re-checks the key.
+    license_mgr.set_session(None)
+    publish_identity()
+    if _HEARTBEAT_ON_REFUSED:
+        _HEARTBEAT_ON_REFUSED()
+
+
 def relock(window):
     """Lock the app again: hide the main window and show the license gate.
 

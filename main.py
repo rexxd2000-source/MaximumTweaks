@@ -240,6 +240,9 @@ def run_gui():
             win.showMinimized()
         else:
             win.showMaximized()
+        # Check in right away (not just every 5 min) so the admin panel marks
+        # this PC as online the moment the app opens.
+        license_ui.pulse_heartbeat()
         return win
 
     def on_finished():
@@ -266,6 +269,20 @@ def run_gui():
         QTimer.singleShot(0, handoff)
 
     splash.finished.connect(on_finished)
+
+    # License heartbeat: check in with the server every 5 minutes so the admin
+    # panel shows live PC usage. If the server ever refuses the key (revoked /
+    # expired / over the PC limit) it locks the app right away, even mid-session.
+    def _heartbeat_refused():
+        win = holder.get("window")
+        if win is None:
+            return  # still on the splash — handoff will open the gate instead
+        ctx = getattr(win, "ctx", None)
+        if ctx is not None:
+            ctx.license_changed.emit()
+        license_ui.relock(win)
+
+    license_ui.start_heartbeat(on_refused=_heartbeat_refused, parent=app)
     sys.exit(app.exec())
 
 def _risk_star(t):
