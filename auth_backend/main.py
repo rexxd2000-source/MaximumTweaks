@@ -737,21 +737,30 @@ def admin_keys(_: None = Depends(_admin_guard)):
     expiring_7d = 0
     for k in data["keys"]:
         status = k["status"]
-        if status != "revoked" and _iso_to_ts(k.get("expires_at") or "") \
+        # Normalize to the mockup's 3 UI states: an unused (never activated)
+        # key is still "active" until it expires or is revoked.
+        if status == "unused":
+            status = "active"
+        elif status != "revoked" and _iso_to_ts(k.get("expires_at") or "") \
                 and _iso_to_ts(k["expires_at"]) <= now_ts:
             status = "expired"
-        key_online = any(
-            p.get("last_seen") and _iso_to_ts(p["last_seen"]) > now_ts - 300
-            for p in k["pcs"])
-        # "active today" = any PC check-in whose day == today
-        active_today += 1 if today in k.get("day_counts", {}) else 0
+        # PC-level aggregates (mockup semantics: "PCs online now" and "PCs
+        # active today" count distinct PCs, not keys).
+        key_online = []
+        key_today = []
+        for p in k.get("pcs", []):
+            last = _iso_to_ts(p.get("last_seen") or "")
+            if last > now_ts - 300:
+                key_online.append(p)
+            if (p.get("last_seen") or "")[:10] == today:
+                key_today.append(p)
+        online_now += len(key_online)
+        active_today += len(key_today)
         if status != "revoked" and status != "expired":
             active_keys += 1
             exp = _iso_to_ts(k.get("expires_at") or "")
             if exp and now_ts < exp <= now_ts + 7 * 86400:
                 expiring_7d += 1
-        if key_online:
-            online_now += 1
         keys.append({
             "key": k["license_key"],
             "customer": k.get("customer", ""),
