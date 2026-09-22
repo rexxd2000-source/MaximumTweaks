@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -404,6 +404,19 @@ dialog[open]{animation:pop .22s ease}
         <label class="search">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <input id="q" type="search" placeholder="Search name or key" aria-label="Search keys" autocomplete="off">
+    <button class="btn btn-ghost sm" type="button" id="refreshBtn" title="Fetch the latest from the server (same as the auto 60s refresh)" onclick="  const refreshBtnWire = () => {
+    const rr = document.getElementById('refreshBtn');
+    if (rr && !rr.dataset.wired) {
+      rr.dataset.wired = '1';
+      rr.addEventListener('click', () => {
+        rr.disabled = true; rr.innerHTML = '\u21BB\u2026';
+        refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
+          .finally(() => { rr.disabled = false; rr.innerHTML = '\u21BB'; });
+      });
+    }
+  };
+  refreshBtnWire();
+refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })">â†» Refresh</button>
         </label>
       </div>
       <div class="colhead" aria-hidden="true">
@@ -510,7 +523,7 @@ dialog[open]{animation:pop .22s ease}
   <div class="dbody">
     <h2 id="disableAllTitle">Disable all keys?</h2>
     <p class="lead" id="disableAllBody"></p>
-    <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go — you would re-create keys afterwards.</div>
+    <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go â€” you would re-create keys afterwards.</div>
     <div class="dactions">
       <button class="btn btn-ghost" type="button" data-close="disableAllDlg">Cancel</button>
       <button class="btn btn-rose" type="button" id="disableAllGo">Disable all</button>
@@ -731,7 +744,7 @@ dialog[open]{animation:pop .22s ease}
     } else {
       act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button><span class="state ${ban?'banned':st}">${ban?'Banned':(st === 'expired' ? 'Expired' : 'Revoked')}</span></div>`;
     }
-    if (susp) last = `<span class="state suspended">Paused · ${hrsLeft(k.susUntil)}</span>`;
+    if (susp) last = `<span class="state suspended">Paused Â· ${hrsLeft(k.susUntil)}</span>`;
     else if (ban) last = '<span class="state banned">Banned</span>';
     const over = used > k.max;
     return `<li class="row ${k.id===selectedId?'sel':''} ${k.id===flashId?'flash':''}" data-id="${esc(k.key)}" tabindex="0" ${k.id===selectedId?'aria-current="true"':''}>
@@ -791,7 +804,7 @@ dialog[open]{animation:pop .22s ease}
     if (left !== null) expSub = left > 0 ? 'in ' + plural(left,'day') : plural(-left,'day') + ' ago';
     let lastTxt = 'Not used yet';
     if (lm != null) lastTxt = st === 'revoked' ? 'Signed out' : (lm < 11 ? 'Online now' : ago(lm));
-    if (susp) lastTxt = `Paused — resumes ${hrsLeft(k.susUntil)}`;
+    if (susp) lastTxt = `Paused â€” resumes ${hrsLeft(k.susUntil)}`;
     const activeDays = Array.from({length:30}, (_,i) => dayCountOf(k, i) > 0).filter(Boolean).length;
 
     let banner = '';
@@ -988,7 +1001,7 @@ dialog[open]{animation:pop .22s ease}
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
       render();
-      toast('Key unbanned — activations allowed again');
+      toast('Key unbanned â€” activations allowed again');
     } catch (e) { if (e && e.message !== 'session') toast(e.message); }
   }
 
@@ -1005,7 +1018,7 @@ dialog[open]{animation:pop .22s ease}
     $('#timeoutBody').innerHTML = `<b>${esc(k.who)}</b> (${esc(k.key)}) is paused for the chosen time. Their app stays locked until the pause ends on its own.`;
     renderTimeoutChips();
     timeoutDlg.showModal();
-    if (suspOf(k)) $('#timeoutBody').innerHTML += `<div class="note amber">This key is already paused — picking a new length replaces it.</div>`;
+    if (suspOf(k)) $('#timeoutBody').innerHTML += `<div class="note amber">This key is already paused â€” picking a new length replaces it.</div>`;
   }
   async function doTimeout(){
     const btn = $('#timeoutGo'); btn.disabled = true;
@@ -1028,7 +1041,7 @@ dialog[open]{animation:pop .22s ease}
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
       render();
-      toast('Key resumed — app unlocks on the next check-in');
+      toast('Key resumed â€” app unlocks on the next check-in');
     } catch (e) { if (e && e.message !== 'session') toast(e.message); }
   }
   async function doUnrevoke(){
@@ -1046,12 +1059,12 @@ dialog[open]{animation:pop .22s ease}
   /* ---------- inspect ---------- */
   async function openInspect(key){
     const k = keyOf(key); if (!k) return;
-    $('#inspectWho').innerHTML = `<b>${esc(k.who)}</b> · ${esc(k.key)}`;
+    $('#inspectWho').innerHTML = `<b>${esc(k.who)}</b> Â· ${esc(k.key)}`;
     const pill = $('#inspectPill');
     const ban = isBanned(k), susp = suspOf(k);
     pill.textContent = susp ? 'Suspended' : (ban ? 'Banned' : (k.status === 'expired' ? 'Expired' : (k.status === 'revoked' ? 'Revoked' : 'Active')));
     pill.className = 'pill ' + (susp ? 'suspended' : ban ? 'revoked' : k.status);
-    $('#inspectBody').innerHTML = '<p class="mut">Loading…</p>';
+    $('#inspectBody').innerHTML = '<p class="mut">Loadingâ€¦</p>';
     inspectDlg.showModal();
     try {
       const r = await api('/admin/keys/' + encodeURIComponent(key) + '/inspect');
@@ -1065,7 +1078,7 @@ dialog[open]{animation:pop .22s ease}
     const susp = !!(meta.suspended_until && utc(meta.suspended_until) && utc(meta.suspended_until).getTime() > Date.now());
     const blockedByHw = {};
     (info.blocked || []).forEach(b => { blockedByHw[b.pc_hwid] = b.reason || 'banned'; });
-    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || '—');
+    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || 'â€”');
     let pcRows = (info.pcs || []).map(pc => {
       const ls = utc(pc.last_seen);
       const seen = ls ? `Seen ${ago(minsSince(ls))}` : 'Not seen yet';
@@ -1075,7 +1088,7 @@ dialog[open]{animation:pop .22s ease}
         <td><span class="live">Active</span><span class="dl">${seen}</span></td>
         <td>${pc.days_on || 0}<span class="dl">of 30 at least once</span></td>
         <td>${lock ? '<span style="color:var(--rose)">Locked</span>' : '<span class="live">OK</span>'}</td>
-        <td>${lock ? esc(lock) : '—'}</td>
+        <td>${lock ? esc(lock) : 'â€”'}</td>
       </tr>`;
     }).join('');
     if (!pcRows) pcRows = '<tr><td colspan="5" class="mut">No PCs have checked in yet.</td></tr>';
@@ -1090,15 +1103,15 @@ dialog[open]{animation:pop .22s ease}
     if (!logRows) logRows = '<p class="mut">No events logged for this key yet.</p>';
     return `
       <div class="facts">
-        <div><dt>Customer</dt><dd>${esc(meta.customer || '—')}</dd></div>
+        <div><dt>Customer</dt><dd>${esc(meta.customer || 'â€”')}</dd></div>
         <div><dt>Plan</dt><dd>${esc((PLAN[meta.plan] ? PLAN[meta.plan].label : 'Lifetime'))}</dd></div>
         <div><dt>Status</dt><dd>${esc(ban ? 'Banned' : (susp ? 'Suspended' : stMeta))}</dd></div>
-        <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : '—'}</dd></div>
-        <div><dt>Created</dt><dd>${fmt(utc(meta.created_at)) || '—'}</dd></div>
+        <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : 'â€”'}</dd></div>
+        <div><dt>Created</dt><dd>${fmt(utc(meta.created_at)) || 'â€”'}</dd></div>
         <div><dt>Expires</dt><dd>${fmt(utc(meta.expires_at)) || 'Never'}</dd></div>
       </div>
       ${ban ? `<div class="note rose">This key is banned. The next time any of these PCs checks in, it is refused and stays locked.</div>` : ''}
-      ${susp ? `<div class="note amber">Paused by the operator ${fmt(utc(meta.suspended_until))} · ${hrsLeft(utc(meta.suspended_until))}. The app stays locked on this key until then.</div>` : ''}
+      ${susp ? `<div class="note amber">Paused by the operator ${fmt(utc(meta.suspended_until))} Â· ${hrsLeft(utc(meta.suspended_until))}. The app stays locked on this key until then.</div>` : ''}
       <div class="sec">
         <h3>PCs linked to this key</h3>
         <p class="sum">Machines bound to this key and whether they can still check in.</p>
@@ -1109,7 +1122,7 @@ dialog[open]{animation:pop .22s ease}
       </div>
       <div class="sec">
         <h3>Key log</h3>
-        <p class="sum">Every event on this key — activations, check-ins, revokes, bans and pauses.</p>
+        <p class="sum">Every event on this key â€” activations, check-ins, revokes, bans and pauses.</p>
         <dl class="log" id="inspectLog">${logRows}</dl>
       </div>`;
   }
@@ -1246,3 +1259,4 @@ dialog[open]{animation:pop .22s ease}
 </script>
 </body>
 </html>
+

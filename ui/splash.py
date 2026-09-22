@@ -828,6 +828,9 @@ class CinematicSplash(QWidget):
         self._layout_actions()
 
     def _layout_actions(self):
+        if not (hasattr(self, "_btn_skip") and hasattr(self, "_btn_primary")
+                and hasattr(self, "_btn_restart")):
+            return
         vis = [b for b in (self._btn_skip, self._btn_primary, self._btn_restart)
                if b.isVisible()]
         if not vis:
