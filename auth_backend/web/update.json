@@ -1,0 +1,5 @@
+{
+  "version": "2.5.1",
+  "notes": "Fixed update checks failing with a phantom VPN/proxy/firewall error. Updates now run through the app host instead of the rate-limited GitHub API. Uses the new signed update mechanism.",
+  "url": "https://github.com/rexxd2000-source/MaximumTweaks/releases/download/v2.5.1/MaximumTweaks.exe"
+}

@@ -136,66 +136,37 @@ def web_root():
 # Update manifest (served on our own domain so clients never depend on the
 # rate-limited github.com API. Endpoint /update.json is what the desktop app's
 # UPDATE_MANIFEST_URL points at.)
+#
+# The manifest is a committed, static file (auth_backend/web/update.json) that
+# is regenerated when releasing a new version — see release.ps1. We deliberately
+# DO NOT proxy the GitHub API here: Render egress to api.github.com is not
+# guaranteed and the file approach keeps the endpoint dead-simple and always up.
 # ---------------------------------------------------------------------------
 
-_UPDATE_REPO = "rexxd2000-source/MaximumTweaks"
-_UPDATE_EXE = "MaximumTweaks.exe"
-_UPDATE_CACHE_TTL = 300
-_UPDATE_LOCK = threading.Lock()
-_update_cache = {"ts": 0.0, "data": None}
-
-
-def _fetch_latest_release() -> dict:
-    """Resolve the newest release {version, notes, url} from the GitHub API,
-    cached for a few minutes so this endpoint never amplifies GitHub's rate
-    limits. Returns {} on any failure so callers can return a clean 502."""
-    now = time.time()
-    with _UPDATE_LOCK:
-        if _update_cache["data"] and now - _update_cache["ts"] < _UPDATE_CACHE_TTL:
-            return _update_cache["data"]
-    api = f"https://api.github.com/repos/{_UPDATE_REPO}/releases/latest"
-    req = urllib.request.Request(api, headers={
-        "User-Agent": "MaximumTweaks-license-server/1.0",
-        "Accept": "application/vnd.github+json",
-    })
-    data = {}
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        tag = str(payload.get("tag_name") or "").strip().lstrip("v")
-        url = ""
-        for asset in payload.get("assets", []):
-            if str(asset.get("name")) == _UPDATE_EXE:
-                url = str(asset.get("browser_download_url") or "")
-                break
-        if tag and url:
-            data = {
-                "version": tag,
-                "notes": str(payload.get("body") or ""),
-                "url": url,
-            }
-    except Exception:  # noqa: BLE001
-        logger.info("update manifest: GitHub API fetch failed", exc_info=True)
-    if data:
-        with _UPDATE_LOCK:
-            _update_cache["ts"] = now
-            _update_cache["data"] = data
-    return data
+_UPDATE_MANIFEST_FILE = os.path.join(_WEB_DIR, "update.json")
 
 
 @app.get("/update.json", include_in_schema=False)
 def update_manifest():
-    data = _fetch_latest_release()
-    if not data:
+    try:
+        with open(_UPDATE_MANIFEST_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:  # noqa: BLE001
+        logger.warning("update manifest: missing/unreadable update.json")
         return JSONResponse(
             {"status": "error", "message": "Manifest source temporarily unavailable."},
             status_code=502,
             headers={"Cache-Control": "no-store"},
         )
-    return JSONResponse(
-        data,
-        headers={"Cache-Control": "no-store"},
-    )
+    ver = str(data.get("version") or "").strip()
+    url = str(data.get("url") or "").strip()
+    if not ver or not url:
+        return JSONResponse(
+            {"status": "error", "message": "Manifest is missing version/url."},
+            status_code=502,
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------------------

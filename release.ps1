@@ -51,6 +51,20 @@ function Set-Version {
     Write-Host "[1/5] APP_VERSION -> $Version" -ForegroundColor Cyan
 }
 
+function Update-Manifest {
+    # Regenerate the served /update.json (auth_backend\web\update.json) so the
+    # desktop app's built-in UPDATE_MANIFEST_URL points at this new build.
+    $dl = "https://github.com/$Repo/download/v$Version/$exeName"
+    $m = @{
+        version = $Version
+        notes   = "Maximum Tweaks v$Version - see the in-app changelog for details."
+        url     = $dl
+    } | ConvertTo-Json
+    $manifest = Join-Path $root "auth_backend\web\update.json"
+    Set-Content $manifest $m -Encoding UTF8
+    Write-Host "      manifest -> auth_backend\web\update.json (version $Version)" -ForegroundColor DarkGray
+}
+
 function Build-Exe {
     # SECURITY: no token/file is written into the project or the exe. Update
     # authentication (if any) is consumed at runtime via the environment only.
@@ -138,5 +152,6 @@ function Publish-Release {
 Set-Version
 if (-not $SkipBuild) { Build-Exe }
 $repo = Get-Repo
+Update-Manifest
 Publish-Release -Repo $repo
 Write-Host "Done. Users on v$Version can click 'Check for Updates' once the next tag is published." -ForegroundColor Green
