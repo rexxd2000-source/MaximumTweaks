@@ -64,6 +64,7 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import APP_VERSION, DIRS, LICENSE_API_URL
+from maxlog import logger as _logger
 
 ACCENT = QColor("#8B6BFF")
 TEXT = QColor(238, 244, 248)
@@ -413,6 +414,8 @@ class CinematicSplash(QWidget):
         self._actions_y: int | None = None   # vertical centre of the action row
         self._flow_enter_ms: float | None = None
         self._pending_available: tuple | None = None
+        self._check_deadline: QTimer | None = None
+        self._boot_released = False
 
         # Server-connection status (requirement 6): state is one of
         # "checking" | "waking" | "connected" | "unreachable", displayed on
@@ -430,24 +433,20 @@ class CinematicSplash(QWidget):
         # RENDER" visible).  The probe itself still runs in the background so
         # the last_seen heartbeat stays current — all we hide is the drawing.
         self._hide_server_status = False
+        # The update-check / download flow needs its chrome regardless of the
+        # server-status toggle — build it eagerly so a cold or stalled check
+        # (which can take 30s+ on Render's free tier) can never leave the boot
+        # without action buttons.
+        self._build_update_chrome()
+        self._bg: QPixmap | None = None
+        self._load_db()
 
-    def hide_server_status(self):
-        """Turn off the visible server-status line + retry chip on the splash.
+    def _build_update_chrome(self):
+        """Full-screen update-flow chrome: spinner + the action buttons.
 
-        The liveness probe keeps running silently in the background (it's what
-        keeps the admin "Online now" column fresh), only the rendering is
-        suppressed.  Safe to call any time; later re-enabling via
-        :meth:`show_server_status` repaints immediately.
+        Built in __init__ (not lazily) so every update state has its widgets;
+        show/hide is driven by the state methods.
         """
-        self._hide_server_status = True
-        self._arm_retry_btn(show=False)
-        self.update()
-
-    def show_server_status(self):
-        self._hide_server_status = False
-        self.update()
-
-        # Full-screen update-flow chrome: spinner + the action buttons.
         self._spinner = _RingSpinner(self)
         self._spinner.hide()
         self._spinner.raise_()
@@ -473,8 +472,24 @@ class CinematicSplash(QWidget):
         self._btn_skip.clicked.connect(self.skip_clicked)
         self._btn_primary.clicked.connect(self._on_flow_primary)
         self._btn_restart.clicked.connect(self.restart_clicked)
-        self._bg: QPixmap | None = None
-        self._load_db()
+        self._btn_primary.raise_()
+        self._btn_restart.raise_()
+
+    def hide_server_status(self):
+        """Turn off the visible server-status line + retry chip on the splash.
+
+        The liveness probe keeps running silently in the background (it's what
+        keeps the admin "Online now" column fresh), only the rendering is
+        suppressed.  Safe to call any time; later re-enabling via
+        :meth:`show_server_status` repaints immediately.
+        """
+        self._hide_server_status = True
+        self._arm_retry_btn(show=False)
+        self.update()
+
+    def show_server_status(self):
+        self._hide_server_status = False
+        self.update()
 
     def _load_db(self):
         try:
@@ -622,10 +637,41 @@ class CinematicSplash(QWidget):
         self._ok_hold_until = None
         self._flow_enter_ms = _monotonic_ms()
         self._pending_available = None
-        self._set_actions(None)
+        # The check runs in the background; never trap the boot on it. Give the
+        # user a Skip action right away (a cold-starting server can take 30s+)
+        # and auto-release if the check stalls so the gate always appears.
+        self._btn_skip.setText("Skip")
+        self._btn_skip.show()
+        self._btn_primary.hide()
+        self._btn_restart.hide()
+        self._layout_actions()
         self._spinner.move(self.width() // 2 - 32, int(self.height() * 0.32))
         self._spinner.start()
+        self._arm_check_deadline()
         self.update()
+
+    def _arm_check_deadline(self):
+        """Release the boot after ~18s even if the server is still waking up,
+        so a slow/cold update check can never keep the app off the gate."""
+        if self._check_deadline is not None:
+            return
+        timer = QTimer(self)
+        timer.setInterval(18000)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._deadline_release)
+        timer.start()
+        self._check_deadline = timer
+
+    def _deadline_release(self):
+        self._check_deadline = None
+        if self._update_state != "checking":
+            return
+        # Treat a stall as "no update right now": proceed into the app. Mark
+        # the boot released so the late worker result is discarded instead of
+        # re-opening the update screen on top of the running app.
+        self._boot_released = True
+        _logger.info("updater: check stalled, releasing boot without update")
+        self._did_resolve_check(None, None)
 
     def arm_update_check(self):
         """Run the update check in the background: the boot sequence plays
@@ -638,6 +684,10 @@ class CinematicSplash(QWidget):
         """Consume a finished background check. If the boot is still playing
         its opening sequence, park the result until the mid milestone;
         otherwise reveal it immediately."""
+        if self._boot_released:
+            # The boot already moved on (deadline/skip) — never re-open the
+            # update flow on top of the running app for a late result.
+            return
         if self._check_armed:
             self._check_parked = {"info": info, "error": error}
             return
@@ -675,6 +725,7 @@ class CinematicSplash(QWidget):
     def update_ok(self):
         self._update_state = "ok"
         self._held = False
+        self._boot_released = True
         self._ok_hold_until = _monotonic_ms() + 650.0
         self._pending_available = None
         self._flow_enter_ms = None
