@@ -522,6 +522,8 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     <h2 id="disableAllTitle">Disable all keys?</h2>
     <p class="lead" id="disableAllBody"></p>
     <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go &mdash; you would re-create keys afterwards.</div>
+    <div class="inp"><label class="fl">Admin code to confirm</label><input id="disableAllCode" type="password" autocomplete="new-password" placeholder="Enter your admin code"></div>
+    <p class="hint" id="disableAllErr"></p>
     <div class="dactions">
       <button class="btn btn-ghost" type="button" data-close="disableAllDlg">Cancel</button>
       <button class="btn btn-rose" type="button" id="disableAllGo">Disable all</button>
@@ -535,6 +537,8 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     <h2 id="deleteAllTitle">Delete every key?</h2>
     <p class="lead" id="deleteAllBody"></p>
     <div class="note rose">This permanently removes all license rows and their activity history. Not recoverable.</div>
+    <div class="inp"><label class="fl">Admin code to confirm</label><input id="deleteAllCode" type="password" autocomplete="new-password" placeholder="Enter your admin code"></div>
+    <p class="hint" id="deleteAllErr"></p>
     <div class="dactions">
       <button class="btn btn-ghost" type="button" data-close="deleteAllDlg">Cancel</button>
       <button class="btn btn-rose" type="button" id="deleteAllGo">Delete all</button>
@@ -1165,7 +1169,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if ((el = t.closest('[data-unsuspend]'))){ e.stopPropagation(); pendingKey = el.dataset.unsuspend; doUnsuspend(); return; }
     if ((el = t.closest('[data-unban]'))){ e.stopPropagation(); pendingKey = el.dataset.unban; doUnban(); return; }
     if ((el = t.closest('[data-unrevoke]'))){ e.stopPropagation(); pendingKey = el.dataset.unrevoke; doUnrevoke(); return; }
-    if ((el = t.closest('[data-open-create]'))){ openCreate(); return; }
+    if ((el = t.closest('[data-open-create]'))){ e.stopPropagation(); openCreate(); return; }
     if ((el = t.closest('[data-close]'))){ document.getElementById(el.dataset.close).close(); return; }
     if ((el = t.closest('[data-tab]'))){ tab = el.dataset.tab; renderTabs(); renderList(); return; }
     if ((el = t.closest('.row'))){ selectRow(el.dataset.id); }
@@ -1203,30 +1207,36 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   function openDisableAll(){
     const active = keys.filter(k => k.status === 'active' || k.status === 'unused').length;
     $('#disableAllBody').innerHTML = `This revokes <b>${active}</b> active/unused ${plural(active, 'key')}.`;
+    $('#disableAllCode').value = ''; $('#disableAllErr').textContent = '';
     disableAllDlg.showModal();
   }
   async function doDisableAll(){
     const btn = $('#disableAllGo'); btn.disabled = true;
+    const code = $('#disableAllCode').value.trim();
+    if (!code){ $('#disableAllErr').textContent = 'Enter your admin code to confirm.'; btn.disabled = false; return; }
     try {
-      const r = await post('/admin/disable-all', {});
+      const r = await post('/admin/disable-all', { code });
       disableAllDlg.close();
       const data = await api('/admin/keys');
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
       render();
       toast(`Disabled ${r.revoked || 0} ${plural(r.revoked || 0, 'key')}`);
-    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    } catch (e) { $('#disableAllErr').textContent = (e && e.message && e.message !== 'session') ? e.message : 'Could not confirm. Check your admin code.'; }
     finally { btn.disabled = false; }
   }
   function openDeleteAll(){
     const total = keys.length;
     $('#deleteAllBody').innerHTML = `This <b>revokes EVERY key</b> - wipes them from Neon: each user must get a fresh code from your Discord. Deletes <b>${total}</b> ${plural(total, 'key')} and all their PC activity.`;
+    $('#deleteAllCode').value = ''; $('#deleteAllErr').textContent = '';
     deleteAllDlg.showModal();
   }
   async function doDeleteAll(){
     const btn = $('#deleteAllGo'); btn.disabled = true;
+    const code = $('#deleteAllCode').value.trim();
+    if (!code){ $('#deleteAllErr').textContent = 'Enter your admin code to confirm.'; btn.disabled = false; return; }
     try {
-      const r = await post('/admin/delete-all', {});
+      const r = await post('/admin/delete-all', { code });
       deleteAllDlg.close();
       const data = await api('/admin/keys');
       keys = data.keys.map(mapKey);
@@ -1234,13 +1244,13 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       selectedId = null; query = ''; actCache = {};
       render();
       toast(`Deleted ${r.deleted || 0} ${plural(r.deleted || 0, 'key')}`);
-    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    } catch (e) { $('#deleteAllErr').textContent = (e && e.message && e.message !== 'session') ? e.message : 'Could not confirm. Check your admin code.'; }
     finally { btn.disabled = false; }
   }
-  $('#disableAllBtn').addEventListener('click', openDisableAll);
-  $('#disableAllGo').addEventListener('click', doDisableAll);
-  $('#deleteAllBtn').addEventListener('click', openDeleteAll);
-  $('#deleteAllGo').addEventListener('click', doDeleteAll);
+  $('#disableAllBtn').addEventListener('click', e => { e.stopPropagation(); openDisableAll(); });
+  $('#disableAllGo').addEventListener('click', e => { e.stopPropagation(); doDisableAll(); });
+  $('#deleteAllBtn').addEventListener('click', e => { e.stopPropagation(); openDeleteAll(); });
+  $('#deleteAllGo').addEventListener('click', e => { e.stopPropagation(); doDeleteAll(); });
 
   /* ---------- engraved rosette background ---------- */
   (function(){

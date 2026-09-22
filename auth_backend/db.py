@@ -197,13 +197,14 @@ class LicenseDB:
         if self._engine == "sqlite":
             os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         self._lock = threading.RLock()
+        self._pg_conn = None
         with self._lock:
             conn = self._connect()
             try:
                 self._init_schema(conn)
                 conn.commit()
             finally:
-                conn.close()
+                self._release(conn)
 
     @property
     def engine(self) -> str:
@@ -216,17 +217,37 @@ class LicenseDB:
                 raise RuntimeError(
                     "DATABASE_URL is set but psycopg is not installed - "
                     "run: pip install -r requirements.txt")
-            # A fresh, dedicated connection per operation. See the module
-            # docstring for why we don't pool here: psycopg_pool strands its
-            # worker threads after a few cycles and then times out on every
-            # subsequent call (which is what made the live server return HTTP
-            # 500s on every database route).
-            return psycopg.connect(self._dsn, connect_timeout=15,
-                                   row_factory=dict_row)
+            # Persistent, lock-guarded connection: keeping one long-lived
+            # socket avoids the ~2s Neon connection setup that every call
+            # previously paid. (psycopg_pool's thread-stranding bug is avoided
+            # entirely - we reuse a single connection, never a thread pool.)
+            if self._pg_conn is not None and not self._pg_conn.closed:
+                return self._pg_conn
+            self._pg_conn = psycopg.connect(self._dsn, connect_timeout=15,
+                                            row_factory=dict_row)
+            return self._pg_conn
         conn = sqlite3.connect(self._path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 30000")
         return conn
+
+    def _release(self, conn) -> None:
+        """Only close throwaway connections; the persistent PG socket stays."""
+        if self._engine == "postgres":
+            return
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _drop_persistent(self) -> None:
+        if self._engine == "postgres":
+            try:
+                if self._pg_conn is not None:
+                    self._pg_conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._pg_conn = None
 
     def _init_schema(self, conn) -> None:
         if self._engine == "postgres":
@@ -286,8 +307,10 @@ class LicenseDB:
         return conn.execute(self._sql(sql))
 
     def _run_with_retry(self, fn, *, commit: bool = True):
-        """Execute *fn(conn)* with a fresh connection; retry once on stale/
-        transient errors (each attempt dials a brand-new connection)."""
+        """Execute *fn(conn)* guarded by the persistent connection (Postgres)
+        or a fresh connection (SQLite); retry once on stale/transient errors.
+        For Postgres the socket is reused for every call and only dropped when
+        it actually goes stale."""
         for attempt in range(2):
             conn = self._connect()
             try:
@@ -296,20 +319,15 @@ class LicenseDB:
                     conn.commit()
                 return result
             except Exception as exc:
-                try:
-                    conn.close()
-                except Exception:  # noqa: BLE001
-                    pass
-                if attempt == 0 and self._is_stale_conn(exc):
-                    logger.warning("db: stale/transient connection, retrying "
-                                   "(attempt %d)", attempt + 1)
-                    continue
+                if self._is_stale_conn(exc):
+                    self._drop_persistent()
+                    if attempt == 0:
+                        logger.warning("db: stale/transient connection, "
+                                       "retrying (attempt %d)", attempt + 1)
+                        continue
                 raise
-            else:
-                try:
-                    conn.close()
-                except Exception:  # noqa: BLE001
-                    pass
+            finally:
+                self._release(conn)
 
     # ------------------------------------------------------------------
     # Row helpers

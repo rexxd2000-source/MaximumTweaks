@@ -53,7 +53,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -665,6 +665,21 @@ def _admin_guard(request: Request,
     _require_admin(authorization, request.cookies.get(ADMIN_COOKIE))
 
 
+def _require_reconfirm(code: str | None) -> None:
+    """Bulk destructive ops re-verify the raw admin code in the JSON body.
+
+    The caller is already authenticated (session cookie or bearer); this is a
+    defence-in-depth 'type the admin code again to confirm' step so a stray
+    click (or a hijacked session) cannot wipe/revoke every key by itself.
+    """
+    if not ADMIN_TOKEN:
+        raise _err("admin_disabled", "Admin access is not configured.", 403)
+    code = (code or "").strip()
+    if not code or not hmac.compare_digest(code, ADMIN_TOKEN):
+        raise _err("unauthorized",
+                   "Admin code required to confirm this action.", 401)
+
+
 def _add_months_utc(months: int) -> str:
     """Calendar-accurate N-months-from-now, UTC, ``YYYY-MM-DD HH:MM:SS``."""
     now = datetime.now(timezone.utc)
@@ -1090,24 +1105,31 @@ def admin_delete(key: str, _: None = Depends(_admin_guard)):
 
 
 @app.post("/admin/disable-all")
-def admin_disable_all(_: None = Depends(_admin_guard)):
+def admin_disable_all(code: str | None = Body(default=None, embed=True),
+                      _: None = Depends(_admin_guard)):
     """Revoke every non-revoked key at once (bulk 'start fresh' action).
 
     Existing customers keep their local session until their next check-in
     (up to 5 minutes), at which point the server refuses the key and their
     app locks. Returns how many keys were revoked.
+
+    Requires the admin code again in the body (defense-in-depth: the caller
+    has to re-confirm before a bulk operation).
     """
+    _require_reconfirm(code)
     count = _DB.revoke_all()
     return {"ok": True, "revoked": count}
 
 
 @app.post("/admin/delete-all")
-def admin_delete_all(_: None = Depends(_admin_guard)):
+def admin_delete_all(code: str | None = Body(default=None, embed=True),
+                     _: None = Depends(_admin_guard)):
     """Permanently delete every license row + related activity/log rows.
 
     Bulk 'start fresh' action. Not recoverable. Returns how many keys were
-    deleted.
+    deleted. Requires the admin code again in the body before it runs.
     """
+    _require_reconfirm(code)
     count = _DB.delete_all()
     return {"ok": True, "deleted": count}
 
