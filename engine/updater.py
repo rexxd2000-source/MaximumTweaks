@@ -105,9 +105,24 @@ def _get_json(url: str, timeout: float = 15.0, token: str = "") -> dict:
             except Exception as exc:  # noqa: BLE001
                 raise _HttpError(f"invalid JSON from {url}") from exc
     except urllib.error.HTTPError as exc:
-        raise _HttpError(f"HTTP {exc.code}", exc.code) from exc
+        raise _HttpError(_http_reason(exc.code), exc.code) from exc
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise _HttpError(f"network error: {exc}") from exc
+
+
+def _http_reason(status: int) -> str:
+    """Friendly (and honest) label for an HTTP status, so the user is never
+    told to check a VPN they do not have."""
+    if status == 403:
+        return ("The update server is rate-limiting requests right now "
+                "(HTTP 403). This happens when too many updates are checked "
+                "from one connection. Wait a few minutes and Retry.")
+    if status == 429:
+        return "Too many update checks in a short time (HTTP 429). Wait a bit and Retry."
+    if status == 404:
+        return ("No update was found for this app (HTTP 404). "
+                "This build may not be published yet.")
+    return f"The update server refused the request (HTTP {status})."
 
 
 def _github_api_url() -> str:
@@ -134,6 +149,13 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
     Raises UpdaterError on network/config problems so the caller can choose to
     surface them; a None return means "you are up to date".
     """
+    try:
+        return _fetch_update(timeout)
+    except _HttpError as exc:
+        raise UpdaterError(str(exc)) from exc
+
+
+def _fetch_update(timeout: float = 15.0) -> dict | None:
     if UPDATE_MANIFEST_URL:
         data = _get_json(UPDATE_MANIFEST_URL.strip(), timeout)
         version = str(data.get("version") or "").strip()

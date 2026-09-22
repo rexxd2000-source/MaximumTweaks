@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.1"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -69,7 +69,16 @@ GITHUB_TOKEN = _load_github_token()
 # UPDATE_MANIFEST_URL points at a plain JSON manifest, which takes priority:
 #     { "version": "1.1.0", "notes": "...", "url": ".../MaximumTweaks.exe" }
 # Leave both empty to disable update checks entirely.
-UPDATE_MANIFEST_URL = ""
+#
+# DEFAULT: the app's own domain serves /update.json (see auth_backend/main.py),
+# so update checks do not depend on GitHub's rate-limited unauthenticated API
+# (60 req/hr per IP), which is what previously made some networks see a bogus
+# "VPN/proxy/firewall" error. GitHub/API fallback still applies if this is
+# cleared and GITHUB_REPO is set.
+UPDATE_MANIFEST_URL = os.environ.get(
+    "UPDATE_MANIFEST_URL",
+    "https://maximumtweaks.onrender.com/update.json",
+).strip()
 UPDATE_EXE_NAME = "MaximumTweaks.exe"  # must match the build name in MaximumTweaks.spec
 
 # Minimal supported Windows build (Win10 1903 / 19041+ preferred)

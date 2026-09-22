@@ -232,9 +232,16 @@ class FetchWorker(QThread):
                          "Please try again, or run the latest build manually.")
             result = None
         if result is None and self._err:
-            self._err += ("\n\nIf a VPN, proxy or firewall is on, turn it off "
-                          "and Retry \u2014 the app needs internet access to "
-                          "see and install the latest version.")
+            if any(
+                s in self._err.lower() for s in
+                ("http", "network", "timeout", "connection", "internet",
+                 "offline", "rate-limit", "refused", "dns", "tls")
+            ):
+                self._err += ("\n\nThis looks like a connectivity issue, not a "
+                              "VPN or firewall toggling in the app. Check that "
+                              "the device has internet access, wait a few "
+                              "minutes, then Retry. If it keeps failing, "
+                              "download the latest build manually and run it.")
         self.done.emit({"info": result, "error": self._err})
 
 
