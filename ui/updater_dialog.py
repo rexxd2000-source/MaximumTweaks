@@ -27,10 +27,12 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -547,7 +549,9 @@ class UpdateDialog(QDialog):
         b.addSpacing(20)
 
         # What's changed — wrapped in its own container so it fully collapses
-        # (label + list + spacing) on the up-to-date/error states.
+        # (label + list + spacing) on the up-to-date/error states. The list
+        # itself lives in a scroll area so a long changelog can never push the
+        # action buttons off-screen on small displays.
         self._changes_box = QWidget()
         self._changes_box.setObjectName("Body")
         cb = QVBoxLayout(self._changes_box)
@@ -557,10 +561,24 @@ class UpdateDialog(QDialog):
         self._section.setObjectName("SectionLabel")
         self._section.setFont(_sans(11))
         cb.addWidget(self._section)
-        self._changes = QVBoxLayout()
+        self._changes_scroll = QScrollArea()
+        self._changes_scroll.setWidgetResizable(True)
+        self._changes_scroll.setFrameShape(QFrame.NoFrame)
+        self._changes_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; } "
+            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        self._changes_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._changes_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._changes_scroll.setMinimumHeight(1)
+        self._changes_scroll.setMaximumHeight(200)
+        self._changes_host = QWidget()
+        self._changes_host.setStyleSheet("background: transparent;")
+        self._changes = QVBoxLayout(self._changes_host)
         self._changes.setContentsMargins(0, 0, 0, 0)
         self._changes.setSpacing(10)
-        cb.addLayout(self._changes)
+        self._changes_scroll.setWidget(self._changes_host)
+        cb.addWidget(self._changes_scroll, 1)
         # bottom gap is part of the box so it collapses when hidden
         cb.addSpacing(20)
         self._changes_box.setVisible(True)
@@ -671,9 +689,28 @@ class UpdateDialog(QDialog):
         self._logo_worker = None
 
     def _adopt_widgets(self):
-        """Keep the modal chrome laid out; height hugs the current content."""
+        """Keep the modal chrome laid out; height hugs the current content.
+        Never let the dialog exceed the screen height — the action buttons
+        must stay visible, so anything taller scrolls inside the modal."""
+        self._modal.layout().activate()
+        self._recompute_height()
         self._modal.layout().activate()
         self.adjustSize()
+
+    def _recompute_height(self):
+        """Resize this frameless dialog to fit the screen (no more than ~94%
+        of the available geometry) so the button row is always on-screen."""
+        geos = QApplication.screens()
+        if not geos:
+            return
+        avail = geos[0].availableGeometry()
+        for g in geos:
+            if g.availableGeometry().intersects(self.frameGeometry()):
+                avail = g.availableGeometry()
+                break
+        maxH = max(320, int(avail.height() * 0.94))
+        if self.height() > maxH:
+            self.setFixedHeight(maxH)
 
     def _chip(self, bold: str, rest: str) -> QLabel:
         lbl = QLabel(f"<b>{bold}</b> {rest}")
