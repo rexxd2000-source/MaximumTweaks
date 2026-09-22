@@ -903,6 +903,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
 
   /* ---------- create key ---------- */
   const createDlg = $('#createDlg'), revokeDlg = $('#revokeDlg');
+  const banDlg = $('#banDlg'), timeoutDlg = $('#timeoutDlg'), inspectDlg = $('#inspectDlg'), disableAllDlg = $('#disableAllDlg'), deleteAllDlg = $('#deleteAllDlg');
   let cPlan = '1m', cMax = 1;
 
   function renderPlans(){
@@ -1189,10 +1190,16 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   $('#banGo').addEventListener('click', doBan);
   $('#banWhy').addEventListener('keydown', e => { if (e.key === 'Enter') doBan(); });
   $('#timeoutGo').addEventListener('click', doTimeout);
-  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg, disableAllDlg, deleteAllDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); })); document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
+  document.addEventListener('click', e => {
+    const d = document.querySelector('dialog[open]');
+    if (!d) return;
+    const r = d.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) d.close();
+  });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
 
   /* ---------- disable all / delete all ---------- */
-  const disableAllDlg = $('#disableAllDlg'), deleteAllDlg = $('#deleteAllDlg');
   function openDisableAll(){
     const active = keys.filter(k => k.status === 'active' || k.status === 'unused').length;
     $('#disableAllBody').innerHTML = `This revokes <b>${active}</b> active/unused ${plural(active, 'key')}.`;
@@ -1248,18 +1255,6 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
 
   init();
 })();
-</script>
-
-<style>.cls{position:absolute;top:10px;right:14px;font-size:22px;line-height:1;cursor:pointer;color:#d8c58a;z-index:9999}.cls:hover{color:#ffd}</style>
-<script>
-(function(){var close=function(ev){ev&&ev.stopPropagation();var m=document.querySelector('.modal.open');if(m){m.classList.remove('open');m.style.display='none'}};
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){close(e)}}); /* Esc always closes */
-var iv=setInterval(function(){document.querySelectorAll('.modal').forEach(function(m){if(m.querySelector('.cls'))return;var x=document.createElement('span');x.className='cls';x.textContent='✕';x.title='Close';x.onclick=close;m.appendChild(x)});var ie=null;setInterval(function(){if(document.querySelector('.modal.open'))clearInterval(ie)},2000)},500);
-document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('modal'))close(e)});
-})();
-</script>
-<script>
-document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
 </script>
 </body>
 </html>

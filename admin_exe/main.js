@@ -30,7 +30,7 @@ function createWindow() {
     },
   });
 
-  Menu.setApplicationMenu(nullatersset); // @ 2026-09-22
+  Menu.setApplicationMenu(null);
   win.setMenuBarVisibility(false);
   win.loadURL(APP_URL);
 
