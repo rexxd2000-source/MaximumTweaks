@@ -247,15 +247,21 @@ _limiter_key = RateLimiter(ACTIVATE_PER_KEY, 3600)
 _limiter_ip = RateLimiter(ACTIVATE_PER_IP, 3600)
 
 
-def _err(code: str, message: str, status: int = 403) -> HTTPException:
+def _err(code: str, message: str, status: int = 403,
+         **extra) -> HTTPException:
     """Build an HTTP error whose body is the API error envelope.
 
     The exception handler below unwraps ``detail`` so the client receives the
     object directly as the top-level JSON body:
     ``{"success": false, "valid": false, "error": ..., "message": ...}``
+    Extra keyword args are merged into the envelope so the client can render
+    purpose-built screens (e.g. ``revoked_at``, ``suspended_until``) without
+    parsing human copy.
     """
-    return HTTPException(status_code=status, detail={
-        "success": False, "valid": False, "error": code, "message": message})
+    detail = {"success": False, "valid": False,
+              "error": code, "message": message}
+    detail.update({k: v for k, v in extra.items() if v is not None})
+    return HTTPException(status_code=status, detail=detail)
 
 
 def _utc_now_iso(seconds_ahead: int = 0) -> str:
@@ -276,8 +282,25 @@ def _raise_if_suspended(rec: dict) -> None:
     if _iso_to_ts(until) > _now_ts():
         raise _err("license_suspended",
                    f"This license is temporarily suspended by the operator "
-                   f"until {until} (UTC). It resumes automatically.")
+                   f"until {until} (UTC). It resumes automatically.",
+                   suspended_until=until,
+                   reason=_DB.last_event_detail(rec["license_key"], "suspended"))
     _DB.unsuspend(rec["license_key"], detail="auto-resumed")
+
+
+def _refusal_extra(rec: dict) -> dict:
+    """Structured refusal metadata for the client's status screens.
+
+    The client renders three distinct fullscreen gates (banned / revoked /
+    timeout) from these fields, so the API keeps them machine-readable instead
+    of burying them in the human message.
+    """
+    extra = {
+        "revoked_at": rec.get("revoked_at"),
+        "revoked_reason": rec.get("revoked_reason") or "",
+        "suspended_until": rec.get("suspended_until"),
+    }
+    return {k: v for k, v in extra.items() if v not in (None, "")}
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -851,8 +874,16 @@ def activate(payload: ActivateRequest, request: Request):
     _check_expiry(rec)
 
     if rec["status"] == "revoked":
+        reason = (rec.get("revoked_reason") or "").strip()
+        if reason == "banned":
+            ban_reason = _DB.last_event_detail(key, "banned")
+            raise _err("license_banned",
+                       "This account has been permanently banned from Maximum "
+                       "Tweaks. Contact support to appeal.",
+                       **{**_refusal_extra(rec), "reason": ban_reason})
         raise _err("license_revoked",
-                   "This license key has been revoked. Contact support for help.")
+                   "This license key has been revoked. Contact support for help.",
+                   **_refusal_extra(rec))
     if rec["status"] == "expired":
         raise _err("license_expired", "This license key has expired.")
     _raise_if_suspended(rec)
@@ -891,7 +922,15 @@ def validate(payload: ValidateRequest):
     _check_expiry(rec)
 
     if rec["status"] == "revoked":
-        raise _err("license_revoked", "This license key has been revoked.", 403)
+        reason = (rec.get("revoked_reason") or "").strip()
+        if reason == "banned":
+            ban_reason = _DB.last_event_detail(rec["license_key"], "banned")
+            raise _err("license_banned",
+                       "This account has been permanently banned from Maximum "
+                       "Tweaks. Contact support to appeal.",
+                       **{**_refusal_extra(rec), "reason": ban_reason})
+        raise _err("license_revoked", "This license key has been revoked.", 403,
+                   **_refusal_extra(rec))
     if rec["status"] == "expired":
         raise _err("license_expired", "This license key has expired.", 403)
     _raise_if_suspended(rec)
@@ -943,7 +982,9 @@ def checkin(payload: CheckinRequest):
 
     result = _DB.checkin(key, device_id, pc_name)
     if result["status"] != "allowed":
-        raise _err(result["error"], result["message"], 403)
+        extra = {k: result[k] for k in ("revoked_at", "revoked_reason",
+                                        "suspended_until") if k in result}
+        raise _err(result["error"], result["message"], 403, **extra)
     rec = _DB.get(key)
     return {
         "success": True, "valid": True, "message": "OK",

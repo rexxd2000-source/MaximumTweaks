@@ -274,7 +274,7 @@ def run_gui():
                 reveal_window()
                 return
             from ui.gate import GateWindow
-            gate = GateWindow()
+            gate = GateWindow(payload=license_mgr.last_refusal())
             gate.setGeometry(screen)
             gate.show()
 
@@ -287,17 +287,19 @@ def run_gui():
 
     splash.finished.connect(on_finished)
 
-    # License heartbeat: check in with the server every 5 minutes so the admin
-    # panel shows live PC usage. If the server ever refuses the key (revoked /
-    # expired / over the PC limit) it locks the app right away, even mid-session.
-    def _heartbeat_refused():
+    # License heartbeat: check in with the server every minute so bans,
+    # revocations, and timeouts are caught in near-real-time and the admin
+    # panel shows live PC usage. If the server ever refuses the key (banned /
+    # revoked / suspended / expired / over the PC limit) it locks the app right
+    # away, even mid-session.
+    def _heartbeat_refused(payload=None):
         win = holder.get("window")
         if win is None:
             return  # still on the splash — handoff will open the gate instead
         ctx = getattr(win, "ctx", None)
         if ctx is not None:
             ctx.license_changed.emit()
-        license_ui.relock(win)
+        license_ui.relock(win, payload=payload)
 
     license_ui.start_heartbeat(on_refused=_heartbeat_refused, parent=app)
 

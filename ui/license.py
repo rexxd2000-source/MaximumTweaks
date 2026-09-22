@@ -174,14 +174,16 @@ _HEARTBEAT_WORKER: LicenseHeartbeatWorker | None = None
 _HEARTBEAT_ON_REFUSED = None
 
 
-def start_heartbeat(on_refused=None, parent=None, interval_ms: int = 300000):
+def start_heartbeat(on_refused=None, parent=None, interval_ms: int = 60000):
     """Begin the recurring license heartbeat.
 
-    Runs check-ins on a background thread every ``interval_ms`` (the backend
-    expects 5 minutes). Network hiccups are skipped silently so the cached
-    session stays valid; when the server refuses the key (revoked / expired /
-    over the PC limit) the local session is cleared immediately and
-    ``on_refused()`` is called so the app can lock itself.
+    Runs check-ins on a background thread every ``interval_ms`` (default 1
+    minute so bans / revocations / timeouts are detected in near-real-time; the
+    backend accepts any cadence). Network hiccups are skipped silently so the
+    cached session stays valid; when the server refuses the key (banned /
+    revoked / expired / suspended / over the PC limit) the local session is
+    cleared immediately and ``on_refused(payload)`` is called so the app can
+    lock itself and show the matching status screen.
     """
     global _HEARTBEAT_TIMER, _HEARTBEAT_ON_REFUSED
     if _HEARTBEAT_TIMER is not None:
@@ -221,23 +223,26 @@ def _on_heartbeat_done(status, message):
     if status != "refused":
         return  # offline / transient — cached session stays valid
     # The server says this key is no longer good on this PC. Lock now; the
-    # user goes back through the gate where re-activation re-checks the key.
+    # user goes back through the gate where the refusal payload drives the
+    # banned / revoked / timeout screen (re-activation re-checks the key).
     license_mgr.set_session(None)
     publish_identity()
     if _HEARTBEAT_ON_REFUSED:
-        _HEARTBEAT_ON_REFUSED()
+        _HEARTBEAT_ON_REFUSED(license_mgr.last_refusal())
 
 
-def relock(window):
+def relock(window, payload=None):
     """Lock the app again: hide the main window and show the license gate.
 
     Used after deactivation/logout so the user is routed back to the primary
     auth view instead of staying in the app. Unlocking re-shows the window
-    and refreshes every license-dependent widget.
+    and refreshes every license-dependent widget. ``payload`` is the structured
+    server refusal (banned / revoked / timeout) so the gate opens on the
+    matching status screen when the key was taken away mid-session.
     """
     from ui.gate import GateWindow
     ctx = getattr(window, "ctx", None)
-    gate = GateWindow()
+    gate = GateWindow(payload=payload)
     gate.setGeometry(window.frameGeometry())
     gate.show()
     window.hide()

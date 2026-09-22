@@ -652,9 +652,19 @@ class LicenseDB:
                 return {"status": "refused", "error": "invalid_license",
                         "message": "That license key wasn't recognized."}
             if rec["status"] == "revoked":
+                reason = (rec.get("revoked_reason") or "").strip()
+                if reason == "banned":
+                    return {"status": "refused", "error": "license_banned",
+                            "message": ("This account has been permanently "
+                                        "banned from Maximum Tweaks. Contact "
+                                        "support to appeal."),
+                            "revoked_at": rec.get("revoked_at"),
+                            "revoked_reason": "banned"}
                 return {"status": "refused", "error": "license_revoked",
                         "message": ("This license key has been revoked. "
-                                    "Contact support to re-activate it.")}
+                                    "Contact support to re-activate it."),
+                        "revoked_at": rec.get("revoked_at"),
+                        "revoked_reason": rec.get("revoked_reason") or ""}
             if _is_expired(rec["expires_at"]):
                 self._exec(conn, "UPDATE licenses SET status = 'expired'"
                            " WHERE license_key = ?", (license_key,))
@@ -668,7 +678,8 @@ class LicenseDB:
                 return {"status": "refused", "error": "license_suspended",
                         "message": (f"This license is temporarily suspended by "
                                     f"the operator until {until} (UTC). It "
-                                    "resumes automatically.")}
+                                    "resumes automatically."),
+                        "suspended_until": until}
             if until:
                 self._exec(
                     conn, "UPDATE licenses SET suspended_at = NULL,"
@@ -841,6 +852,18 @@ class LicenseDB:
                 " WHERE license_key = ? ORDER BY id DESC LIMIT ?",
                 (license_key, limit)).fetchall()
             return [dict(r) for r in rows]
+        with self._lock:
+            return self._run_with_retry(_fn, commit=False)
+
+    def last_event_detail(self, license_key: str, event: str) -> str:
+        """Most recent audit detail for a given event (e.g. the ban reason).
+        Returns "" when the key has no such event on record."""
+        def _fn(conn):
+            row = self._exec(
+                conn, "SELECT detail FROM key_log"
+                " WHERE license_key = ? AND event = ? ORDER BY id DESC LIMIT 1",
+                (license_key, event)).fetchone()
+            return (row["detail"] if row else "") or ""
         with self._lock:
             return self._run_with_retry(_fn, commit=False)
 

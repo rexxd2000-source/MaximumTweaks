@@ -245,6 +245,8 @@ def _friendly(code: str, server_message: str = "") -> str:
         # Current envelope error codes
         "invalid_license": ("That license key wasn't recognized. Double-check "
                             "it and try again, or contact support."),
+        "license_banned": ("This account has been permanently banned from "
+                           "Maximum Tweaks. Contact support to appeal."),
         "license_revoked": "This license key has been revoked. Contact support for help.",
         "license_expired": "This license key has expired.",
         "license_suspended": ("This license is temporarily suspended by the "
@@ -391,6 +393,40 @@ def _store_record(payload: dict, device: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Last refusal (drives the gate's banned / revoked / timeout screens)
+# ---------------------------------------------------------------------------
+
+_LAST_REFUSAL: dict | None = None
+
+
+def last_refusal() -> dict | None:
+    """Structured metadata of the most recent server refusal, or None.
+
+    Populated by ``checkin()`` / ``activate()`` whenever the backend refuses a
+    live key (``license_banned`` / ``license_revoked`` / ``license_suspended``).
+    The gate reads this to pick the right fullscreen status screen, so a ban,
+    revocation, or timeout that happens mid-session is shown to the user the
+    moment the heartbeat sees it — no restart required.
+    """
+    return _LAST_REFUSAL
+
+
+def _remember_refusal(data: dict, code: str) -> dict:
+    """Capture the server envelope for the gate's status screens."""
+    global _LAST_REFUSAL
+    _LAST_REFUSAL = {
+        "code": code,
+        "message": data.get("message", ""),
+        "owner": (data.get("owner") or data.get("customer") or ""),
+        "revoked_at": data.get("revoked_at"),
+        "revoked_reason": data.get("revoked_reason") or "",
+        "suspended_until": data.get("suspended_until"),
+        "reason": data.get("reason"),
+    }
+    return _LAST_REFUSAL
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -411,6 +447,7 @@ def activate(key: str) -> dict:
         logger.info(f"license: activated key {_mask_key(sess.get('license'))}")
         return sess
     code = data.get("error") or data.get("code") or ""
+    _remember_refusal(data, code)
     raise LicenseError(_friendly(code, data.get("message", "")), code)
 
 
@@ -508,10 +545,12 @@ def checkin() -> tuple[str, str]:
     message = _friendly(code, data.get("message", ""))
     if not code:
         return "offline", message
-    if code in ("invalid_license", "license_revoked", "license_expired",
-                "license_suspended", "over_limit", "device_mismatch",
+    if code in ("invalid_license", "license_banned", "license_revoked",
+                "license_expired", "license_suspended", "over_limit",
+                "device_mismatch",
                 "INVALID_KEY", "REVOKED", "EXPIRED",
                 "DEVICE_MISMATCH"):
+        _remember_refusal(data, code)
         logger.warn(f"license: heartbeat refused ({code})")
         return "refused", message
     return "offline", message

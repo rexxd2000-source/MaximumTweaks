@@ -120,11 +120,29 @@ def test_ban_revokes_key_and_blocks_pcs():
     kinds = [e["event"] for e in _events(key)]
     assert "banned" in kinds
 
-    # A banned key refuses activation and check-in.
+    # A banned key refuses activation and check-in with the distinct
+    # license_banned code so the client can show its dedicated "banned" gate.
+    got = _activate(key).json()
+    assert got["error"] == "license_banned"
+    assert got.get("revoked_reason") == "banned"
+    assert got.get("revoked_at")
+    got = _checkin(key).json()
+    assert got["error"] == "license_banned"
+    assert got.get("revoked_reason") == "banned"
+
+
+def test_plain_revoke_is_license_revoked_not_banned():
+    key = _make_key()
+    _activate(key, DEVICE_A)
+    client.post("/admin/revoke", json={"key": key, "reason": "refund"},
+                headers=_admin_headers())
+
     got = _activate(key).json()
     assert got["error"] == "license_revoked"
+    assert got.get("revoked_reason") == "refund"
     got = _checkin(key).json()
     assert got["error"] == "license_revoked"
+    assert got.get("revoked_at")
 
 
 def test_ban_unknown_key_is_404():
@@ -174,13 +192,16 @@ def test_suspend_refuses_activate_validate_and_checkin():
 
     got = _activate(key).json()
     assert got["error"] == "license_suspended"
+    assert got.get("suspended_until")   # drives the client countdown screen
     got = _checkin(key).json()
     assert got["error"] == "license_suspended"
+    assert got.get("suspended_until")
 
     token = sign_token(key, DEVICE_A, os.environ["LICENSE_SECRET"], 3600)
     got = client.post("/api/license/validate",
                       json={"token": token, "device_id": DEVICE_A}).json()
     assert got["error"] == "license_suspended"
+    assert got.get("suspended_until")
 
 
 def test_suspend_rejects_bad_hours():
@@ -314,7 +335,9 @@ def test_disable_all_revokes_every_non_revoked_key():
     _activate(a, DEVICE_A)
     db.revoke(_make_key("Revoked"), "already gone")
 
-    r = client.post("/admin/disable-all", json={}, headers=_admin_headers())
+    r = client.post("/admin/disable-all",
+                    json={"code": os.environ["ADMIN_TOKEN"]},
+                    headers=_admin_headers())
     assert r.status_code == 200, r.text
     assert r.json()["revoked"] == 2  # Alpha + Beta
 
@@ -327,8 +350,9 @@ def test_disable_all_revokes_every_non_revoked_key():
 
 def test_disable_all_is_idempotent():
     key = _make_key()
-    client.post("/admin/disable-all", json={}, headers=_admin_headers())
-    r = client.post("/admin/disable-all", json={}, headers=_admin_headers())
+    json = {"code": os.environ["ADMIN_TOKEN"]}
+    client.post("/admin/disable-all", json=json, headers=_admin_headers())
+    r = client.post("/admin/disable-all", json=json, headers=_admin_headers())
     assert r.status_code == 200
     assert r.json()["revoked"] == 0
 
@@ -341,7 +365,9 @@ def test_delete_all_removes_everything():
     client.post("/admin/ban", json={"key": keys[0], "reason": "bye"},
                 headers=_admin_headers())
 
-    r = client.post("/admin/delete-all", json={}, headers=_admin_headers())
+    r = client.post("/admin/delete-all",
+                    json={"code": os.environ["ADMIN_TOKEN"]},
+                    headers=_admin_headers())
     assert r.status_code == 200, r.text
     assert r.json()["deleted"] == 3
 
@@ -360,3 +386,19 @@ def test_bulk_actions_require_admin():
     assert client.post("/admin/disable-all", json={}).status_code == 401
     assert client.post("/admin/delete-all", json={}).status_code == 401
     assert db.get(key)["status"] == "unused"
+
+
+def test_bulk_actions_reject_wrong_confirm_code():
+    a = _make_key("Alpha")
+    r = client.post("/admin/disable-all",
+                    json={"code": "wrong-code"},
+                    headers=_admin_headers())
+    assert r.status_code == 401, r.text
+    assert r.json()["error"] == "unauthorized"
+    # Nothing was revoked: the alpha key is untouched.
+    assert db.get(a)["status"] != "revoked"
+    r = client.post("/admin/delete-all",
+                    json={"code": "wrong-code"},
+                    headers=_admin_headers())
+    assert r.status_code == 401, r.text
+    assert db.get(a)["status"] != "revoked"
