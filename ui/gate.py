@@ -99,6 +99,7 @@ class _Footer(QWidget):
     def __init__(self, pill_text: str, pill_color: str,
                  pill_dot: str, parent=None):
         super().__init__(parent)
+        self.setObjectName("Foot")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(28, 14, 28, 14)
         lay.setSpacing(12)
@@ -110,6 +111,9 @@ class _Footer(QWidget):
         lay.addStretch()
 
         self.pill = QFrame()
+        self.pill.setObjectName("PulsePill")
+        self.pill.setFrameShape(QFrame.Shape.NoFrame)  # never double-draw a native frame
+        self.pill.setLineWidth(0)
         pl = QHBoxLayout(self.pill)
         pl.setContentsMargins(10, 5, 10, 5)
         pl.setSpacing(6)
@@ -123,8 +127,9 @@ class _Footer(QWidget):
 
     def set_pill(self, pill_text: str, pill_color: str, pill_dot: str):
         self.pill.setStyleSheet(
-            f"background: transparent; border: 1px solid {qss_rgba(pill_dot, 90)};"
-            f" border-radius: 20px;")
+            "QFrame#PulsePill { background: transparent;"
+            f" border: 1px solid {qss_rgba(pill_dot, 90)};"
+            f" border-radius: 12px; }}")
         self.dot.setStyleSheet(f"color: {pill_dot}; font-size: 8px;")
         self.txt.setText(pill_text)
         self.txt.setStyleSheet(
@@ -225,7 +230,9 @@ class _ActivationPage(QWidget):
 
         card = QFrame()
         card.setObjectName("ActivationCard")
-        card.setFixedWidth(420)
+        card.setFixedWidth(500)
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setLineWidth(0)
         card.setStyleSheet(
             "QFrame#ActivationCard {"
             " background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
@@ -236,10 +243,10 @@ class _ActivationPage(QWidget):
         cl.setSpacing(0)
 
         icon = QLabel("\u26ed")
-        icon.setFixedSize(46, 46)
+        icon.setFixedSize(52, 52)
         icon.setAlignment(Qt.AlignCenter)
         icon.setStyleSheet(
-            f"color: #9f7bff; font-size: 20px; border-radius: 12px;"
+            f"color: #9f7bff; font-size: 22px; border-radius: 12px;"
             f" background: qradialgradient(cx:.3,cy:.25,radius:1,"
             f"   fx:.3,fy:.25, stop:0 rgba(159,123,255,.35),"
             f"   stop:1 rgba(124,92,255,.08));"
@@ -250,10 +257,10 @@ class _ActivationPage(QWidget):
         title = QLabel("Activate Maximum Tweaks")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            f"font-family: {DISPLAY}; font-weight: 600; font-size: 20px;"
+            f"font-family: {DISPLAY}; font-weight: 700; font-size: 26px;"
             f" color: #eae7f8;")
         cl.addWidget(title)
-        cl.addSpacing(10)
+        cl.addSpacing(12)
 
         desc = QLabel(
             "Enter your license key to continue. This app is licensed per "
@@ -263,13 +270,14 @@ class _ActivationPage(QWidget):
         desc.setStyleSheet(
             f"font-family: {MONO}; font-size: 12.5px; line-height: 1.6;"
             f" color: #8b87a3;")
+        desc.setMinimumHeight(desc.heightForWidth(card.width() - 68))
         cl.addWidget(desc)
         cl.addSpacing(24)
 
         self.key_input = QLineEdit()
         self.key_input.setPlaceholderText("XXXX-XXXX-XXXX-XXXX")
         self.key_input.setAlignment(Qt.AlignCenter)
-        self.key_input.setMinimumHeight(46)
+        self.key_input.setMinimumHeight(52)
         self.key_input.setMaxLength(19)
         self.key_input.setStyleSheet(
             f"QLineEdit {{ background: rgba(0,0,0,.35);"
@@ -284,12 +292,12 @@ class _ActivationPage(QWidget):
 
         self.activate_btn = QPushButton("Activate license")
         self.activate_btn.setCursor(Qt.PointingHandCursor)
-        self.activate_btn.setMinimumHeight(46)
+        self.activate_btn.setMinimumHeight(58)
         self.activate_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #7c5cff, stop:1 #4c2fb8); color: #fff; border: none;"
-            " border-radius: 10px; font-family: " + DISPLAY +
-            "; font-weight: 600; font-size: 14px; }"
+            " border-radius: 12px; font-family: " + DISPLAY +
+            "; font-weight: 700; font-size: 15.5px; }"
             "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #8a6cff, stop:1 #5a3cc8); }"
             "QPushButton:pressed { background: #4c2fb8; }"
@@ -379,6 +387,7 @@ class _ActivationPage(QWidget):
             f"font-family: {MONO}; font-size: 10.5px; line-height: 1.6;"
             f" color: #524d6b; border-top: 1px solid rgba(139,124,246,.16);"
             f" padding-top: 14px;")
+        fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 14)
         cl.addWidget(fine)
 
         # Not-configured note (dev only; never visible in a frozen build).
