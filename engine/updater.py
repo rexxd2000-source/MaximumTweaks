@@ -92,7 +92,34 @@ class _HttpError(Exception):
         self.status = status
 
 
-def _get_json(url: str, timeout: float = 15.0, token: str = "") -> dict:
+def _get_json(url: str, timeout: float = 15.0, token: str = "",
+              attempts: int = 3, backoff: float = 2.0) -> dict:
+    """GET + parse a JSON endpoint with bounded retries.
+
+    One retry is enough to absorb the free-tier cold start on Render (the
+    instance sleeps after inactivity and the first request takes ~30s to wake
+    it). Each attempt gets the full ``timeout``, so a hung socket can't stall
+    the boot past timeout * attempts + backoff.
+    """
+    last_err = None
+    for attempt in range(attempts):
+        if attempt:
+            logger.info(
+                f"updater: retrying {url} (attempt {attempt + 1}/{attempts})")
+            time.sleep(backoff * attempt)
+        try:
+            return _get_json_once(url, timeout, token)
+        except _HttpError as exc:
+            # Hard client errors won't heal from a retry — fail fast.
+            if 400 <= getattr(exc, "status", 0) < 500:
+                raise
+            last_err = exc
+            continue
+    assert last_err is not None
+    raise last_err
+
+
+def _get_json_once(url: str, timeout: float = 15.0, token: str = "") -> dict:
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     req.add_header("Accept", "application/json")
