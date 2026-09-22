@@ -362,7 +362,9 @@ dialog[open]{animation:pop .22s ease}
       Sigil
     </div>
     <div class="top-act" id="topAct">
-      <button class="btn btn-ghost sm" id="signOut" hidden>Sign out</button>
+      <button class="btn btn-ghost sm btn-rose-o" id="disableAllBtn">Disable all</button>
+      <button class="btn btn-ghost sm btn-rose-o" id="deleteAllBtn">Delete all</button>
+      <button class="btn btn-ghost sm" id="signOut">Sign out</button>
       <button class="btn btn-gold" data-open-create>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Create key
@@ -499,6 +501,32 @@ dialog[open]{animation:pop .22s ease}
     <div class="dactions">
       <button class="btn btn-ghost" type="button" data-close="timeoutDlg">Cancel</button>
       <button class="btn btn-gold" type="button" id="timeoutGo">Pause key</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Disable all -->
+<dialog id="disableAllDlg" aria-labelledby="disableAllTitle">
+  <div class="dbody">
+    <h2 id="disableAllTitle">Disable all keys?</h2>
+    <p class="lead" id="disableAllBody"></p>
+    <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go — you would re-create keys afterwards.</div>
+    <div class="dactions">
+      <button class="btn btn-ghost" type="button" data-close="disableAllDlg">Cancel</button>
+      <button class="btn btn-rose" type="button" id="disableAllGo">Disable all</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Delete all -->
+<dialog id="deleteAllDlg" aria-labelledby="deleteAllTitle">
+  <div class="dbody">
+    <h2 id="deleteAllTitle">Delete every key?</h2>
+    <p class="lead" id="deleteAllBody"></p>
+    <div class="note rose">This permanently removes all license rows and their activity history. Not recoverable.</div>
+    <div class="dactions">
+      <button class="btn btn-ghost" type="button" data-close="deleteAllDlg">Cancel</button>
+      <button class="btn btn-rose" type="button" id="deleteAllGo">Delete all</button>
     </div>
   </div>
 </dialog>
@@ -1156,7 +1184,51 @@ dialog[open]{animation:pop .22s ease}
   $('#banGo').addEventListener('click', doBan);
   $('#banWhy').addEventListener('keydown', e => { if (e.key === 'Enter') doBan(); });
   $('#timeoutGo').addEventListener('click', doTimeout);
-  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg, disableAllDlg, deleteAllDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+
+  /* ---------- disable all / delete all ---------- */
+  const disableAllDlg = $('#disableAllDlg'), deleteAllDlg = $('#deleteAllDlg');
+  function openDisableAll(){
+    const active = keys.filter(k => k.status === 'active' || k.status === 'unused').length;
+    $('#disableAllBody').innerHTML = `This revokes <b>${active}</b> active/unused ${plural(active, 'key')}.`;
+    disableAllDlg.showModal();
+  }
+  async function doDisableAll(){
+    const btn = $('#disableAllGo'); btn.disabled = true;
+    try {
+      const r = await post('/admin/disable-all', {});
+      disableAllDlg.close();
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast(`Disabled ${r.revoked || 0} ${plural(r.revoked || 0, 'key')}`);
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    finally { btn.disabled = false; }
+  }
+  function openDeleteAll(){
+    const total = keys.length;
+    $('#deleteAllBody').innerHTML = `This deletes <b>${total}</b> ${plural(total, 'key')} and all their PC activity.`;
+    deleteAllDlg.showModal();
+  }
+  async function doDeleteAll(){
+    const btn = $('#deleteAllGo'); btn.disabled = true;
+    try {
+      const r = await post('/admin/delete-all', {});
+      deleteAllDlg.close();
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      selectedId = null; query = ''; actCache = {};
+      render();
+      toast(`Deleted ${r.deleted || 0} ${plural(r.deleted || 0, 'key')}`);
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
+    finally { btn.disabled = false; }
+  }
+  $('#disableAllBtn').addEventListener('click', openDisableAll);
+  $('#disableAllGo').addEventListener('click', doDisableAll);
+  $('#deleteAllBtn').addEventListener('click', openDeleteAll);
+  $('#deleteAllGo').addEventListener('click', doDeleteAll);
 
   /* ---------- engraved rosette background ---------- */
   (function(){

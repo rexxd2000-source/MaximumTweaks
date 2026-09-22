@@ -1089,6 +1089,29 @@ def admin_delete(key: str, _: None = Depends(_admin_guard)):
     return {"ok": True, "deleted": deleted}
 
 
+@app.post("/admin/disable-all")
+def admin_disable_all(_: None = Depends(_admin_guard)):
+    """Revoke every non-revoked key at once (bulk 'start fresh' action).
+
+    Existing customers keep their local session until their next check-in
+    (up to 5 minutes), at which point the server refuses the key and their
+    app locks. Returns how many keys were revoked.
+    """
+    count = _DB.revoke_all()
+    return {"ok": True, "revoked": count}
+
+
+@app.post("/admin/delete-all")
+def admin_delete_all(_: None = Depends(_admin_guard)):
+    """Permanently delete every license row + related activity/log rows.
+
+    Bulk 'start fresh' action. Not recoverable. Returns how many keys were
+    deleted.
+    """
+    count = _DB.delete_all()
+    return {"ok": True, "deleted": count}
+
+
 VALID_PLANS = {"1m", "6m", "life"}
 
 

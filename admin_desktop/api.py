@@ -155,8 +155,16 @@ class AdminClient:
         return self._request("POST", "/admin/unbind", {"key": key})
 
     def delete(self, key: str) -> dict:
-        """Permanently delete a license row. Not recoverable."""
+        """Permanently delete a license. Not recoverable."""
         return self._request("DELETE", "/admin/keys/" + urllib.parse.quote(key))
+
+    def disable_all(self) -> dict:
+        """Bulk: lock every PC using every license (revoke all keys). Keeps rows."""
+        return self._request("POST", "/admin/disable-all")
+
+    def delete_all(self) -> dict:
+        """Bulk: permanently delete every license key and its PC bindings."""
+        return self._request("POST", "/admin/delete-all")
 
 
 def mask_device(device_id: str | None) -> str:

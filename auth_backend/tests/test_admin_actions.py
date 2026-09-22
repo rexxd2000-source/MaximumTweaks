@@ -302,3 +302,61 @@ def test_inspect_unknown_key_is_404():
     r = client.get("/admin/keys/NOPE-NOPE-NOPE-NOPE/inspect",
                    headers=_admin_headers())
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Bulk actions: disable all / delete all
+# ---------------------------------------------------------------------------
+
+def test_disable_all_revokes_every_non_revoked_key():
+    a = _make_key("Alpha")
+    b = _make_key("Beta")
+    _activate(a, DEVICE_A)
+    db.revoke(_make_key("Revoked"), "already gone")
+
+    r = client.post("/admin/disable-all", json={}, headers=_admin_headers())
+    assert r.status_code == 200, r.text
+    assert r.json()["revoked"] == 2  # Alpha + Beta
+
+    assert db.get(a)["status"] == "revoked"
+    assert db.get(b)["status"] == "revoked"
+    assert db.get(a)["revoked_reason"] == "revoked_all"
+    # Per-key audit line exists so the inspect timeline stays truthful.
+    assert "revoked" in [e["event"] for e in _events(a)]
+
+
+def test_disable_all_is_idempotent():
+    key = _make_key()
+    client.post("/admin/disable-all", json={}, headers=_admin_headers())
+    r = client.post("/admin/disable-all", json={}, headers=_admin_headers())
+    assert r.status_code == 200
+    assert r.json()["revoked"] == 0
+
+
+def test_delete_all_removes_everything():
+    keys = [_make_key(f"K{i}") for i in range(3)]
+    for k in keys:
+        _activate(k, DEVICE_A)
+        _checkin(k, DEVICE_A)
+    client.post("/admin/ban", json={"key": keys[0], "reason": "bye"},
+                headers=_admin_headers())
+
+    r = client.post("/admin/delete-all", json={}, headers=_admin_headers())
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == 3
+
+    with db._lock:
+        conn = db._connect()
+        try:
+            for table in ("licenses", "key_activity", "key_blocked", "key_log"):
+                n = db._exec(conn, f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+                assert n == 0, table
+        finally:
+            conn.close()
+
+
+def test_bulk_actions_require_admin():
+    key = _make_key()
+    assert client.post("/admin/disable-all", json={}).status_code == 401
+    assert client.post("/admin/delete-all", json={}).status_code == 401
+    assert db.get(key)["status"] == "unused"

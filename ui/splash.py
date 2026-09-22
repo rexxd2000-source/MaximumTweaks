@@ -425,6 +425,27 @@ class CinematicSplash(QWidget):
         self._server_probe: _ServerProbeThread | None = None
         self._server_timer: QTimer | None = None
         self._server_retry_btn: QPushButton | None = None
+        # When True the splash never paints the server-status line / retry chip
+        # (requirement: the owner doesn't want "CONNECTING TO MAXIMUMTWEAKS ON
+        # RENDER" visible).  The probe itself still runs in the background so
+        # the last_seen heartbeat stays current — all we hide is the drawing.
+        self._hide_server_status = False
+
+    def hide_server_status(self):
+        """Turn off the visible server-status line + retry chip on the splash.
+
+        The liveness probe keeps running silently in the background (it's what
+        keeps the admin "Online now" column fresh), only the rendering is
+        suppressed.  Safe to call any time; later re-enabling via
+        :meth:`show_server_status` repaints immediately.
+        """
+        self._hide_server_status = True
+        self._arm_retry_btn(show=False)
+        self.update()
+
+    def show_server_status(self):
+        self._hide_server_status = False
+        self.update()
 
         # Full-screen update-flow chrome: spinner + the action buttons.
         self._spinner = _RingSpinner(self)
@@ -1458,6 +1479,12 @@ class CinematicSplash(QWidget):
         the exact connection state.  'Connected' is only ever shown after a
         real HTTP response from /health; the waking state backs off for up to
         ~1 minute (Render cold starts) before giving up and offering Retry."""
+        if self._hide_server_status:
+            # Splash server-status hiding (owner preference): the line + retry
+            # chip are suppressed.  The probe itself keeps running (it's what
+            # keeps last_seen fresh), so only the drawing is skipped, not the
+            # background check."""
+            return
         host = self._server_host or (
             urllib.parse.urlsplit(LICENSE_API_URL or "").netloc or
             "license server")

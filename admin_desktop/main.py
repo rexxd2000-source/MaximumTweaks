@@ -1274,6 +1274,16 @@ class AdminMainWindow(QMainWindow):
         create.setCursor(Qt.CursorShape.PointingHandCursor)
         create.clicked.connect(self.open_create)
 
+        kill = QPushButton("  \u2a2f  Disable all")
+        kill.setObjectName("BtnGhost")
+        kill.setCursor(Qt.CursorShape.PointingHandCursor)
+        kill.clicked.connect(self.disable_all)
+
+        wipe = QPushButton("  \u2715  Delete all")
+        wipe.setObjectName("BtnGhost")
+        wipe.setCursor(Qt.CursorShape.PointingHandCursor)
+        wipe.clicked.connect(self.delete_all)
+
         signout = QPushButton("Sign out")
         signout.setObjectName("BtnGhost")
         signout.clicked.connect(self.sign_out)
@@ -1281,6 +1291,8 @@ class AdminMainWindow(QMainWindow):
         lay.addLayout(brand_col)
         lay.addStretch(1)
         lay.addWidget(create)
+        lay.addWidget(kill)
+        lay.addWidget(wipe)
         lay.addWidget(signout)
         return bar
 
@@ -1613,6 +1625,56 @@ class AdminMainWindow(QMainWindow):
 
         def done(result, error):
             self.close()
+
+        self.host.run(task, done)
+
+    def disable_all(self) -> None:
+        n = sum(1 for k in self.keys if not k.get("revoked"))
+        if n <= 0:
+            self.toast_msg("No active keys to disable.")
+            return
+        if QMessageBox.question(
+                self, "Disable ALL keys?",
+                f"This will revoke all {n} active keys at once and sign out "
+                "every PC using them (key rows are kept, nothing is deleted). "
+                "You can re-enable keys afterwards.") \
+                != QMessageBox.StandardButton.Yes:
+            return
+
+        def task():
+            return self.client.disable_all()
+
+        def done(result, error):
+            if error is not None:
+                self._handle_error(error)
+                return
+            self.toast_msg("All keys disabled \u00b7 every PC signed out.")
+            self.refresh()
+
+        self.host.run(task, done)
+
+    def delete_all(self) -> None:
+        n = sum(1 for k in self.keys)
+        if n <= 0:
+            self.toast_msg("No keys to delete.")
+            return
+        if QMessageBox.question(
+                self, "Delete ALL keys?  (IRREVERSIBLE)",
+                f"Permanently delete all {n} license keys and their PC "
+                "bindings. This CANNOT be undone and all customers are "
+                "locked out for good.") \
+                != QMessageBox.StandardButton.Yes:
+            return
+
+        def task():
+            return self.client.delete_all()
+
+        def done(result, error):
+            if error is not None:
+                self._handle_error(error)
+                return
+            self.toast_msg("All keys permanently deleted.")
+            self.refresh()
 
         self.host.run(task, done)
 

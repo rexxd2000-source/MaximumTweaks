@@ -151,6 +151,11 @@ def run_gui():
     # minute) is visible instead of a silent hang.  The probe only calls GET
     # /health — never the key or the local session.
     splash.begin_server_check(LICENSE_API_URL)
+    # Owner preference: keep the "Connecting to Maximum Tweaks on render" line
+    # and its Retry chip off the splash. The probe itself keeps running in the
+    # background (it keeps last_seen fresh, so the admin "Online now" column
+    # stays accurate) — only the rendering is suppressed.
+    splash.hide_server_status()
     # The moment the connection is verified the heartbeat must fire right away
     # (not just on the 5-minute timer), so a freshly-started PC shows as
     # "online now" in the admin panel immediately.
@@ -295,8 +300,29 @@ def run_gui():
         license_ui.relock(win)
 
     license_ui.start_heartbeat(on_refused=_heartbeat_refused, parent=app)
-    sys.exit(app.exec())
 
+    # 'Online now' must survive the window being closed: spawn a detached,
+    # headless background heartbeat so the admin panel keeps this PC online
+    # for as long as the machine stays on. It runs <this exe> --heartbeat with
+    # no GUI and deliberately skips the single-instance mutex (the GUI owns
+    # that), so it coexists with us and keeps running after we exit.
+    try:
+        import subprocess as _spd
+        import sys as _spd_sys
+
+        _exe = _spd_sys.executable
+        _spd.Popen(
+            [_exe, "--cli", "heartbeat", "--minutes", "5"],
+            creationflags=getattr(_spd, "DETACHED_PROCESS", 0x00000008)
+            | getattr(_spd, "CREATE_NO_WINDOW", 0x08000000)
+            | getattr(_spd, "CREATE_NEW_PROCESS_GROUP", 0x00000200),
+            close_fds=True,
+            stdin=_spd.DEVNULL, stdout=_spd.DEVNULL, stderr=_spd.DEVNULL,
+        )
+    except Exception as _spd_exc:
+        print(f"WARN could not spawn background heartbeat: {_spd_exc}")
+
+    sys.exit(app.exec())
 def _risk_star(t):
     return "*" * (RISK_ORDER[t["risk"]] + 1)
 
@@ -543,6 +569,60 @@ def cmd_monitor(seconds: float) -> int:
     return 0
 
 
+def cmd_heartbeat(minutes: float) -> int:
+    """Headless license heartbeat: keep this PC 'Online now' in the admin
+    panel while the machine stays on, even when the GUI window is closed.
+
+    Runs from the HKCU Run startup entry as ``<exe> --heartbeat`` so the PC
+    keeps checking in every ``minutes`` min for as long as the license session
+    stands. Deliberately no GUI and no single-instance mutex here (the GUI owns
+    that mutex) — a pure background keep-alive that survives the app being
+    closed and only stops once the license is refused or there is no session.
+    """
+    import sys as _sys
+    import time as _time
+
+    from engine import license as license_mgr
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # Collapse duplicate spawns (HKCU Run entry + the GUI's detached spawn can
+    # both fire at login) to a single loop. This is a heartbeat-only mutex — a
+    # name deliberately different from the GUI's ``MaximumTweaks.SingleInstance``
+    # so we never contend with it; if we already hold ours, another heartbeat is
+    # running and this copy just exits.
+    import ctypes as _ct
+    try:
+        _hm = _ct.windll.kernel32.CreateMutexW(
+            None, False, "Local\\MaximumTweaks.Heartbeat")
+        if _ct.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            print("HEARTBEAT another copy already running — exiting")
+            return 0
+    except Exception:
+        pass  # no heartbeat mutex available (non-Windows test env) — just run
+
+    interval = max(1.0, float(minutes))
+    print(f"HEARTBEAT started: checkin every {interval:g} min", flush=True)
+    while True:
+        status, message = license_mgr.checkin()
+        if status == "ok":
+            print("HEARTBEAT ok — 'Online now' refreshed", flush=True)
+        elif status == "refused":
+            print(f"HEARTBEAT refused — stopping: {message}", flush=True)
+            return 1
+        else:
+            # "offline" (no session stored or server unreachable). We only stop
+            # when there is genuinely no session; transient network blips must
+            # not kill the keep-alive, so retry on the interval.
+            if not license_mgr.session():
+                print("HEARTBEAT no session — PC is Offline; stopping",
+                      flush=True)
+                return 1
+            print(f"HEARTBEAT offline (transient) — retrying: {message}",
+                  flush=True)
+        _time.sleep(interval * 60)
+
+
 def cmd_verify(target: str) -> int:
     """Side-by-side fidelity check: our traceroute vs native `tracert`."""
     import re as _re
@@ -649,6 +729,12 @@ def main(argv=None):
     p_vf.add_argument("target")
     p_mon = sub.add_parser("monitor", help="run detect + full monitoring (diagnostic)")
     p_mon.add_argument("--seconds", type=float, default=12.0)
+    p_hr = sub.add_parser("heartbeat", help="headless license heartbeat: keep the "
+                                       "current PC 'Online now' in the admin "
+                                       "panel while the machine stays on "
+                                       "(run from the HKCU Run startup entry; "
+                                       "no GUI or single-instance mutex)")
+    p_hr.add_argument("--minutes", type=float, default=5.0)
 
     # Unknown top-level flags (e.g. --minimized/--autostart set by the HKCU Run
     # entry) must never fail the launch — they're consumed inside run_gui().
@@ -682,6 +768,8 @@ def main(argv=None):
         raise SystemExit(cmd_verify(args.target))
     elif args.command == "monitor":
         raise SystemExit(cmd_monitor(args.seconds))
+    elif args.command == "heartbeat":
+        raise SystemExit(cmd_heartbeat(args.minutes))
     else:
         parser.print_help()
 

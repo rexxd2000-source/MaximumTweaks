@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, shell } = require('electron');
 
 const APP_URL = process.env.SIGIL_URL || 'https://maximumtweaks.onrender.com/?admin=discord';
 const ALLOW = ['https://maximumtweaks.onrender.com', 'https://discord.com'];
+const SPLASH = null;
 
 function inAllowlist(url) {
   return ALLOW.some((origin) => url.startsWith(origin));
@@ -15,6 +16,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: '#061a1d',
     title: 'Sigil - License admin',
+    show: false,
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

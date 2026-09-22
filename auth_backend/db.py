@@ -516,7 +516,54 @@ class LicenseDB:
                 conn,
                 "DELETE FROM licenses WHERE license_key = ?",
                 (license_key,))
+            if cur.rowcount:
+                self._exec(conn, "DELETE FROM key_activity"
+                           " WHERE license_key = ?", (license_key,))
+                self._exec(conn, "DELETE FROM key_blocked"
+                           " WHERE license_key = ?", (license_key,))
+                self._exec(conn, "DELETE FROM key_log"
+                           " WHERE license_key = ?", (license_key,))
             return cur.rowcount
+        with self._lock:
+            n = self._run_with_retry(_fn)
+        return n if n is not None else 0
+
+    def revoke_all(self) -> int:
+        """Revoke every key that isn't already revoked/expired.
+
+        Bulk admin-ops: each key gets a per-key audit log line (rather than
+        one anonymous row) so the inspect timeline stays truthful. Returns
+        the number of keys revoked.
+        """
+        def _fn(conn):
+            now = _utc_now()
+            rows = self._exec(
+                conn, "SELECT license_key FROM licenses"
+                " WHERE status IN ('unused', 'active')").fetchall()
+            keys = [r["license_key"] for r in rows]
+            for key in keys:
+                self._exec(
+                    conn, "UPDATE licenses SET status = 'revoked',"
+                    " revoked_at = ?, revoked_reason = 'revoked_all'"
+                    " WHERE license_key = ?", (now, key))
+                self._insert_log(conn, key, "revoked",
+                                 "Revoked via Disable all.")
+            return len(keys)
+        with self._lock:
+            n = self._run_with_retry(_fn)
+        return n if n is not None else 0
+
+    def delete_all(self) -> int:
+        """Permanently remove every license row and its related activity,
+        blocked and log rows. Admin-ops only (fresh-start). Returns the
+        number of license rows deleted."""
+        def _fn(conn):
+            total = self._exec(conn, "SELECT COUNT(*) AS n FROM licenses"
+                              ).fetchone()["n"]
+            for table in ("key_activity", "key_blocked", "key_log",
+                          "licenses"):
+                self._exec(conn, f"DELETE FROM {table}")
+            return int(total or 0)
         with self._lock:
             n = self._run_with_retry(_fn)
         return n if n is not None else 0
