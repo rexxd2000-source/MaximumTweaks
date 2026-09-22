@@ -1071,7 +1071,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     const susp = !!(meta.suspended_until && utc(meta.suspended_until) && utc(meta.suspended_until).getTime() > Date.now());
     const blockedByHw = {};
     (info.blocked || []).forEach(b => { blockedByHw[b.pc_hwid] = b.reason || 'banned'; });
-    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || '&mdash;');
+    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || 'Unknown');
     let pcRows = (info.pcs || []).map(pc => {
       const ls = utc(pc.last_seen);
       const seen = ls ? `Seen ${ago(minsSince(ls))}` : 'Not seen yet';
