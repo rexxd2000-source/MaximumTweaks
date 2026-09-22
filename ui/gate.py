@@ -230,7 +230,7 @@ class _ActivationPage(QWidget):
 
         card = QFrame()
         card.setObjectName("ActivationCard")
-        card.setFixedWidth(500)
+        card.setFixedWidth(420)
         card.setFrameShape(QFrame.Shape.NoFrame)
         card.setLineWidth(0)
         card.setStyleSheet(
@@ -239,14 +239,14 @@ class _ActivationPage(QWidget):
             "   stop:0 #141026, stop:1 #100d1c);"
             " border: 1px solid rgba(139,124,246,.16); border-radius: 16px; }")
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(34, 38, 34, 50)
+        cl.setContentsMargins(34, 38, 34, 30)
         cl.setSpacing(0)
 
         icon = QLabel("\u26ed")
-        icon.setFixedSize(52, 52)
+        icon.setFixedSize(46, 46)
         icon.setAlignment(Qt.AlignCenter)
         icon.setStyleSheet(
-            f"color: #9f7bff; font-size: 22px; border-radius: 12px;"
+            f"color: #9f7bff; font-size: 20px; border-radius: 12px;"
             f" background: qradialgradient(cx:.3,cy:.25,radius:1,"
             f"   fx:.3,fy:.25, stop:0 rgba(159,123,255,.35),"
             f"   stop:1 rgba(124,92,255,.08));"
@@ -257,10 +257,10 @@ class _ActivationPage(QWidget):
         title = QLabel("Activate Maximum Tweaks")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
-            f"font-family: {DISPLAY}; font-weight: 700; font-size: 26px;"
-            f" color: #eae7f8;")
+            f"font-family: {DISPLAY}; font-weight: 600; font-size: 20px;"
+            f" letter-spacing: -0.01em; color: #eae7f8;")
         cl.addWidget(title)
-        cl.addSpacing(12)
+        cl.addSpacing(10)
 
         desc = QLabel(
             "Enter your license key to continue. This app is licensed per "
@@ -277,12 +277,12 @@ class _ActivationPage(QWidget):
         self.key_input = QLineEdit()
         self.key_input.setPlaceholderText("XXXX-XXXX-XXXX-XXXX")
         self.key_input.setAlignment(Qt.AlignCenter)
-        self.key_input.setMinimumHeight(52)
+        self.key_input.setMinimumHeight(48)
         self.key_input.setMaxLength(19)
         self.key_input.setStyleSheet(
             f"QLineEdit {{ background: rgba(0,0,0,.35);"
             f" border: 1px solid rgba(139,124,246,.32); border-radius: 10px;"
-            f" padding: 0 14px; font-family: {MONO}; font-size: 14px;"
+            f" padding: 0 16px; font-family: {MONO}; font-size: 14px;"
             f" letter-spacing: .08em; color: #eae7f8; }}"
             f"QLineEdit:focus {{ border: 1px solid #9f7bff;"
             f" background: rgba(0,0,0,.4); }}")
@@ -292,12 +292,12 @@ class _ActivationPage(QWidget):
 
         self.activate_btn = QPushButton("Activate license")
         self.activate_btn.setCursor(Qt.PointingHandCursor)
-        self.activate_btn.setMinimumHeight(58)
+        self.activate_btn.setMinimumHeight(46)
         self.activate_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #7c5cff, stop:1 #4c2fb8); color: #fff; border: none;"
-            " border-radius: 12px; font-family: " + DISPLAY +
-            "; font-weight: 700; font-size: 15.5px; }"
+            " border-radius: 10px; font-family: " + DISPLAY +
+            "; font-weight: 600; font-size: 14.5px; }"
             "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #8a6cff, stop:1 #5a3cc8); }"
             "QPushButton:pressed { background: #4c2fb8; }"
@@ -375,7 +375,7 @@ class _ActivationPage(QWidget):
             "QPushButton:hover { color: #9f7bff; }")
         support.clicked.connect(self.support_requested.emit)
         cl.addWidget(support, 0, Qt.AlignHCenter)
-        cl.addSpacing(16)
+        cl.addSpacing(20)
 
         fine = QLabel(
             "Your license key is verified by the Maximum Tweaks license "
@@ -386,10 +386,10 @@ class _ActivationPage(QWidget):
         fine.setStyleSheet(
             f"font-family: {MONO}; font-size: 10.5px; line-height: 1.6;"
             f" color: #524d6b; border-top: 1px solid rgba(139,124,246,.16);"
-            f" padding-top: 14px;")
-        fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 14)
+            f" padding-top: 16px;")
+        fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 23)
         cl.addWidget(fine)
-        cl.addSpacing(18)
+        cl.addSpacing(8)
 
         # Not-configured note (dev only; never visible in a frozen build).
         self.config_note = QLabel(
