@@ -255,7 +255,7 @@ dialog{
   background:linear-gradient(180deg,#0f2e33,#08201f);
   box-shadow:0 40px 120px -20px rgba(0,0,0,.75);
 }
-#inspectDlg{width:min(780px,calc(100vw - 40px));max-height:calc(100vh - 80px);overflow:auto}
+#inspectDlg{position:relative;width:min(780px,calc(100vw - 40px));max-height:calc(100vh - 80px);overflow:auto}
 @media (max-width:860px){#inspectDlg{width:calc(100vw - 28px)}}
 #inspectDlg .tbl th,#inspectDlg .tbl td{vertical-align:top;padding:12px 14px;border-top:1px solid var(--line);line-height:1.5}
 #inspectDlg .tbl th{padding-bottom:9px}
@@ -521,7 +521,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   <div class="dbody">
     <h2 id="disableAllTitle">Disable all keys?</h2>
     <p class="lead" id="disableAllBody"></p>
-    <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go &#226;&#8364;&#8221; you would re-create keys afterwards.</div>
+    <div class="note rose">Every active key stops working on the next check-in (within ~5 minutes). This is not recoverable in one go &mdash; you would re-create keys afterwards.</div>
     <div class="dactions">
       <button class="btn btn-ghost" type="button" data-close="disableAllDlg">Cancel</button>
       <button class="btn btn-rose" type="button" id="disableAllGo">Disable all</button>
@@ -547,6 +547,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   <div class="dbody dbody-wide">
     <div class="dh">
       <div><h2 id="inspectTitle">Inspect key</h2><p class="lead" id="inspectWho"></p></div>
+    <button type="button" class="dlg-x" id="inspectClose" aria-label="Close">&#10005;</button>
       <span class="pill active" id="inspectPill">Active</span>
     </div>
     <div id="inspectBody"></div>
@@ -737,7 +738,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     } else {
       act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button><span class="state ${ban?'banned':st}">${ban?'Banned':(st === 'expired' ? 'Expired' : 'Revoked')}</span></div>`;
     }
-    if (susp) last = `<span class="state suspended">Paused &#194;&#183; ${hrsLeft(k.susUntil)}</span>`;
+    if (susp) last = `<span class="state suspended">Paused &middot; ${hrsLeft(k.susUntil)}</span>`;
     else if (ban) last = '<span class="state banned">Banned</span>';
     const over = used > k.max;
     return `<li class="row ${k.id===selectedId?'sel':''} ${k.id===flashId?'flash':''}" data-id="${esc(k.key)}" tabindex="0" ${k.id===selectedId?'aria-current="true"':''}>
@@ -797,7 +798,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if (left !== null) expSub = left > 0 ? 'in ' + plural(left,'day') : plural(-left,'day') + ' ago';
     let lastTxt = 'Not used yet';
     if (lm != null) lastTxt = st === 'revoked' ? 'Signed out' : (lm < 11 ? 'Online now' : ago(lm));
-    if (susp) lastTxt = `Paused &#226;&#8364;&#8221; resumes ${hrsLeft(k.susUntil)}`;
+    if (susp) lastTxt = `Paused &mdash; resumes ${hrsLeft(k.susUntil)}`;
     const activeDays = Array.from({length:30}, (_,i) => dayCountOf(k, i) > 0).filter(Boolean).length;
 
     let banner = '';
@@ -994,7 +995,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
       render();
-      toast('Key unbanned &#226;&#8364;&#8221; activations allowed again');
+      toast('Key unbanned &mdash; activations allowed again');
     } catch (e) { if (e && e.message !== 'session') toast(e.message); }
   }
 
@@ -1011,7 +1012,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     $('#timeoutBody').innerHTML = `<b>${esc(k.who)}</b> (${esc(k.key)}) is paused for the chosen time. Their app stays locked until the pause ends on its own.`;
     renderTimeoutChips();
     timeoutDlg.showModal();
-    if (suspOf(k)) $('#timeoutBody').innerHTML += `<div class="note amber">This key is already paused &#226;&#8364;&#8221; picking a new length replaces it.</div>`;
+    if (suspOf(k)) $('#timeoutBody').innerHTML += `<div class="note amber">This key is already paused &mdash; picking a new length replaces it.</div>`;
   }
   async function doTimeout(){
     const btn = $('#timeoutGo'); btn.disabled = true;
@@ -1034,7 +1035,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
       render();
-      toast('Key resumed &#226;&#8364;&#8221; app unlocks on the next check-in');
+      toast('Key resumed &mdash; app unlocks on the next check-in');
     } catch (e) { if (e && e.message !== 'session') toast(e.message); }
   }
   async function doUnrevoke(){
@@ -1052,12 +1053,12 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   /* ---------- inspect ---------- */
   async function openInspect(key){
     const k = keyOf(key); if (!k) return;
-    $('#inspectWho').innerHTML = `<b>${esc(k.who)}</b> &#194;&#183; ${esc(k.key)}`;
+    $('#inspectWho').innerHTML = `<b>${esc(k.who)}</b> &middot; ${esc(k.key)}`;
     const pill = $('#inspectPill');
     const ban = isBanned(k), susp = suspOf(k);
     pill.textContent = susp ? 'Suspended' : (ban ? 'Banned' : (k.status === 'expired' ? 'Expired' : (k.status === 'revoked' ? 'Revoked' : 'Active')));
     pill.className = 'pill ' + (susp ? 'suspended' : ban ? 'revoked' : k.status);
-    $('#inspectBody').innerHTML = '<p class="mut">Loading&#226;&#8364;&#166;</p>';
+    $('#inspectBody').innerHTML = '<p class="mut">Loading&hellip;</p>';
     inspectDlg.showModal();
     try {
       const r = await api('/admin/keys/' + encodeURIComponent(key) + '/inspect');
@@ -1071,7 +1072,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     const susp = !!(meta.suspended_until && utc(meta.suspended_until) && utc(meta.suspended_until).getTime() > Date.now());
     const blockedByHw = {};
     (info.blocked || []).forEach(b => { blockedByHw[b.pc_hwid] = b.reason || 'banned'; });
-    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || '&#226;&#8364;&#8221;');
+    const stMeta = meta.status === 'unused' ? 'active' : (meta.status || '&mdash;');
     let pcRows = (info.pcs || []).map(pc => {
       const ls = utc(pc.last_seen);
       const seen = ls ? `Seen ${ago(minsSince(ls))}` : 'Not seen yet';
@@ -1081,7 +1082,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
         <td><span class="live">Active</span><span class="dl">${seen}</span></td>
         <td>${pc.days_on || 0}<span class="dl">of 30 at least once</span></td>
         <td>${lock ? '<span style="color:var(--rose)">Locked</span>' : '<span class="live">OK</span>'}</td>
-        <td>${lock ? esc(lock) : '&#226;&#8364;&#8221;'}</td>
+        <td>${lock ? esc(lock) : '&mdash;'}</td>
       </tr>`;
     }).join('');
     if (!pcRows) pcRows = '<tr><td colspan="5" class="mut">No PCs have checked in yet.</td></tr>';
@@ -1096,15 +1097,15 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if (!logRows) logRows = '<p class="mut">No events logged for this key yet.</p>';
     return `
       <div class="facts">
-        <div><dt>Customer</dt><dd>${esc(meta.customer || '&#226;&#8364;&#8221;')}</dd></div>
+        <div><dt>Customer</dt><dd>${esc(meta.customer || '&mdash;')}</dd></div>
         <div><dt>Plan</dt><dd>${esc((PLAN[meta.plan] ? PLAN[meta.plan].label : 'Lifetime'))}</dd></div>
         <div><dt>Status</dt><dd>${esc(ban ? 'Banned' : (susp ? 'Suspended' : stMeta))}</dd></div>
-        <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : '&#226;&#8364;&#8221;'}</dd></div>
-        <div><dt>Created</dt><dd>${fmt(utc(meta.created_at)) || '&#226;&#8364;&#8221;'}</dd></div>
+        <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : '&mdash;'}</dd></div>
+        <div><dt>Created</dt><dd>${fmt(utc(meta.created_at)) || '&mdash;'}</dd></div>
         <div><dt>Expires</dt><dd>${fmt(utc(meta.expires_at)) || 'Never'}</dd></div>
       </div>
       ${ban ? `<div class="note rose">This key is banned. The next time any of these PCs checks in, it is refused and stays locked.</div>` : ''}
-      ${susp ? `<div class="note amber">Paused by the operator ${fmt(utc(meta.suspended_until))} &#194;&#183; ${hrsLeft(utc(meta.suspended_until))}. The app stays locked on this key until then.</div>` : ''}
+      ${susp ? `<div class="note amber">Paused by the operator ${fmt(utc(meta.suspended_until))} &middot; ${hrsLeft(utc(meta.suspended_until))}. The app stays locked on this key until then.</div>` : ''}
       <div class="sec">
         <h3>PCs linked to this key</h3>
         <p class="sum">Machines bound to this key and whether they can still check in.</p>
@@ -1115,7 +1116,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       </div>
       <div class="sec">
         <h3>Key log</h3>
-        <p class="sum">Every event on this key &#226;&#8364;&#8221; activations, check-ins, revokes, bans and pauses.</p>
+        <p class="sum">Every event on this key &mdash; activations, check-ins, revokes, bans and pauses.</p>
         <dl class="log" id="inspectLog">${logRows}</dl>
       </div>`;
   }
@@ -1254,6 +1255,12 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){close(e)}})
 var iv=setInterval(function(){document.querySelectorAll('.modal').forEach(function(m){if(m.querySelector('.cls'))return;var x=document.createElement('span');x.className='cls';x.textContent='✕';x.title='Close';x.onclick=close;m.appendChild(x)});var ie=null;setInterval(function(){if(document.querySelector('.modal.open'))clearInterval(ie)},2000)},500);
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('modal'))close(e)});
 })();
+</script>
+<style>.dlg-x{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--gold);font-size:20px;line-height:1;cursor:pointer;z-index:10}.dlg-x:hover{color:#ffd}</style>
+<script>
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
+var _ix=document.getElementById('inspectClose');
+if(_ix){ _ix.addEventListener('click', function(){ var d=document.getElementById('inspectDlg'); if(d && d.open) d.close(); }); }
 </script>
 </body>
 </html>
