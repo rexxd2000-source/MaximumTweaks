@@ -1,25 +1,26 @@
 {
-  "name": "sigil-admin",
+  "name": "max-manager",
   "version": "1.0.0",
-  "description": "Sigil license admin for Maximum Tweaks",
+  "description": "Max Manager license admin for Maximum Tweaks",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win portable"
   },
   "build": {
-    "appId": "com.maximumtweaks.sigiladmin",
-    "productName": "Sigil Admin",
+    "appId": "com.maximumtweaks.maxmanager",
+    "productName": "Max Manager",
     "files": [
       "main.js"
     ],
     "win": {
       "target": [
         "portable"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "portable": {
-      "artifactName": "SigilAdmin.exe"
+      "artifactName": "MaxManager.exe"
     }
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 ﻿const { app, BrowserWindow, Menu, shell } = require('electron');
 
-const APP_URL = process.env.SIGIL_URL || 'https://maximumtweaks.onrender.com/?admin=discord';
+const APP_URL = process.env.MAX_MANAGER_URL || process.env.SIGIL_URL || 'https://maximumtweaks.onrender.com/?admin=discord';
 const ALLOW = ['maximumtweaks.onrender.com', 'discord.com'];
 
 function inAllowlist(url) {
@@ -19,7 +19,7 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     backgroundColor: '#061a1d',
-    title: 'Maximum Tweaks - License admin',
+    title: 'Max Manager - License admin',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {

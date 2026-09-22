@@ -1,4 +1,4 @@
-"""Maximum Tweaks Admin - "Sigil" theme: teal surface, gold accents, serif.
+"""Maximum Tweaks Admin - "Max Manager" theme: teal surface, gold accents, serif.
 
 Design tokens taken from the key-manager.html mockup (teal/ink background,
 gold serif headings, cream ink, live-green/warn-amber/rose states, IBM Plex

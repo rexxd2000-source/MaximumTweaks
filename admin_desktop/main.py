@@ -1,4 +1,4 @@
-"""Maximum Tweaks Admin - "Sigil" key manager (desktop).
+"""Maximum Tweaks Admin - "Max Manager" key manager (desktop).
 
 A native port of the key-manager.html mockup: teal/ink surfaces, gold serif
 headings, plan chips, per-key 30-day activity strips, a sticky detail panel
@@ -36,7 +36,7 @@ from .theme import (
 )
 from .theme import MONO, SANS, SERIF
 
-APP_NAME = "Sigil"
+APP_NAME = "Max Manager"
 DEFAULT_URL = "https://maximumtweaks.onrender.com"
 
 T = SIGIL
@@ -755,7 +755,7 @@ class LoginDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(14)
-        title = QLabel("Sigil")
+        title = QLabel("Max Manager")
         title.setObjectName("DialogTitle")
         sub = QLabel("Licence keys for Maximum Tweaks")
         sub.setObjectName("DlgHint")
@@ -1262,7 +1262,7 @@ class AdminMainWindow(QMainWindow):
 
         brand_col = QVBoxLayout()
         brand_col.setSpacing(0)
-        brand = QLabel("Sigil")
+        brand = QLabel("Max Manager")
         brand.setObjectName("Brand")
         sub = QLabel("LICENSE ADMIN")
         sub.setObjectName("BrandSub")
@@ -1587,7 +1587,7 @@ class AdminMainWindow(QMainWindow):
             return
 
         def task():
-            return self.client.revoke(key, "revoked from Sigil admin")
+            return self.client.revoke(key, "revoked from Max Manager")
 
         def done(result, error):
             if error is not None:
