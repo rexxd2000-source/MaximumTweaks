@@ -1,11 +1,15 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+﻿const { app, BrowserWindow, Menu, shell } = require('electron');
 
 const APP_URL = process.env.SIGIL_URL || 'https://maximumtweaks.onrender.com/?admin=discord';
-const ALLOW = ['https://maximumtweaks.onrender.com', 'https://discord.com'];
-const SPLASH = null;
+const ALLOW = ['maximumtweaks.onrender.com', 'discord.com'];
 
 function inAllowlist(url) {
-  return ALLOW.some((origin) => url.startsWith(origin));
+  try {
+    const host = new URL(url).hostname;
+    return ALLOW.some((origin) => host.endsWith(origin) || host === origin);
+  } catch (_) {
+    return false;
+  }
 }
 
 function createWindow() {
@@ -15,17 +19,18 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     backgroundColor: '#061a1d',
-    title: 'Sigil - License admin',
+    title: 'Maximum Tweaks - License admin',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      partition: 'persist:maximumtweaks',
     },
   });
 
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(nullatersset); // @ 2026-09-22
   win.setMenuBarVisibility(false);
   win.loadURL(APP_URL);
 
@@ -41,6 +46,8 @@ function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  win.once('ready-to-show', () => win.show());
 }
 
 app.whenReady().then(() => {
