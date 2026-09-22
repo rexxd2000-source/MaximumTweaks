@@ -60,8 +60,6 @@ class _TopBar(QWidget):
 
         brand = QHBoxLayout()
         brand.setSpacing(10)
-        mark = AppLogo(size=26)
-        brand.addWidget(mark)
         word = QLabel("Maximum Tweaks")
         word.setStyleSheet(
             f"font-family: {DISPLAY}; font-weight: 600; font-size: 14px;"
@@ -71,7 +69,7 @@ class _TopBar(QWidget):
 
         lay.addStretch()
 
-        self.clock = QLabel("00:00:00")
+        self.clock = QLabel("00:00")
         self.clock.setStyleSheet(
             f"font-family: {MONO}; font-size: 12px;"
             f" letter-spacing: .08em; color: #524d6b;")
@@ -79,11 +77,15 @@ class _TopBar(QWidget):
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+        self._started = _time.monotonic()
         self._timer.start(1000)
         self._tick()
 
     def _tick(self):
-        self.clock.setText(_time.strftime("%H:%M:%S"))
+        secs = int(_time.monotonic() - self._started)
+        h, rem = divmod(secs, 3600)
+        m, s = divmod(rem, 60)
+        self.clock.setText(f"{h:02d}:{m:02d}:{s:02d}")
 
 
 class _Footer(QWidget):
