@@ -547,7 +547,6 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   <div class="dbody dbody-wide">
     <div class="dh">
       <div><h2 id="inspectTitle">Inspect key</h2><p class="lead" id="inspectWho"></p></div>
-    <button type="button" class="dlg-x" id="inspectClose" aria-label="Close">&#10005;</button>
       <span class="pill active" id="inspectPill">Active</span>
     </div>
     <div id="inspectBody"></div>
@@ -1097,7 +1096,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if (!logRows) logRows = '<p class="mut">No events logged for this key yet.</p>';
     return `
       <div class="facts">
-        <div><dt>Customer</dt><dd>${esc(meta.customer || '&mdash;')}</dd></div>
+        <div><dt>Customer</dt><dd>${esc(meta.customer || '(unnamed)')}</dd></div>
         <div><dt>Plan</dt><dd>${esc((PLAN[meta.plan] ? PLAN[meta.plan].label : 'Lifetime'))}</dd></div>
         <div><dt>Status</dt><dd>${esc(ban ? 'Banned' : (susp ? 'Suspended' : stMeta))}</dd></div>
         <div><dt>Max PCs</dt><dd>${meta.max_pcs != null ? meta.max_pcs : '&mdash;'}</dd></div>
@@ -1129,7 +1128,10 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     try {
       await post('/admin/login', { token: t });
       $('#tok').value = ''; $('#tokErr').textContent = '';
+      await new Promise(r => setTimeout(r, 350));
       start();
+      try { await refreshAll(); if (!keys.length) { await new Promise(r => setTimeout(r, 600)); await refreshAll(); } }
+      catch (e) { if (e && e.message !== 'session') toast(e.message); }
     } catch (e) { $('#tokErr').textContent = (e && e.message === 'session') ? '' : (e.message || 'Could not sign in.'); }
     finally { btn.disabled = false; }
   });
@@ -1187,7 +1189,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   $('#banGo').addEventListener('click', doBan);
   $('#banWhy').addEventListener('keydown', e => { if (e.key === 'Enter') doBan(); });
   $('#timeoutGo').addEventListener('click', doTimeout);
-  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg, disableAllDlg, deleteAllDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+  [createDlg, revokeDlg, banDlg, timeoutDlg, inspectDlg, disableAllDlg, deleteAllDlg].forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); })); document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
 
   /* ---------- disable all / delete all ---------- */
   const disableAllDlg = $('#disableAllDlg'), deleteAllDlg = $('#deleteAllDlg');
@@ -1256,11 +1258,8 @@ var iv=setInterval(function(){document.querySelectorAll('.modal').forEach(functi
 document.addEventListener('click',function(e){if(e.target.classList&&e.target.classList.contains('modal'))close(e)});
 })();
 </script>
-<style>.dlg-x{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--gold);font-size:20px;line-height:1;cursor:pointer;z-index:10}.dlg-x:hover{color:#ffd}</style>
 <script>
 document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); } });
-var _ix=document.getElementById('inspectClose');
-if(_ix){ _ix.addEventListener('click', function(){ var d=document.getElementById('inspectDlg'); if(d && d.open) d.close(); }); }
 </script>
 </body>
 </html>
