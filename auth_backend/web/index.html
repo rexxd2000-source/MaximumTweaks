@@ -404,7 +404,7 @@ dialog[open]{animation:pop .22s ease}
         <label class="search">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <input id="q" type="search" placeholder="Search name or key" aria-label="Search keys" autocomplete="off">
-    <button class="btn btn-ghost sm" type="button" id="refreshBtn" title="Fetch the latest from the server (same as the auto 60s refresh)" onclick="  const refreshBtnWire = () => {
+    <button class="btn btn-gold sm" type="button" id="refreshBtn" title="Fetch the latest from the server (same as the auto 60s refresh)" onclick="  const refreshBtnWire = () => {
     const rr = document.getElementById('refreshBtn');
     if (rr && !rr.dataset.wired) {
       rr.dataset.wired = '1';
@@ -1221,7 +1221,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   }
   function openDeleteAll(){
     const total = keys.length;
-    $('#deleteAllBody').innerHTML = `This deletes <b>${total}</b> ${plural(total, 'key')} and all their PC activity.`;
+    $('#deleteAllBody').innerHTML = `This <b>revokes EVERY key</b> - wipes them from Neon: each user must get a fresh code from your Discord. Deletes <b>${total}</b> ${plural(total, 'key')} and all their PC activity.`;
     deleteAllDlg.showModal();
   }
   async function doDeleteAll(){
@@ -1259,4 +1259,5 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
 </script>
 </body>
 </html>
+
 
