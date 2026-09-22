@@ -295,6 +295,20 @@ class AppLogo(QWidget):
             self._pixmap = QPixmap()  # fall back to the painted 'R'
         self.fetch_remote()
 
+    def __del__(self):
+        self._shutdown_worker()
+
+    def _shutdown_worker(self):
+        worker = self._worker
+        self._worker = None
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.quit()
+                    worker.wait(2000)
+            except RuntimeError:
+                pass
+
     def fetch_remote(self):
         """Refresh the artwork from the website in the background."""
         if self._worker is not None:

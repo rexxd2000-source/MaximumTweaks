@@ -41,6 +41,7 @@ from config.app_config import (
 from engine import license as license_mgr
 from ui.license import LicenseActivateWorker, LicenseHeartbeatWorker, \
     publish_identity, mask_key
+from ui.monitor_widgets import AppLogo
 from ui.widgets import qss_rgba, toast
 
 MONO = '"JetBrains Mono", "Cascadia Mono", monospace'
@@ -51,8 +52,7 @@ DISPLAY = '"Space Grotesk", "Segoe UI", sans-serif'
 # ---------------------------------------------------------------------------
 
 class _TopBar(QWidget):
-    def __init__(self, title_color="#9f7bff", mark_from="#7c5cff",
-                 mark_to="#4c2fb8", glow="124,92,255", parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(32, 22, 32, 22)
@@ -60,16 +60,7 @@ class _TopBar(QWidget):
 
         brand = QHBoxLayout()
         brand.setSpacing(10)
-        mark = QLabel("M")
-        mark.setFixedSize(26, 26)
-        mark.setAlignment(Qt.AlignCenter)
-        mark.setStyleSheet(
-            f"color: #fff; font-size: 12px; font-weight: 700; border-radius: 7px;"
-            f" font-family: {MONO};"
-            f" background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
-            f" stop:0 {mark_from}, stop:1 {mark_to});"
-            f" border: 0px solid transparent;")
-        mark.setAttribute(Qt.WA_TransparentForMouseEvents)
+        mark = AppLogo(size=26)
         brand.addWidget(mark)
         word = QLabel("Maximum Tweaks")
         word.setStyleSheet(
@@ -384,10 +375,10 @@ class _ActivationPage(QWidget):
         fine.setAlignment(Qt.AlignCenter)
         fine.setWordWrap(True)
         fine.setStyleSheet(
-            f"font-family: {MONO}; font-size: 10.5px; line-height: 1.6;"
+            f"font-family: {MONO}; font-size: 11px; line-height: 1.7;"
             f" color: #524d6b; border-top: 1px solid rgba(139,124,246,.16);"
             f" padding-top: 16px;")
-        fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 23)
+        fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 30)
         cl.addWidget(fine)
         cl.addSpacing(8)
 
