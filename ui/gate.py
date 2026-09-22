@@ -233,17 +233,9 @@ class _ActivationPage(QWidget):
         cl.setContentsMargins(34, 38, 34, 30)
         cl.setSpacing(0)
 
-        icon = QLabel("\u26ed")
-        icon.setFixedSize(46, 46)
-        icon.setAlignment(Qt.AlignCenter)
-        icon.setStyleSheet(
-            f"color: #9f7bff; font-size: 20px; border-radius: 12px;"
-            f" background: qradialgradient(cx:.3,cy:.25,radius:1,"
-            f"   fx:.3,fy:.25, stop:0 rgba(159,123,255,.35),"
-            f"   stop:1 rgba(124,92,255,.08));"
-            f" border: 1px solid rgba(139,124,246,.32);")
+        icon = AppLogo(size=52)
         cl.addWidget(icon, 0, Qt.AlignHCenter)
-        cl.addSpacing(18)
+        cl.addSpacing(20)
 
         title = QLabel("Activate Maximum Tweaks")
         title.setAlignment(Qt.AlignCenter)
@@ -360,10 +352,15 @@ class _ActivationPage(QWidget):
         support.setCursor(Qt.PointingHandCursor)
         support.setFlat(True)
         support.setStyleSheet(
-            "QPushButton { background: transparent; border: none;"
-            " color: #8b87a3; font-family: " + MONO +
+            "QPushButton { background: rgba(124,92,255,.07);"
+            " border: 1px solid rgba(139,124,246,.38);"
+            " border-radius: 14px; padding: 7px 18px;"
+            " color: #9f7bff; font-family: " + MONO +
             "; font-size: 12px; }"
-            "QPushButton:hover { color: #9f7bff; }")
+            "QPushButton:hover { background: rgba(124,92,255,.14);"
+            " border: 1px solid rgba(159,123,255,.65);"
+            " box-shadow: 0 0 14px rgba(124,92,255,.45);"
+            " color: #c3b0ff; }")
         support.clicked.connect(self.support_requested.emit)
         cl.addWidget(support, 0, Qt.AlignHCenter)
         cl.addSpacing(20)

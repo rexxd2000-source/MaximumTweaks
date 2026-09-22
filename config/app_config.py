@@ -231,7 +231,7 @@ ADMIN_NOTE = (
 )
 
 # Official community invite link (enables the Join button / sidebar).
-DISCORD_INVITE_URL = "https://discord.gg/CFeTWgGdU"
+DISCORD_INVITE_URL = "https://discord.gg/maximum-optimizations"
 
 
 # License activation (the only access control). A key binds to a device via
