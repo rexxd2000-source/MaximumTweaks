@@ -239,7 +239,7 @@ class _ActivationPage(QWidget):
             "   stop:0 #141026, stop:1 #100d1c);"
             " border: 1px solid rgba(139,124,246,.16); border-radius: 16px; }")
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(34, 38, 34, 44)
+        cl.setContentsMargins(34, 38, 34, 50)
         cl.setSpacing(0)
 
         icon = QLabel("\u26ed")
@@ -389,7 +389,7 @@ class _ActivationPage(QWidget):
             f" padding-top: 14px;")
         fine.setMinimumHeight(fine.heightForWidth(card.width() - 68) + 14)
         cl.addWidget(fine)
-        cl.addSpacing(6)
+        cl.addSpacing(18)
 
         # Not-configured note (dev only; never visible in a frozen build).
         self.config_note = QLabel(
@@ -402,7 +402,7 @@ class _ActivationPage(QWidget):
         self.config_note.hide()
         cl.addWidget(self.config_note)
 
-        lay.addWidget(card, 0, Qt.AlignHCenter)
+        lay.addWidget(card, 1, Qt.AlignHCenter)
         lay.addStretch(1)
 
     def _emit_activate(self):
