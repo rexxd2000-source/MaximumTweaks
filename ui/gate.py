@@ -176,6 +176,8 @@ class _Field(QFrame):
                  key_color="#524d6b", value_color="#eae7f8",
                  border="rgba(139,124,246,.18)", parent=None):
         super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.NoFrame)  # no native frame, QSS border only
+        self.setLineWidth(0)
         self.setStyleSheet(
             f"background: rgba(0,0,0,.32); border: 1px solid {border};"
             f" border-radius: 10px;")
@@ -193,6 +195,15 @@ class _Field(QFrame):
             f"font-family: {DISPLAY}; font-size: 13px; color: {value_color};"
             f" line-height: 1.55;")
         lay.addWidget(self.value)
+        sp = self.sizePolicy()
+        sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        w = self.value.width()
+        if w > 40:
+            self.value.setMinimumHeight(self.value.heightForWidth(w) + 2)
 
     def set_value(self, text: str):
         self.value.setText(text or "—")
@@ -465,12 +476,14 @@ class _TimeoutPage(QWidget):
 
         card = QFrame()
         card.setFixedWidth(440)
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setLineWidth(0)
         card.setStyleSheet(
             "QFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "   stop:0 #1c150d, stop:1 #16110c);"
             f" border: 1px solid {BORDER}; border-radius: 16px; }}")
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(36, 40, 36, 30)
+        cl.setContentsMargins(36, 32, 36, 22)
         cl.setSpacing(0)
 
         icon = QLabel("\u23f3")
@@ -482,7 +495,7 @@ class _TimeoutPage(QWidget):
             f"   fx:.3,fy:.25, stop:0 rgba(255,179,64,.4), stop:1 rgba(226,149,31,.08));"
             f" border: 1px solid rgba(255,176,64,.38);")
         cl.addWidget(icon, 0, Qt.AlignHCenter)
-        cl.addSpacing(20)
+        cl.addSpacing(14)
 
         title = QLabel("Your key is on timeout")
         title.setAlignment(Qt.AlignCenter)
@@ -490,7 +503,7 @@ class _TimeoutPage(QWidget):
             f"font-family: {DISPLAY}; font-weight: 700; font-size: 22px;"
             f" color: #f6efe6;")
         cl.addWidget(title)
-        cl.addSpacing(8)
+        cl.addSpacing(6)
 
         self.sub = QLabel(
             "Access is temporarily suspended. It will restore automatically "
@@ -499,8 +512,9 @@ class _TimeoutPage(QWidget):
         self.sub.setWordWrap(True)
         self.sub.setStyleSheet(
             f"font-family: {MONO}; font-size: 12.5px; color: #a99a86;")
+        self.sub.setMinimumHeight(self.sub.heightForWidth(card.width() - 72))
         cl.addWidget(self.sub)
-        cl.addSpacing(28)
+        cl.addSpacing(18)
 
         self.countdown = QLabel("00:00:00")
         self.countdown.setAlignment(Qt.AlignCenter)
@@ -515,16 +529,17 @@ class _TimeoutPage(QWidget):
             f"font-family: {MONO}; font-size: 11px;"
             f" letter-spacing: .2em; color: #5c5142;")
         cl.addWidget(cd_label)
-        cl.addSpacing(26)
+        cl.addSpacing(18)
 
         self.bar = _ProgressBar("#7a4d12", "#ffb340",
                                 track="rgba(255,179,64,.12)", height=4)
         cl.addWidget(self.bar)
-        cl.addSpacing(22)
+        cl.addSpacing(16)
 
         self.reason_field = _Field("REASON", "—", key_color="#5c5142",
                                    value_color="#ffd699", border=BORDER)
         cl.addWidget(self.reason_field)
+        cl.addSpacing(10)
 
         self.key_field = _Field("KEY", "—", key_color="#5c5142",
                                 value_color="#f6efe6", border=BORDER)
@@ -539,6 +554,7 @@ class _TimeoutPage(QWidget):
             f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
             f" color: #5c5142; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
+        self.note.setMinimumHeight(self.note.heightForWidth(card.width() - 72) + 16)
         cl.addWidget(self.note)
 
         lay.addWidget(card, 0, Qt.AlignHCenter)
@@ -587,6 +603,8 @@ class _BannedPage(QWidget):
 
         card = QFrame()
         card.setFixedWidth(460)
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setLineWidth(0)
         card.setStyleSheet(
             "QFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "   stop:0 #170f16, stop:1 #120c14);"
@@ -619,6 +637,7 @@ class _BannedPage(QWidget):
         sub.setWordWrap(True)
         sub.setStyleSheet(
             f"font-family: {MONO}; font-size: 12.5px; color: #a68b90;")
+        sub.setMinimumHeight(sub.heightForWidth(card.width() - 72))
         cl.addWidget(sub)
         cl.addSpacing(26)
 
@@ -672,7 +691,10 @@ class _BannedPage(QWidget):
             f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
             f" color: #5c4a4e; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
+        note.setMinimumHeight(note.heightForWidth(card.width() - 72) + 16)
         cl.addWidget(note)
+
+        cl.addSpacing(8)
 
         lay.addWidget(card, 0, Qt.AlignHCenter)
         lay.addStretch(1)
@@ -724,12 +746,14 @@ class _RevokedPage(QWidget):
 
         card = QFrame()
         card.setFixedWidth(440)
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setLineWidth(0)
         card.setStyleSheet(
             "QFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "   stop:0 #150f22, stop:1 #100d1c);"
             f" border: 1px solid {BORDER}; border-radius: 16px; }}")
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(36, 40, 36, 30)
+        cl.setContentsMargins(36, 34, 36, 20)
         cl.setSpacing(0)
 
         icon = QLabel("\U0001f511")
@@ -741,7 +765,7 @@ class _RevokedPage(QWidget):
             f"   fx:.3,fy:.25, stop:0 rgba(198,110,255,.4), stop:1 rgba(162,56,232,.08));"
             f" border: 1px solid rgba(196,110,255,.38);")
         cl.addWidget(icon, 0, Qt.AlignHCenter)
-        cl.addSpacing(20)
+        cl.addSpacing(16)
 
         title = QLabel("License key revoked")
         title.setAlignment(Qt.AlignCenter)
@@ -749,7 +773,7 @@ class _RevokedPage(QWidget):
             f"font-family: {DISPLAY}; font-weight: 700; font-size: 22px;"
             f" color: #efe7f8;")
         cl.addWidget(title)
-        cl.addSpacing(8)
+        cl.addSpacing(6)
 
         sub = QLabel(
             "A Maximum staff member has revoked this key. It can no longer "
@@ -758,8 +782,9 @@ class _RevokedPage(QWidget):
         sub.setWordWrap(True)
         sub.setStyleSheet(
             f"font-family: {MONO}; font-size: 12.5px; color: #988aa3;")
+        sub.setMinimumHeight(sub.heightForWidth(card.width() - 72))
         cl.addWidget(sub)
-        cl.addSpacing(26)
+        cl.addSpacing(18)
 
         self.key_display = QFrame()
         self.key_display.setStyleSheet(
@@ -784,12 +809,12 @@ class _RevokedPage(QWidget):
         self.revoked_key.setFont(canceled)
         kl.addWidget(self.revoked_key)
         cl.addWidget(self.key_display)
-        cl.addSpacing(18)
+        cl.addSpacing(12)
 
         self.reason_field = _Field("REASON", "—", key_color="#524a5c",
                                    value_color="#e6bfff", border=BORDER)
         cl.addWidget(self.reason_field)
-        cl.addSpacing(12)
+        cl.addSpacing(8)
 
         meta = QHBoxLayout()
         meta.setSpacing(12)
@@ -799,7 +824,7 @@ class _RevokedPage(QWidget):
         meta.addWidget(self.revoked_by_field)
         meta.addWidget(self.revoked_on_field)
         cl.addLayout(meta)
-        cl.addSpacing(18)
+        cl.addSpacing(12)
 
         actions = QHBoxLayout()
         actions.setSpacing(10)
@@ -826,7 +851,7 @@ class _RevokedPage(QWidget):
         actions.addWidget(new_key_btn)
 
         cl.addLayout(actions)
-        cl.addSpacing(18)
+        cl.addSpacing(14)
 
         note = QLabel(
             "If you believe this was a mistake, contact support with your "
@@ -837,7 +862,9 @@ class _RevokedPage(QWidget):
             f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
             f" color: #524a5c; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
+        note.setMinimumHeight(note.heightForWidth(card.width() - 72) + 16)
         cl.addWidget(note)
+        cl.addSpacing(8)
 
         lay.addWidget(card, 0, Qt.AlignHCenter)
         lay.addStretch(1)
