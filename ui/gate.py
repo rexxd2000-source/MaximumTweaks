@@ -170,11 +170,18 @@ class _ProgressBar(QWidget):
 
 
 class _Field(QFrame):
-    """Labled value block like the HTML .field: dark inset, tiny uppercase key."""
+    """Labled value block like the HTML .field: dark inset, tiny uppercase key.
+
+    The value label's wrapped height is reserved exactly once against the
+    fixed content width the card actually uses (mirrors the activation card,
+    which is the page that matches its HTML reference 1:1). This keeps the
+    block compact: no per-resize re-inflation, no clipped words.
+    """
 
     def __init__(self, key_text: str, value_text: str = "—",
                  key_color="#524d6b", value_color="#eae7f8",
-                 border="rgba(139,124,246,.18)", parent=None):
+                 border="rgba(139,124,246,.18)", wrap_width: int = 0,
+                 parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)  # no native frame, QSS border only
         self.setLineWidth(0)
@@ -195,15 +202,13 @@ class _Field(QFrame):
             f"font-family: {DISPLAY}; font-size: 13px; color: {value_color};"
             f" line-height: 1.55;")
         lay.addWidget(self.value)
-        sp = self.sizePolicy()
-        sp.setHeightForWidth(True)
-        self.setSizePolicy(sp)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        w = self.value.width()
-        if w > 40:
-            self.value.setMinimumHeight(self.value.heightForWidth(w) + 2)
+        if wrap_width > 0:
+            # Reserve the wrapped height once against the card's real fixed
+            # content width (the activation card's proven recipe — it renders
+            # its HTML reference 1:1). Deferred shrink is not needed: the
+            # width never changes, so the reservation stays correct forever.
+            self.value.setMinimumHeight(
+                self.value.heightForWidth(wrap_width) + 2)
 
     def set_value(self, text: str):
         self.value.setText(text or "—")
@@ -213,8 +218,10 @@ class _MetaField(_Field):
     """Half-width field used in the BAN ID / ISSUED / REVOKED-BY rows."""
 
     def __init__(self, key_text: str, value_text: str = "—",
-                 border="rgba(139,124,246,.18)", parent=None):
-        super().__init__(key_text, value_text, border=border, parent=parent)
+                 border="rgba(139,124,246,.18)", wrap_width: int = 0,
+                 parent=None):
+        super().__init__(key_text, value_text, border=border,
+                         wrap_width=wrap_width, parent=parent)
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +338,7 @@ class _ActivationPage(QWidget):
 
         self.reconnect_btn = QPushButton("Try again")
         self.reconnect_btn.setCursor(Qt.PointingHandCursor)
-        self.reconnect_btn.setMinimumHeight(42)
+        self.reconnect_btn.setMinimumHeight(46)
         self.reconnect_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #7c5cff, stop:1 #4c2fb8); color: #fff; border: none;"
@@ -537,12 +544,14 @@ class _TimeoutPage(QWidget):
         cl.addSpacing(16)
 
         self.reason_field = _Field("REASON", "—", key_color="#5c5142",
-                                   value_color="#ffd699", border=BORDER)
+                                   value_color="#ffd699", border=BORDER,
+                                   wrap_width=card.width() - 72)
         cl.addWidget(self.reason_field)
         cl.addSpacing(10)
 
         self.key_field = _Field("KEY", "—", key_color="#5c5142",
-                                value_color="#f6efe6", border=BORDER)
+                                value_color="#f6efe6", border=BORDER,
+                                wrap_width=card.width() - 72)
         cl.addWidget(self.key_field)
 
         self.note = QLabel(
@@ -642,14 +651,17 @@ class _BannedPage(QWidget):
         cl.addSpacing(26)
 
         self.reason_field = _Field("REASON", "—", key_color="#5c4a4e",
-                                   value_color="#ffb3bd", border=BORDER)
+                                   value_color="#ffb3bd", border=BORDER,
+                                   wrap_width=card.width() - 72)
         cl.addWidget(self.reason_field)
         cl.addSpacing(12)
 
         meta = QHBoxLayout()
         meta.setSpacing(12)
-        self.ban_id_field = _MetaField("BAN ID", "—", border=BORDER)
-        self.ban_date_field = _MetaField("ISSUED", "—", border=BORDER)
+        self.ban_id_field = _MetaField("BAN ID", "—", border=BORDER,
+                                       wrap_width=(card.width() - 84) // 2)
+        self.ban_date_field = _MetaField("ISSUED", "—", border=BORDER,
+                                         wrap_width=(card.width() - 84) // 2)
         meta.addWidget(self.ban_id_field)
         meta.addWidget(self.ban_date_field)
         cl.addLayout(meta)
@@ -660,6 +672,7 @@ class _BannedPage(QWidget):
 
         read_btn = QPushButton("Read appeal policy")
         read_btn.setCursor(Qt.PointingHandCursor)
+        read_btn.setMinimumHeight(46)
         read_btn.setStyleSheet(
             "QPushButton { background: rgba(255,77,99,.06);"
             " color: #f4eef0; border: 1px solid rgba(255,90,110,.38);"
@@ -671,6 +684,7 @@ class _BannedPage(QWidget):
 
         appeal_btn = QPushButton("Submit appeal")
         appeal_btn.setCursor(Qt.PointingHandCursor)
+        appeal_btn.setMinimumHeight(46)
         appeal_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #e21f3e, stop:1 #7a1226); color: #fff; border: none;"
@@ -812,15 +826,18 @@ class _RevokedPage(QWidget):
         cl.addSpacing(12)
 
         self.reason_field = _Field("REASON", "—", key_color="#524a5c",
-                                   value_color="#e6bfff", border=BORDER)
+                                   value_color="#e6bfff", border=BORDER,
+                                   wrap_width=card.width() - 72)
         cl.addWidget(self.reason_field)
         cl.addSpacing(8)
 
         meta = QHBoxLayout()
         meta.setSpacing(12)
         self.revoked_by_field = _MetaField("REVOKED BY", "Staff",
-                                           border=BORDER)
-        self.revoked_on_field = _MetaField("REVOKED ON", "—", border=BORDER)
+                                           border=BORDER,
+                                           wrap_width=(card.width() - 72 - 72) // 2)
+        self.revoked_on_field = _MetaField("REVOKED ON", "—", border=BORDER,
+                                           wrap_width=(card.width() - 72 - 72) // 2)
         meta.addWidget(self.revoked_by_field)
         meta.addWidget(self.revoked_on_field)
         cl.addLayout(meta)
@@ -831,6 +848,7 @@ class _RevokedPage(QWidget):
 
         support_btn = QPushButton("Contact support")
         support_btn.setCursor(Qt.PointingHandCursor)
+        support_btn.setMinimumHeight(46)
         support_btn.setStyleSheet(
             "QPushButton { background: rgba(198,110,255,.06);"
             " color: #efe7f8; border: 1px solid rgba(196,110,255,.38);"
@@ -842,6 +860,7 @@ class _RevokedPage(QWidget):
 
         new_key_btn = QPushButton("Request new key")
         new_key_btn.setCursor(Qt.PointingHandCursor)
+        new_key_btn.setMinimumHeight(46)
         new_key_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             f"   stop:0 {MAG_2}, stop:1 {MAG_DEEP}); color: #fff; border: none;"
