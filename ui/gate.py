@@ -185,28 +185,31 @@ class _Field(QFrame):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)  # no native frame, QSS border only
         self.setLineWidth(0)
-        self.setStyleSheet(
-            f"background: rgba(0,0,0,.32); border: 1px solid {border};"
-            f" border-radius: 10px;")
+        # Plain label + value pair — NO box. The key is a tiny uppercase grey
+        # label, the value sits under it at normal reading size in light
+        # lavender. (The HTML reference has no dark box around each field,
+        # only the card itself.)
+        self.setStyleSheet("background: transparent; border: none;")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 12, 16, 12)
-        lay.setSpacing(6)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
         k = QLabel(key_text)
+        k.setAlignment(Qt.AlignLeft)
         k.setStyleSheet(
-            f"font-family: {MONO}; font-size: 10px;"
-            f" letter-spacing: .14em; color: {key_color};")
+            f"font-family: {MONO}; font-size: 10px; letter-spacing: .18em;"
+            f" color: {key_color};")
         lay.addWidget(k)
         self.value = QLabel(value_text)
+        self.value.setAlignment(Qt.AlignLeft)
         self.value.setWordWrap(True)
         self.value.setStyleSheet(
-            f"font-family: {DISPLAY}; font-size: 13px; color: {value_color};"
-            f" line-height: 1.55;")
+            f"font-family: {DISPLAY}; font-size: 14px; color: {value_color};"
+            f" line-height: 1.5;")
         lay.addWidget(self.value)
         if wrap_width > 0:
             # Reserve the wrapped height once against the card's real fixed
-            # content width (the activation card's proven recipe — it renders
-            # its HTML reference 1:1). Deferred shrink is not needed: the
-            # width never changes, so the reservation stays correct forever.
+            # content width (the card is fixed-width, so the reservation
+            # stays correct forever — no per-resize re-inflation).
             self.value.setMinimumHeight(
                 self.value.heightForWidth(wrap_width) + 2)
 
