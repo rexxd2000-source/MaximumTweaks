@@ -663,7 +663,7 @@ class _BannedPage(QWidget):
         meta.setSpacing(12)
         self.ban_id_field = _MetaField("BAN ID", "—", border=BORDER,
                                        wrap_width=(card.width() - 84) // 2)
-        self.ban_date_field = _MetaField("ISSUED", "—", border=BORDER,
+        self.ban_date_field = _MetaField("BANNED", "—", border=BORDER,
                                          wrap_width=(card.width() - 84) // 2)
         meta.addWidget(self.ban_id_field)
         meta.addWidget(self.ban_date_field)
