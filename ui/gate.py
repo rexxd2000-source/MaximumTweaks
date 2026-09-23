@@ -20,8 +20,8 @@ from __future__ import annotations
 import time as _time
 from datetime import datetime, timezone
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import (
+    APPEAL_POLICY_URL,
     APP_VERSION,
     DISCORD_INVITE_URL,
     current_windows_user,
@@ -682,7 +683,7 @@ class _BannedPage(QWidget):
             " border-radius: 10px; font-family: " + DISPLAY +
             "; font-weight: 600; font-size: 13px; }"
             "QPushButton:hover { background: rgba(255,77,99,.14); }")
-        read_btn.clicked.connect(self.support_requested.emit)
+        read_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(APPEAL_POLICY_URL)))
         actions.addWidget(read_btn)
 
         appeal_btn = QPushButton("Submit appeal")

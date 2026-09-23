@@ -233,6 +233,10 @@ ADMIN_NOTE = (
 # Official community invite link (enables the Join button / sidebar).
 DISCORD_INVITE_URL = "https://discord.gg/maximum-optimizations"
 
+# Ban appeal policy hosted on the Maximum Optimizations website. The banned
+# page's "Read appeal policy" button opens this page in the user's browser.
+APPEAL_POLICY_URL = "https://max-opti.co.za/appeal"
+
 
 # License activation (the only access control). A key binds to a device via
 # the license backend; sessions persist across reboots and updates.
