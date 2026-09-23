@@ -708,7 +708,7 @@ class _BannedPage(QWidget):
             f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
             f" color: #5c4a4e; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
-        note.setMinimumHeight(note.heightForWidth(card.width() - 72) + 16)
+        note.setMinimumHeight(note.heightForWidth(card.width() - 44) + 30)
         cl.addWidget(note)
 
         cl.addSpacing(8)
