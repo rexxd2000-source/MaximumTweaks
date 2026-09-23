@@ -766,9 +766,9 @@ class _RevokedPage(QWidget):
         card.setFrameShape(QFrame.Shape.NoFrame)
         card.setLineWidth(0)
         card.setStyleSheet(
-            "QFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-            "   stop:0 #150f22, stop:1 #100d1c);"
-            f" border: 1px solid {BORDER}; border-radius: 16px; }}")
+            "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            f"   stop:0 #170f16, stop:1 #120c14);"
+            f" border-radius: 16px; }}")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(36, 34, 36, 20)
         cl.setSpacing(0)
