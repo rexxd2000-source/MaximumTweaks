@@ -41,14 +41,15 @@ from __future__ import annotations
 
 import calendar
 import hashlib
+import hmac
 import html
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
-import hmac
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -77,6 +78,8 @@ from keys import (
     verify_token,
     RateLimiter,
 )
+from launch_email import send_launch
+from mailers import get_mailer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,8 +99,12 @@ OFFLINE_GRACE_HOURS = int(os.environ.get("OFFLINE_GRACE_HOURS", "24"))
 ADMIN_SESSION_HOURS = int(os.environ.get("ADMIN_SESSION_HOURS", "12"))
 ADMIN_COOKIE = "adm"
 
-ACTIVATE_PER_KEY = int(os.environ.get("ACTIVATE_PER_KEY", "10"))
-ACTIVATE_PER_IP = int(os.environ.get("ACTIVATE_PER_IP", "40"))
+ACTIVATE_PER_KEY = int(os.environ.get("ACTIVATE_PER_KEY", "25"))
+ACTIVATE_PER_IP = int(os.environ.get("ACTIVATE_PER_IP", "100"))
+
+# Waitlist sign-ups per IP per hour (permissive — it is a brand funnel, not a
+# licensing resource).
+WAITLIST_JOIN_PER_IP = int(os.environ.get("WAITLIST_JOIN_PER_IP", "20"))
 
 _DB = LicenseDB()
 _OK = {"status": "ok", "service": "maximumtweaks-licenses"}
@@ -239,12 +246,28 @@ class LoginRequest(BaseModel):
     token: str
 
 
+class WaitlistJoinRequest(BaseModel):
+    email: str
+    source: str = ""
+
+
+class WaitlistSendRequest(BaseModel):
+    """Admin launch-email dispatch. Empty fields fall back to env/defaults."""
+    code: str                       # raw ADMIN_TOKEN, reconfirm step
+    subject: str = ""
+    heading: str = ""
+    message: str = ""
+    cta_button: str = ""
+    cta_url: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Rate limiters
 # ---------------------------------------------------------------------------
 
 _limiter_key = RateLimiter(ACTIVATE_PER_KEY, 3600)
 _limiter_ip = RateLimiter(ACTIVATE_PER_IP, 3600)
+_limiter_waitlist_ip = RateLimiter(WAITLIST_JOIN_PER_IP, 3600)
 
 
 def _err(code: str, message: str, status: int = 403,
@@ -1340,3 +1363,119 @@ def admin_remove_pc(key: str, hwid: str, _: None = Depends(_admin_guard)):
         raise _err("invalid_license", "Unknown license key.", 404)
     removed = _DB.remove_pc(key, hwid)
     return {"ok": True, "removed": removed}
+
+
+# ---------------------------------------------------------------------------
+# Ultra Mode waitlist (joined from the desktop dashboard's "Join the
+# waitlist" button; the launch email is sent through mailers.py from
+# maxoptimizations@gmail.com). Emails live only in the DB — never in the
+# client. No rate-limit metadata or credentials are ever exposed here.
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$"
+)
+
+
+@app.post("/api/waitlist/join")
+def waitlist_join(payload: WaitlistJoinRequest, request: Request):
+    """Register an email for the launch announcement. Idempotent: a repeat
+    sign-up is not an error — the client renders 'already on the list'."""
+    ip = (request.client.host if request.client else "unknown")
+    if not _limiter_waitlist_ip.hit(ip):
+        raise _err("rate_limited",
+                   "Too many sign-ups from this connection. Try again in a while.",
+                   429)
+    email = (payload.email or "").strip().lower()
+    if not email or not _EMAIL_RE.fullmatch(email):
+        raise _err("invalid_email",
+                   "That doesn't look like a valid email address.", 400)
+    source = (payload.source or "").strip()[:120]
+    result = _DB.waitlist_add(email, source)
+    if result["created"]:
+        logger.info("waitlist join added=%s source=%r", email, source)
+    else:
+        logger.info("waitlist join duplicate=%s", email)
+    return {
+        "ok": True,
+        "added": result["created"],
+        "message": ("You're on the list." if result["created"]
+                    else "This email is already on the list."),
+    }
+
+
+@app.get("/api/waitlist/unsubscribe", include_in_schema=False)
+def waitlist_unsubscribe(token: str, request: Request):
+    """One-click unsubscribe from launch emails (linked inside every email).
+    The token is random per address, so a guessed URL can't touch other
+    registrations."""
+    emailed = _DB.waitlist_unsubscribe((token or "").strip())
+    if emailed is None:
+        status = ("That unsubscribe link is no longer valid. If you already "
+                  "unsubscribed, you're all set.")
+    else:
+        status = ("You've been unsubscribed. We won't email you about the "
+                  "Ultra Mode launch again.")
+    body = f"""\
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unsubscribed — Maximum Optimizations</title>
+<style>
+  body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#07060d;color:#f4f2fb;font-family:ui-monospace,'JetBrains Mono',Consolas,monospace;}}
+  .card{{background:#120f1c;border:1px solid rgba(156,134,245,.45);border-radius:16px;
+    padding:36px;max-width:420px;text-align:center;
+    box-shadow:0 24px 70px rgba(0,0,0,.5),0 0 40px rgba(156,134,245,.12);}}
+  h1{{font-size:18px;margin:0 0 10px;}}
+  p{{font-size:13px;color:#948db2;line-height:1.6;margin:0 0 20px;}}
+  a{{color:#9c86f5;text-decoration:none;font-size:13px;}}
+</style></head>
+<body><div class="card">
+  <h1>Unsubscribed</h1><p>{html.escape(status)}</p>
+  <a href="/">Back to Maximum Optimizations</a>
+</div></body></html>"""
+    return HTMLResponse(body)
+
+
+@app.get("/admin/waitlist")
+def admin_waitlist(include_unsubscribed: bool = False,
+                   _: None = Depends(_admin_guard)):
+    """Sign-up roster for the admin panel (emails + subscription state)."""
+    entries = _DB.waitlist_list(subscribed_only=not include_unsubscribed)
+    return {
+        "ok": True,
+        "total": _DB.waitlist_count(subscribed_only=False),
+        "subscribed": _DB.waitlist_count(subscribed_only=True),
+        "entries": [
+            {
+                "id": e["id"],
+                "email": e["email"],
+                "source": e["source"],
+                "joined_at": e["joined_at"],
+                "subscribed": bool(e["subscribed"]),
+                "notified_at": e["notified_at"],
+            }
+            for e in entries
+        ],
+    }
+
+
+@app.post("/admin/waitlist/send-launch")
+def admin_waitlist_send_launch(payload: WaitlistSendRequest,
+                               _: None = Depends(_admin_guard)):
+    """Broadcast the launch email to every subscribed address. Empty content
+    fields fall back to env overrides, then built-in defaults. Failing
+    recipients are reported and not stamped 'notified' so they're retried."""
+    _require_reconfirm(payload.code)
+    overrides = {
+        "subject": payload.subject,
+        "heading": payload.heading,
+        "message": payload.message,
+        "cta_button": payload.cta_button,
+        "cta_url": payload.cta_url,
+    }
+    mailer = get_mailer()
+    stats = send_launch(_DB, mailer, overrides)
+    stats["provider"] = mailer.name
+    return {"ok": True, **stats}
