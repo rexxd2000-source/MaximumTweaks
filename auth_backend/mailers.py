@@ -23,6 +23,7 @@ never bundled into the desktop app.
 """
 
 import base64
+import email.utils
 import json
 import logging
 import os
@@ -45,7 +46,8 @@ class EmailProvider:
     name = "base"
 
     def send(self, to_email: str, subject: str, body_text: str,
-             body_html: str | None = None) -> dict:
+             body_html: str | None = None,
+             unsub_url: str | None = None) -> dict:
         """Deliver one email. Returns {"ok": True} or raises MailerError."""
         raise NotImplementedError
 
@@ -59,10 +61,11 @@ class LogProvider(EmailProvider):
         self._from = from_address
 
     def send(self, to_email: str, subject: str, body_text: str,
-             body_html: str | None = None) -> dict:
+             body_html: str | None = None,
+             unsub_url: str | None = None) -> dict:
         logger.info(
-            "mailer[log] would-send from=%s to=%s subject=%r",
-            self._from, to_email, subject)
+            "mailer[log] would-send from=%s to=%s subject=%r unsub=%s",
+            self._from, to_email, subject, unsub_url)
         logger.info("mailer[log] body:\n%s", body_text)
         return {"ok": True, "provider": self.name}
 
@@ -83,11 +86,16 @@ class SmtpProvider(EmailProvider):
         self._tls = use_tls
 
     def send(self, to_email: str, subject: str, body_text: str,
-             body_html: str | None = None) -> dict:
+             body_html: str | None = None,
+             unsub_url: str | None = None) -> dict:
         msg = MIMEMultipart("alternative")
         msg["From"] = self._from
         msg["To"] = to_email
         msg["Subject"] = subject
+        msg["Date"] = email.utils.formatdate(localtime=True)
+        msg["Message-ID"] = email.utils.make_msgid(domain="maximumtweaks.onrender.com")
+        if unsub_url:
+            msg["List-Unsubscribe"] = f"<{unsub_url}>"
         msg.attach(MIMEText(body_text, "plain", "utf-8"))
         if body_html:
             msg.attach(MIMEText(body_html, "html", "utf-8"))
@@ -146,7 +154,8 @@ class ResendProvider(EmailProvider):
         return body_html.replace(self.LOGO_MARKER, img)
 
     def send(self, to_email: str, subject: str, body_text: str,
-             body_html: str | None = None) -> dict:
+             body_html: str | None = None,
+             unsub_url: str | None = None) -> dict:
         html = self._inject_logo(body_html) if body_html else None
         payload = {
             "from": self._from,
@@ -154,6 +163,8 @@ class ResendProvider(EmailProvider):
             "subject": subject,
             "text": body_text,
         }
+        if unsub_url:
+            payload["headers"] = {"List-Unsubscribe": f"<{unsub_url}>"}
         if html:
             payload["html"] = html
         if self._logo:

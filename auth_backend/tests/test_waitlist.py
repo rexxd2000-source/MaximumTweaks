@@ -219,13 +219,14 @@ def test_send_launch_can_target_one_address():
 def test_launch_email_uses_detailed_asset_template():
     body = launch_email.render(
         {"cta_url": "https://example.com/signup"},
-        unsub_url="https://maximumtweaks.onrender.com/api/waitlist/"
-                  "unsubscribe?token=abc")
+        unsub_url="https://example.com/uw?token=abc")
     html = body["html"]
-    assert "Introducing Ultra Mode" in html
-    assert "Faster runs. Cleaner output. Zero extra setup." in html
+    assert "You're on the list." in html
+    assert "What Maximum Tweaks does today" in html
+    assert "854-tweak database" in html
     assert "{{CTA_URL}}" not in html and "{{UNSUB_URL}}" not in html
     assert 'https://example.com/signup' in html
-    assert "unsubscribe?token=abc" in html
+    assert "token=abc" in html
     assert "Your Company" not in html
-    assert "Product preview" in html
+    assert "How it works" in html
+    assert "maximumtweaks.onrender.com" not in html

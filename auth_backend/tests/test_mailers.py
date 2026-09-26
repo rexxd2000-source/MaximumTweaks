@@ -10,7 +10,8 @@ import urllib.error
 
 import pytest
 
-from mailers import LogProvider, MailerError, ResendProvider, get_mailer, reset_mailer
+from mailers import (LogProvider, MailerError, ResendProvider, SmtpProvider,
+                     get_mailer, reset_mailer)
 
 URLOPEN = "urllib.request.urlopen"
 
@@ -158,3 +159,106 @@ def test_resend_send_without_logo_clears_marker(monkeypatch):
                   "<!--LOGO--><h1>Hi</h1>")
     assert captured["body"]["html"] == "<h1>Hi</h1>"
     assert "attachments" not in captured["body"]
+
+
+def test_resend_send_carries_list_unsubscribe_header(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResp()
+
+    monkeypatch.setattr(URLOPEN, fake_urlopen)
+    provider = ResendProvider("re_test", "x <x@n.za>")
+    provider.send("user@example.com", "Subject", "body",
+                  unsub_url="https://x.za/u?token=abc")
+    assert captured["body"]["headers"]["List-Unsubscribe"] == (
+        "<https://x.za/u?token=abc>")
+
+
+def test_smtp_send_sets_standard_headers(monkeypatch):
+    import smtplib
+
+    captured = {}
+
+    class FakeSMTP:
+        _just_tls = False
+
+        def __init__(self, host, port, timeout=None):
+            captured["host"] = host
+            captured["port"] = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def starttls(self):
+            self._just_tls = True
+
+        def login(self, user, password):
+            captured["user"] = user
+
+        def sendmail(self, from_addr, to_addrs, message):
+            captured["from"] = from_addr
+            captured["to"] = to_addrs
+            captured["msg"] = message
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    provider = SmtpProvider(
+        "smtp.gmail.com", 587, "max@gmail.com", "secret",
+        "Maximum Optimizations <max@gmail.com>")
+    provider.send("user@example.com", "Subject", "body",
+                  "<h1>Hi</h1>",
+                  unsub_url="https://x.za/u?token=abc")
+    raw = captured["msg"]
+    assert "Date:" in raw
+    assert "Message-ID:" in raw
+    assert "List-Unsubscribe: <https://x.za/u?token=abc>" in raw
+    assert "From: Maximum Optimizations <max@gmail.com>" in raw
+    assert "Content-Type: text/html" in raw
+
+
+def test_smtp_send_smtps_on_465(monkeypatch):
+    import smtplib
+
+    captured = {}
+
+    class FakeSMTP_SSL:
+        def __init__(self, host, port, timeout=None):
+            captured["port"] = port
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def sendmail(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP_SSL)
+    provider = SmtpProvider("smtp.gmail.com", 465, "max@gmail.com", "secret",
+                            "Maximum Optimizations <max@gmail.com>")
+    provider.send("user@example.com", "Subject", "body")
+    assert captured["port"] == 465

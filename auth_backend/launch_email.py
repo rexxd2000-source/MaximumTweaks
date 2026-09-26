@@ -37,16 +37,18 @@ INK = "#1b1826"
 
 DEFAULTS = {
     # Subject line of the launch email.
-    "subject": "You're invited — Ultra Mode is ready",
+    "subject": "You're on the Ultra Mode waitlist",
     # Big heading inside the email.
-    "heading": "Ultra Mode is ready.",
+    "heading": "You're on the list.",
     # Body paragraph.
     "message": (
-        "Thanks for joining the waitlist. Ultra Mode — the single-click "
-        "tuning preset that pushes clocks and fan curves to their tested "
-        "ceiling — is now available in Maximum Tweaks."),
+        "Ultra Mode is Maximum Tweaks' next performance tier, still in the "
+        "workshop. Joining the waitlist is free and commits you to nothing - "
+        "you'll only hear from us when Ultra Mode launches. In the meantime, "
+        "Maximum Tweaks applies a hardware-checked database of 854 tweaks "
+        "across 52 categories."),
     # CTA button label and where it points.
-    "cta_button": "Get Ultra Mode",
+    "cta_button": "Get Maximum Tweaks",
     "cta_url": "https://maximumtweaks.onrender.com",
     # Sender shown in the mail client.
     "from_address": "Maximum Optimizations <news@max-opti.co.za>",
@@ -100,7 +102,7 @@ def render(overrides: dict | None = None, unsub_url: str = "") -> dict:
     text = (
         f"{c['heading']}\n\n"
         f"{c['message']}\n\n"
-        f"{c['cta_button']}: {c['cta_url']}\n"
+        f"{c['cta_button']}\n"
         f"\n------------------------------------------------------------------\n"
         f"Unsubscribe from launch updates: {unsub_url}"
     )
@@ -209,7 +211,8 @@ def send_launch(db, mailer, overrides: dict | None = None,
         unsub = unsubscribe_url(rec["unsub_token"], base_url)
         body = render(overrides, unsub)
         try:
-            mailer.send(rec["email"], body["subject"], body["text"], body["html"])
+            mailer.send(rec["email"], body["subject"], body["text"], body["html"],
+                        unsub_url=unsub)
             sent_ids.append(rec["id"])
         except MailerError as exc:
             logger.error("waitlist launch failed for %s: %s", rec["email"], exc)
