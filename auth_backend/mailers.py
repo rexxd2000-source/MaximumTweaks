@@ -148,7 +148,8 @@ class ResendProvider(EmailProvider):
 def _build_mailer() -> EmailProvider:
     kind = (os.environ.get("WAITLIST_MAILER", "log") or "log").strip().lower()
     from_address = os.environ.get(
-        "WAITLIST_FROM_EMAIL", "maxoptimizations@gmail.com").strip()
+        "WAITLIST_FROM_EMAIL",
+        "Maximum Optimizations <news@max-opti.co.za>").strip()
     if kind == "smtp":
         host = os.environ.get("WAITLIST_SMTP_HOST", "").strip()
         port = int(os.environ.get("WAITLIST_SMTP_PORT", "587") or "587")

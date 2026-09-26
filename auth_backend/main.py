@@ -1368,7 +1368,7 @@ def admin_remove_pc(key: str, hwid: str, _: None = Depends(_admin_guard)):
 # ---------------------------------------------------------------------------
 # Ultra Mode waitlist (joined from the desktop dashboard's "Join the
 # waitlist" button; the launch email is sent through mailers.py from
-# maxoptimizations@gmail.com). Emails live only in the DB — never in the
+# news@max-opti.co.za). Emails live only in the DB — never in the
 # client. No rate-limit metadata or credentials are ever exposed here.
 # ---------------------------------------------------------------------------
 

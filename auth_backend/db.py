@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS key_log (
 CREATE INDEX IF NOT EXISTS idx_key_log_key_at ON key_log(license_key, at);
 
 -- Ultra Mode waitlist (emails collected by the dashboard's "Join the
--- waitlist" button). The launch email is sent from maxoptimizations@gmail.com
+-- waitlist" button). The launch email is sent from news@max-opti.co.za
 -- through a swappable mail provider (see mailers.py); emails only ever live
 -- in this store — never in the client.
 CREATE TABLE IF NOT EXISTS waitlist (

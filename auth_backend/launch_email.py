@@ -43,7 +43,7 @@ DEFAULTS = {
     "cta_button": "Get Ultra Mode",
     "cta_url": "https://maximumtweaks.onrender.com",
     # Sender shown in the mail client.
-    "from_address": "Maximum Optimizations <maxoptimizations@gmail.com>",
+    "from_address": "Maximum Optimizations <news@max-opti.co.za>",
     # Base URL used to build the per-recipient unsubscribe link.
     "base_url": "https://maximumtweaks.onrender.com",
 }
