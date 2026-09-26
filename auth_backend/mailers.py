@@ -68,7 +68,8 @@ class LogProvider(EmailProvider):
 
 
 class SmtpProvider(EmailProvider):
-    """TLS SMTP delivery (works with Gmail app passwords)."""
+    """SMTP delivery via STARTTLS (port 587) or implicit TLS/SMTPS (port 465).
+    Both work with Gmail app passwords."""
 
     name = "smtp"
 
@@ -90,10 +91,14 @@ class SmtpProvider(EmailProvider):
         msg.attach(MIMEText(body_text, "plain", "utf-8"))
         if body_html:
             msg.attach(MIMEText(body_html, "html", "utf-8"))
+        connection = (
+            smtplib.SMTP_SSL(self._host, self._port, timeout=30)
+            if self._port == 465
+            else smtplib.SMTP(self._host, self._port, timeout=30))
         try:
-            with smtplib.SMTP(self._host, self._port, timeout=30) as server:
+            with connection as server:
                 server.ehlo()
-                if self._tls:
+                if self._tls and self._port != 465:
                     server.starttls()
                     server.ehlo()
                 server.login(self._user, self._password)
