@@ -9,18 +9,20 @@ ever talk to SMTP or a mail API directly. The factory reads
   * ``log`` (default) — every send is written to the log but nothing leaves
     the server. Use this while the launch mailer is being set up, or to
     review copy before delivery goes live.
-  * ``smtp`` — TLS SMTP via the env vars below (a Gmail "app password" works
-    for maxoptimizations@gmail.com).
+  * ``smtp`` — TLS SMTP via the env vars below (a Gmail "app password" works).
   * ``resend`` — Resend's HTTP API (best deliverability for launch blasts).
     Set ``WAITLIST_RESEND_API_KEY``; the from-address must be on a domain
-    you have verified in Resend — see ``WAITLIST_FROM_EMAIL``.
+    you have verified in Resend — see ``WAITLIST_FROM_EMAIL``. Resend also
+    embeds ``assets/logo.png`` as an inline header logo (``WAITLIST_LOGO_PATH``
+    overrides the location).
 
 The send-from address is ``WAITLIST_FROM_EMAIL`` (default
-``maxoptimizations@gmail.com``). Credentials/addresses are read from the
-environment at send time — never embedded, never committed, never bundled
-into the desktop app.
+``Maximum Optimizations <news@max-opti.co.za>``). Credentials/addresses are
+read from the environment at send time — never embedded, never committed,
+never bundled into the desktop app.
 """
 
+import base64
 import json
 import logging
 import os
@@ -109,27 +111,60 @@ class ResendProvider(EmailProvider):
     name = "resend"
     API_ENDPOINT = "https://api.resend.com/emails"
     _HTTP_TIMEOUT = 30.0
+    LOGO_MARKER = "<!--LOGO-->"
 
-    def __init__(self, api_key: str, from_address: str) -> None:
+    def __init__(self, api_key: str, from_address: str,
+                 logo_path: str | None = None) -> None:
         self._key = api_key
         self._from = from_address
+        self._logo: str | None = None
+        self._logo_name = "logo.png"
+        if logo_path is None:
+            logo_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+        if logo_path:
+            try:
+                with open(logo_path, "rb") as fh:
+                    data = fh.read()
+                if data:
+                    self._logo = base64.b64encode(data).decode("ascii")
+            except OSError:
+                self._logo = None
+
+    def _inject_logo(self, body_html: str) -> str:
+        if self._logo is None:
+            return body_html.replace(self.LOGO_MARKER, "")
+        img = (
+            '<img src="cid:logo" alt="Maximum Optimizations" '
+            'style="display:block;height:44px;width:auto;'
+            'margin:0 0 18px;">')
+        return body_html.replace(self.LOGO_MARKER, img)
 
     def send(self, to_email: str, subject: str, body_text: str,
              body_html: str | None = None) -> dict:
+        html = self._inject_logo(body_html) if body_html else None
         payload = {
             "from": self._from,
             "to": [to_email],
             "subject": subject,
             "text": body_text,
         }
-        if body_html:
-            payload["html"] = body_html
+        if html:
+            payload["html"] = html
+        if self._logo:
+            payload["attachments"] = [{
+                "filename": self._logo_name,
+                "content": self._logo,
+                "disposition": "inline",
+                "content_id": "logo",
+            }]
         request = urllib.request.Request(
             self.API_ENDPOINT,
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self._key}",
                 "Content-Type": "application/json",
+                "User-Agent": "MaximumTweaks/1.0",
             },
             method="POST")
         try:
@@ -170,7 +205,8 @@ def _build_mailer() -> EmailProvider:
                 " set; falling back to the log mailer")
             kind = "log"
         else:
-            return ResendProvider(api_key, from_address)
+            logo_path = os.environ.get("WAITLIST_LOGO_PATH", "").strip()
+            return ResendProvider(api_key, from_address, logo_path or None)
     return LogProvider(from_address)
 
 

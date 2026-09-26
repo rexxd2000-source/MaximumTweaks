@@ -128,6 +128,7 @@ def _html(c: dict, unsub_url: str) -> str:
           </tr>
           <tr>
             <td style="padding:36px 32px 12px;">
+              <!--LOGO-->
               <h1 style="margin:0 0 10px;font-size:22px;line-height:1.25;
                 color:{INK};font-weight:800;">{heading}</h1>
               <p style="margin:0 0 22px;font-size:15px;line-height:1.6;
