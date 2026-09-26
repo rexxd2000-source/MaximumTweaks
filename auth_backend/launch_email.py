@@ -49,7 +49,7 @@ DEFAULTS = {
         "across 52 categories."),
     # CTA button label and where it points.
     "cta_button": "Get Maximum Tweaks",
-    "cta_url": "https://maximumtweaks.onrender.com",
+    "cta_url": "https://max-opti.co.za",
     # Sender shown in the mail client.
     "from_address": "Maximum Optimizations <news@max-opti.co.za>",
     # Base URL used to build the per-recipient unsubscribe link.

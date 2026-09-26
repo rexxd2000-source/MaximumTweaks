@@ -244,4 +244,6 @@ def test_launch_email_uses_detailed_asset_template():
     assert "token=abc" in html
     assert "Your Company" not in html
     assert "How it works" in html
+    assert "Grab the current build" not in html
+    assert "<!--LOGO-->" in html
     assert "maximumtweaks.onrender.com" not in html
