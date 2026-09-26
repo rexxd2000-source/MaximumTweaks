@@ -201,6 +201,21 @@ def test_send_launch_requires_reconfirm():
     assert r.status_code == 401
 
 
+def test_send_launch_can_target_one_address():
+    _join("tom@example.com")
+    _join("harry@example.com")
+    r = client.post("/admin/waitlist/send-launch",
+                    json={"code": "test-admin-token",
+                          "to_email": "harry@example.com"},
+                    headers=ADMIN_HEADERS)
+    assert r.status_code == 200
+    stats = r.json()
+    assert stats["sent"] == 1 and stats["failed"] == 0
+    stamped = {rec["email"] for rec in db.waitlist_list(subscribed_only=False)
+               if rec["notified_at"]}
+    assert stamped == {"harry@example.com"}
+
+
 def test_launch_email_uses_detailed_asset_template():
     body = launch_email.render(
         {"cta_url": "https://example.com/signup"},

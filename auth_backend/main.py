@@ -259,6 +259,7 @@ class WaitlistSendRequest(BaseModel):
     message: str = ""
     cta_button: str = ""
     cta_url: str = ""
+    to_email: str = ""              # target a single waitlist address, optional
 
 
 # ---------------------------------------------------------------------------
@@ -1476,6 +1477,6 @@ def admin_waitlist_send_launch(payload: WaitlistSendRequest,
         "cta_url": payload.cta_url,
     }
     mailer = get_mailer()
-    stats = send_launch(_DB, mailer, overrides)
+    stats = send_launch(_DB, mailer, overrides, payload.to_email or None)
     stats["provider"] = mailer.name
     return {"ok": True, **stats}

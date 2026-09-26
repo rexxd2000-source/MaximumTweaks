@@ -187,16 +187,21 @@ def _html(c: dict, unsub_url: str) -> str:
 </html>"""
 
 
-def send_launch(db, mailer, overrides: dict | None = None) -> dict:
+def send_launch(db, mailer, overrides: dict | None = None,
+                to_email: str | None = None) -> dict:
     """Email every subscribed waitlist address and stamp them notified.
 
-    ``db`` is a LicenseDB, ``mailer`` an EmailProvider. Returns per-send
-    stats; a failing recipient is reported and left un-notified (so it is
-    retried next time). The mailer decides subject/text/html from
-    ``overrides`` (per-send) + env + defaults.
+    ``db`` is a LicenseDB, ``mailer`` an EmailProvider. ``to_email`` (optional)
+    narrows the send to a single subscribed address. Returns per-send stats; a
+    failing recipient is reported and left un-notified (so it is retried next
+    time). The mailer decides subject/text/html from ``overrides`` (per-send)
+    + env + defaults.
     """
     c = content(overrides)
     rows = db.waitlist_list(subscribed_only=True)
+    if to_email:
+        target = to_email.strip().lower()
+        rows = [rec for rec in rows if rec["email"] == target]
     base_url = c.get("base_url", DEFAULTS["base_url"])
     sent_ids: list[int] = []
     failed: list[dict] = []
