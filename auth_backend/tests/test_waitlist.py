@@ -33,6 +33,8 @@ from db import LicenseDB  # noqa: E402
 
 import main as backend  # noqa: E402
 
+import launch_email  # noqa: E402
+
 client = TestClient(backend.app)
 db = LicenseDB()
 
@@ -197,3 +199,18 @@ def test_send_launch_requires_reconfirm():
     r = client.post("/admin/waitlist/send-launch",
                     json={"code": "test-admin-token"})
     assert r.status_code == 401
+
+
+def test_launch_email_uses_detailed_asset_template():
+    body = launch_email.render(
+        {"cta_url": "https://example.com/signup"},
+        unsub_url="https://maximumtweaks.onrender.com/api/waitlist/"
+                  "unsubscribe?token=abc")
+    html = body["html"]
+    assert "Introducing Ultra Mode" in html
+    assert "Faster runs. Cleaner output. Zero extra setup." in html
+    assert "{{CTA_URL}}" not in html and "{{UNSUB_URL}}" not in html
+    assert 'https://example.com/signup' in html
+    assert "unsubscribe?token=abc" in html
+    assert "Your Company" not in html
+    assert "Product preview" in html

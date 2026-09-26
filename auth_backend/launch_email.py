@@ -24,6 +24,12 @@ from mailers import MailerError
 
 logger = logging.getLogger("maxtweaks.license.waitlist")
 
+# Path to the hand-authored HTML launch template (tokenized with
+# {{CTA_URL}} and {{UNSUB_URL}}). Rendered verbatim when present; the
+# inline _html() below is only a fallback when the file is missing.
+_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "assets", "launch_template.html")
+
 # Brand colours reused on the dashboard site.
 LAVENDER = "#9c86f5"
 DARK_BG = "#120f1c"
@@ -111,6 +117,15 @@ def _html(c: dict, unsub_url: str) -> str:
     cta_label = html.escape(c["cta_button"])
     cta_url = html.escape(c["cta_url"])
     unsub = html.escape(unsub_url)
+    try:
+        with open(_TEMPLATE_PATH, "r", encoding="utf-8") as fh:
+            template = fh.read()
+        return (template
+                .replace("{{CTA_URL}}", cta_url)
+                .replace("{{UNSUB_URL}}", unsub))
+    except OSError as exc:
+        logger.warning("launch template %s unavailable (%s); "
+                       "using inline fallback", _TEMPLATE_PATH, exc)
     return f"""\
 <!DOCTYPE html>
 <html lang="en">
