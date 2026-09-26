@@ -1477,6 +1477,17 @@ def admin_waitlist_send_launch(payload: WaitlistSendRequest,
         "cta_url": payload.cta_url,
     }
     mailer = get_mailer()
-    stats = send_launch(_DB, mailer, overrides, payload.to_email or None)
+    try:
+        stats = send_launch(_DB, mailer, overrides, payload.to_email or None)
+    except Exception as exc:  # noqa: BLE001 - guard the broadcast, report it
+        logger.exception("waitlist send-launch crashed")
+        stats = {
+            "total": 0,
+            "sent": 0,
+            "failed": 1,
+            "notified": 0,
+            "failures": [{"email": "(server)",
+                          "error": f"{type(exc).__name__}: {exc}"}],
+        }
     stats["provider"] = mailer.name
     return {"ok": True, **stats}

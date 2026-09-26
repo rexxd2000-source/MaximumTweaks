@@ -201,6 +201,21 @@ def test_send_launch_requires_reconfirm():
     assert r.status_code == 401
 
 
+def test_send_launch_reports_unexpected_errors(monkeypatch):
+    def _boom(db, mailer, overrides=None, to_email=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(backend, "send_launch", _boom)
+    r = client.post("/admin/waitlist/send-launch",
+                    json={"code": "test-admin-token"},
+                    headers=ADMIN_HEADERS)
+    assert r.status_code == 200
+    stats = r.json()
+    assert stats["ok"] and stats["total"] == 0 and stats["sent"] == 0
+    assert stats["failed"] == 1
+    assert "boom" in stats["failures"][0]["error"]
+
+
 def test_send_launch_can_target_one_address():
     _join("tom@example.com")
     _join("harry@example.com")
