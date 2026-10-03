@@ -67,7 +67,7 @@ try:
 except Exception:  # noqa: BLE001
     pass  # env vars may be supplied directly by the shell instead
 
-from db import LicenseDB
+from db import TIERS, LicenseDB, normalize_tier
 from keys import (
     KEY_PREFIX,
     _b64url_decode,
@@ -203,7 +203,8 @@ class CheckinRequest(BaseModel):
 
 class CreateKeyRequest(BaseModel):
     customer: str = ""
-    plan: str = "life"          # "1m" | "6m" | "life"
+    plan: str = "life"          # "1m" | "6m" | "life"  (billing DURATION)
+    tier: str | None = "foundation"    # subscription LEVEL: foundation|performance|maximum
     max_pcs: int = 1
     note: str = ""
 
@@ -216,7 +217,8 @@ class GenerateRequest(BaseModel):
     count: int = 1
     plan: str = "lifetime"
     duration: str = ""              # "1m" | "6m" | "lifetime" (server computes expires_at)
-    prefix: str = ""                # e.g. "MAX" / "REX" / "MTW" — defaults to LICENCE_KEY_PREFIX
+    tier: str | None = "foundation"        # subscription LEVEL: foundation|performance|maximum
+    prefix: str = ""                # e.g. "MAX" / "REX" / "MTW" - defaults to LICENCE_KEY_PREFIX
     customer: str = ""
     note: str = ""
     expires_at: str | None = None   # "YYYY-MM-DD HH:MM:SS" (UTC) or None = lifetime
@@ -240,6 +242,18 @@ class SuspendRequest(BaseModel):
 
 class KeyRequest(BaseModel):
     key: str
+
+
+class TierRequest(BaseModel):
+    """Set a licence's subscription level.
+
+    The tier is validated and normalized on the server, so a malformed value
+    falls back to Foundation instead of granting an unintended level. ``None`` is
+    accepted and means "not specified", so a client that has never heard of
+    tiers can send ``null`` and get the free tier rather than a 422.
+    """
+    key: str
+    tier: str | None = "foundation"
 
 
 class LoginRequest(BaseModel):
@@ -689,6 +703,7 @@ def _session_payload(rec: dict) -> dict:
         "license": rec["license_key"],
         "owner": owner,
         "plan": rec.get("plan") or "lifetime",
+        "tier": normalize_tier(rec.get("tier")),
         "customer": rec.get("customer") or "",
         "activated_at": rec.get("activated_at"),
         "expires_at": rec.get("expires_at"),
@@ -698,12 +713,23 @@ def _session_payload(rec: dict) -> dict:
 
 
 def _license_payload(rec: dict) -> dict:
-    """License object returned to the desktop client."""
+    """License object returned to the desktop client.
+
+    ``plan`` is the billing DURATION and ``tier`` is the subscription LEVEL.
+    They are separate on purpose: a yearly Maximum licence and a yearly
+    Foundation licence are both ``plan="yearly"`` and differ only in ``tier``.
+
+    ``tier`` is the value the client gates every feature on, so it is normalized
+    here on the server. A row with a missing or unrecognised tier resolves to
+    ``foundation``, which keeps legacy keys working on the free tier instead of
+    silently granting paid features.
+    """
     owner = rec.get("customer") or "Maximum Tweaks License"
     return {
         "key": rec["license_key"],
         "status": rec.get("status") or "active",
         "plan": rec.get("plan") or "lifetime",
+        "tier": normalize_tier(rec.get("tier")),
         "owner": owner,
         "customer": rec.get("customer") or "",
         "activated_at": rec.get("activated_at"),
@@ -1113,17 +1139,23 @@ def admin_generate(payload: GenerateRequest, _: None = Depends(_admin_guard)):
 
     Duration is resolved server-side from ``duration`` (1m/6m/lifetime) or an
     explicit ``expires_at``; the key string never leaks the duration.
+
+    ``tier`` is the subscription LEVEL and is deliberately independent of the
+    duration in ``plan`` - a yearly Foundation licence and a yearly Maximum
+    licence differ only by ``tier``. It is normalized here so a malformed value
+    issues a Foundation key rather than accidentally granting a paid level.
     """
     count = max(1, min(int(payload.count), 500))
     prefix = _valid_prefix(payload.prefix)
     plan, expires_at = _resolve_duration(
         payload.plan, (payload.duration or "").strip().lower(),
         payload.expires_at)
+    tier = normalize_tier(payload.tier)
     keys = _unique_keys(
-        _DB, count, prefix, plan=plan, customer=payload.customer,
+        _DB, count, prefix, plan=plan, tier=tier, customer=payload.customer,
         note=payload.note, expires_at=expires_at)
     return {"ok": True, "keys": keys, "count": len(keys),
-            "plan": plan, "expires_at": expires_at}
+            "plan": plan, "tier": tier, "expires_at": expires_at}
 
 
 @app.post("/admin/revoke")
@@ -1137,6 +1169,25 @@ def admin_revoke(payload: RevokeRequest, _: None = Depends(_admin_guard)):
 @app.post("/admin/unrevoke")
 def admin_unrevoke(payload: KeyRequest, _: None = Depends(_admin_guard)):
     rec = _DB.unrevoke(payload.key)
+    if rec is None:
+        raise _err("invalid_license", "Unknown license key.", 404)
+    return {"ok": True, "license": _session_payload(rec)}
+
+
+@app.post("/admin/set-tier")
+def admin_set_tier(payload: TierRequest, _: None = Depends(_admin_guard)):
+    """Change a licence's subscription level.
+
+    This is the single server-side switch behind new subscriptions, upgrades
+    and downgrades. It only moves ``tier``; the billing duration in ``plan``
+    and the expiry date are managed separately, so changing level never
+    silently changes how long the licence runs for.
+
+    The desktop client re-reads the tier on every validate/checkin, so a
+    downgrade reaches the subscriber's machine within the offline grace window
+    without an reinstall.
+    """
+    rec = _DB.set_tier(payload.key, payload.tier)
     if rec is None:
         raise _err("invalid_license", "Unknown license key.", 404)
     return {"ok": True, "license": _session_payload(rec)}
@@ -1252,12 +1303,13 @@ def admin_create_key(payload: CreateKeyRequest,
     if not 1 <= max_pcs <= 10:
         raise _err("invalid_max_pcs", "max_pcs must be between 1 and 10.", 400)
     expires_at = _plan_expiry(plan)
-    rec = _DB.create(generate_key(KEY_PREFIX), plan=plan,
+    tier = normalize_tier(payload.tier)
+    rec = _DB.create(generate_key(KEY_PREFIX), plan=plan, tier=tier,
                      customer=(payload.customer or "").strip(),
                      note=(payload.note or "").strip(),
                      expires_at=expires_at, max_pcs=max_pcs)
     return {"ok": True, "key": rec["license_key"], "plan": plan,
-            "expires_at": expires_at, "max_pcs": max_pcs}
+            "tier": tier, "expires_at": expires_at, "max_pcs": max_pcs}
 
 
 @app.get("/admin/keys")
@@ -1307,6 +1359,7 @@ def admin_keys(_: None = Depends(_admin_guard)):
             "customer": k.get("customer", ""),
             "note": k.get("note", ""),
             "plan": k.get("plan", "lifetime"),
+            "tier": normalize_tier(k.get("tier")),
             "status": status,
             "created_at": k.get("created_at"),
             "activated_at": k.get("activated_at"),
@@ -1332,6 +1385,12 @@ def admin_keys(_: None = Depends(_admin_guard)):
             "online_now": online_now,
             "active_today": active_today,
             "expiring_7d": expiring_7d,
+            # Every tier is always present so the panel renders a fixed set of
+            # counters, and tiers with no keys yet show 0 rather than vanishing.
+            "by_tier": {
+                t: sum(1 for k in keys if k["tier"] == t)
+                for t in TIERS
+            },
         },
     }
 

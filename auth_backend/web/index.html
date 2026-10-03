@@ -117,7 +117,7 @@ h1,h2,h3,p{margin:0}
 .search input:focus{outline:none;border-color:var(--gold)}
 
 .colhead,.row{
-  display:grid;grid-template-columns:minmax(0,1.25fr) 88px 54px 128px 110px 250px;gap:14px;align-items:center;padding:0 24px;
+  display:grid;grid-template-columns:minmax(0,1.25fr) 104px 54px 128px 110px 250px;gap:14px;align-items:center;padding:0 24px;
 }
 .colhead{margin-top:16px;padding-top:11px;padding-bottom:11px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .rows{list-style:none;margin:0;padding:0}
@@ -134,6 +134,13 @@ h1,h2,h3,p{margin:0}
 .chip.m1{color:var(--teal);border-color:rgba(95,196,192,.4);background:rgba(95,196,192,.09)}
 .chip.m6{color:var(--gold);border-color:rgba(230,204,146,.4);background:rgba(230,204,146,.09)}
 .chip.life{color:#2a1f08;border-color:transparent;background:linear-gradient(180deg,#f2dfb2,#cfab6b)}
+/* Plan (how long) and tier (what level) are separate facts, so they stack in one
+   column instead of competing for the same chip slot. */
+.plancol{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.tier{font-size:11px;font-weight:700;letter-spacing:.02em;padding:2px 8px;border-radius:6px;border:1px solid;white-space:nowrap}
+.tier.tF{color:var(--muted);border-color:var(--line-2);background:rgba(255,255,255,.04)}
+.tier.tP{color:var(--teal);border-color:rgba(95,196,192,.45);background:rgba(95,196,192,.1)}
+.tier.tM{color:var(--gold);border-color:rgba(230,204,146,.5);background:rgba(230,204,146,.12)}
 .pcs{font-family:var(--mono);font-size:13px;color:var(--ink-2)}
 .pcs.over{color:var(--warn)}
 .strip{display:flex;align-items:flex-end;gap:2px;height:24px}
@@ -418,7 +425,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
         </label>
       </div>
       <div class="colhead" aria-hidden="true">
-        <span>Customer</span><span>Plan</span><span>PCs</span><span>Last 14 days</span><span>Last check-in</span><span></span>
+        <span>Customer</span><span>Plan / tier</span><span>PCs</span><span>Last 14 days</span><span>Last check-in</span><span></span>
       </div>
       <ul class="rows" id="rows"></ul>
     </section>
@@ -436,15 +443,20 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
 <dialog id="createDlg" aria-labelledby="createTitle">
   <div class="dbody" id="createForm">
     <h2 id="createTitle">Create a key</h2>
-    <p class="lead">Pick how long it lasts and how many PCs can use it.</p>
+    <p class="lead">Pick how long it lasts, what tier it unlocks, and how many PCs can use it.</p>
     <div class="field">
       <label for="cWho">Customer or label</label>
       <input type="text" id="cWho" placeholder="For example, Thabo N." maxlength="40" autocomplete="off">
       <div class="err" id="cErr"></div>
     </div>
     <div class="field">
-      <span class="fl" id="planLbl">Plan</span>
+      <span class="fl" id="planLbl">How long</span>
       <div class="plans" role="radiogroup" aria-labelledby="planLbl" id="plans"></div>
+    </div>
+    <div class="field">
+      <span class="fl" id="tierLbl">Tier</span>
+      <div class="plans" role="radiogroup" aria-labelledby="tierLbl" id="tiers"></div>
+      <div class="hint">What this key unlocks in the app. Separate from how long it lasts &mdash; a yearly Foundation key and a yearly Maximum key differ only here.</div>
     </div>
     <div class="field">
       <span class="fl">PCs allowed</span>
@@ -468,6 +480,22 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     <div class="dactions">
       <button class="btn btn-ghost" type="button" id="doneCopy" data-copy="">Copy key</button>
       <button class="btn btn-gold" type="button" data-close="createDlg">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Change tier -->
+<dialog id="tierDlg" aria-labelledby="tierTitle">
+  <div class="dbody">
+    <h2 id="tierTitle">Change tier</h2>
+    <p class="lead" id="tierBody"></p>
+    <div class="field">
+      <div class="plans" role="radiogroup" aria-labelledby="tierTitle" id="tierPick"></div>
+    </div>
+    <p class="hint">Only the tier moves &mdash; how long the key lasts stays exactly as it is. The customer's PC picks the change up on its next check-in, within the offline grace window.</p>
+    <div class="dactions">
+      <button class="btn btn-ghost" type="button" data-close="tierDlg">Cancel</button>
+      <button class="btn btn-gold" type="button" id="tierGo">Change tier</button>
     </div>
   </div>
 </dialog>
@@ -572,6 +600,18 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     '6m':  {label:'6 Months', days:180, sub:'180 days of access', cls:'m6'},
     'life':{label:'Lifetime', days:null,sub:'Never expires',      cls:'life'}
   };
+  /* Subscription LEVEL - what the customer is allowed to unlock. Independent of
+     PLAN above, which is only how long the key lasts. A yearly Foundation key
+     and a yearly Maximum key are both '6m'/'yearly' and differ only by tier.
+     Mirrors auth_backend/db.py TIERS and config/plans.py; anything unknown
+     falls back to foundation so a junk value can never unlock a paid level. */
+  const TIER = {
+    foundation:  {label:'Foundation', sub:'Free - the safe, broadly compatible optimizations', cls:'tF'},
+    performance: {label:'Performance',sub:'Adds verified advanced optimizations',               cls:'tP'},
+    maximum:     {label:'Maximum',    sub:'Everything, including the most advanced',            cls:'tM'},
+  };
+  const TIER_ORDER = ['foundation','performance','maximum'];
+  const tierOf = v => Object.prototype.hasOwnProperty.call(TIER, v) ? v : 'foundation';
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const utc = s => s ? new Date(String(s).replace(' ','T') + 'Z') : null;
@@ -632,6 +672,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     return {
       id: r.key, who: r.customer || '(unnamed)', key: r.key,
       plan: PLAN[r.plan] ? r.plan : 'life', max: r.max_pcs,
+      tier: tierOf(r.tier),
       status: r.status || 'active',
       usedPcs: r.used_pcs || pcs.length,
       createdAt: utc(r.created_at), expiresAt: utc(r.expires_at), revokedAt: utc(r.revoked_at),
@@ -713,6 +754,10 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       [s.active_today || 0, 'PCs active today'],
       [s.expiring_7d || 0, 'Keys expiring within 7 days'],
     ];
+    /* Tier split, so an operator can see at a glance how the keys they have
+       sold are distributed across the levels they can actually grant. */
+    const bt = s.by_tier || {};
+    TIER_ORDER.forEach(t => cards.push([bt[t] || 0, TIER[t].label + ' keys']));
     $('#stats').innerHTML = cards.map(([v,l]) =>
       `<div class="stat"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join('');
   }
@@ -742,7 +787,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if (st === 'active'){
       const ops = susp
         ? `<button class="btn btn-ghost sm" data-unsuspend="${esc(k.key)}">Resume now</button><button class="btn btn-ghost sm" data-timeout="${esc(k.key)}">Timeout</button>`
-        : `<button class="btn btn-ghost sm" data-ban="${esc(k.key)}">Ban</button><button class="btn btn-ghost sm" data-timeout="${esc(k.key)}">Timeout</button><button class="btn btn-rose-o sm" data-revoke="${esc(k.key)}">Revoke</button>`;
+        : `<button class="btn btn-ghost sm" data-tier="${esc(k.key)}">Tier</button><button class="btn btn-ghost sm" data-ban="${esc(k.key)}">Ban</button><button class="btn btn-ghost sm" data-timeout="${esc(k.key)}">Timeout</button><button class="btn btn-rose-o sm" data-revoke="${esc(k.key)}">Revoke</button>`;
       act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button>${ops}</div>`;
     } else {
       act = `<div class="acts"><button class="btn btn-ghost sm" data-inspect="${esc(k.key)}">Inspect</button><span class="state ${ban?'banned':st}">${ban?'Banned':(st === 'expired' ? 'Expired' : 'Revoked')}</span></div>`;
@@ -752,7 +797,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     const over = used > k.max;
     return `<li class="row ${k.id===selectedId?'sel':''} ${k.id===flashId?'flash':''}" data-id="${esc(k.key)}" tabindex="0" ${k.id===selectedId?'aria-current="true"':''}>
       <div class="who"><div class="nm">${esc(k.who)}</div><div class="ky">${esc(k.key)}</div></div>
-      <div><span class="chip ${P.cls}">${P.label}</span></div>
+      <div class="plancol"><span class="chip ${P.cls}">${P.label}</span><span class="tier ${TIER[k.tier].cls}">${TIER[k.tier].label}</span></div>
       <div class="pcs ${over?'over':''}" title="${over?'More PCs than allowed':'PCs used out of PCs allowed'}">${used}/${k.max}</div>
       <div class="strip" aria-hidden="true">${strip}</div>
       <div class="last">${last}</div>
@@ -841,9 +886,11 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       if (susp){
         foot = `<div class="dfoot"><span>Resuming lets the app come back on this key immediately.</span>
           <button class="btn btn-gold" data-unsuspend="${esc(k.key)}">Resume now</button>
+          <button class="btn btn-ghost" data-tier="${esc(k.key)}">Change tier</button>
           <button class="btn btn-ghost" data-timeout="${esc(k.key)}">Change timeout</button></div>`;
       } else {
-        foot = `<div class="dfoot"><span>Manage this key: revoke stops it now, ban locks it for good, timeout pauses it for a set number of hours.</span>
+        foot = `<div class="dfoot"><span>Manage this key: change tier unlocks more or fewer optimizations, revoke stops it now, ban locks it for good, timeout pauses it for a set number of hours.</span>
+          <button class="btn btn-ghost" data-tier="${esc(k.key)}">Change tier</button>
           <button class="btn btn-rose-o" data-revoke="${esc(k.key)}">Revoke key</button>
           <button class="btn btn-rose-o" data-ban="${esc(k.key)}">Ban key</button>
           <button class="btn btn-ghost" data-timeout="${esc(k.key)}">Timeout</button></div>`;
@@ -868,7 +915,8 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       <div class="keybox"><code>${esc(k.key)}</code><button class="btn btn-ghost sm" data-copy="${esc(k.key)}">Copy</button></div>
       ${banner}
       <dl class="facts">
-        <div><dt>Plan</dt><dd><span class="chip ${P.cls}">${P.label}</span></dd></div>
+        <div><dt>Plan</dt><dd><span class="chip ${P.cls}">${P.label}</span><small>${P.days ? P.days + ' days of access' : 'Never expires'}</small></dd></div>
+        <div><dt>Tier</dt><dd><span class="tier ${TIER[k.tier].cls}">${TIER[k.tier].label}</span><small>${TIER[k.tier].sub}</small></dd></div>
         <div><dt>Expires</dt><dd>${k.expiresAt ? fmt(k.expiresAt) : 'Never'}${expSub ? `<small>${expSub}</small>` : ''}</dd></div>
         <div><dt>PCs used</dt><dd class="${used>k.max?'warn':''}">${used} of ${k.max} allowed${used>k.max?'<small>More PCs than the key allows</small>':''}</dd></div>
         <div><dt>Last check-in</dt><dd>${lastTxt}</dd></div>
@@ -914,7 +962,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   /* ---------- create key ---------- */
   const createDlg = $('#createDlg'), revokeDlg = $('#revokeDlg');
   const banDlg = $('#banDlg'), timeoutDlg = $('#timeoutDlg'), inspectDlg = $('#inspectDlg'), disableAllDlg = $('#disableAllDlg'), deleteAllDlg = $('#deleteAllDlg');
-  let cPlan = '1m', cMax = 1;
+  let cPlan = '1m', cMax = 1, cTier = 'foundation';
 
   function renderPlans(){
     $('#plans').innerHTML = Object.keys(PLAN).map(id => `
@@ -923,11 +971,18 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
         <b>${PLAN[id].label}</b><small>${PLAN[id].sub}</small>
       </label>`).join('');
   }
+  function renderTiers(){
+    $('#tiers').innerHTML = TIER_ORDER.map(id => `
+      <label class="plancard ${cTier===id?'on':''}">
+        <input class="sr" type="radio" name="tier" value="${id}" ${cTier===id?'checked':''}>
+        <b>${TIER[id].label}</b><small>${TIER[id].sub}</small>
+      </label>`).join('');
+  }
   function openCreate(){
-    cPlan = '1m'; cMax = 1;
+    cPlan = '1m'; cMax = 1; cTier = 'foundation';
     $('#cWho').value = ''; $('#cErr').textContent = ''; $('#pcVal').textContent = cMax;
     $('#createForm').hidden = false; $('#createDone').hidden = true;
-    renderPlans();
+    renderPlans(); renderTiers();
     if (!createDlg.open) createDlg.showModal();
     setTimeout(() => $('#cWho').focus(), 30);
   }
@@ -936,7 +991,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
     if (!who){ $('#cErr').textContent = 'Add a name so you can find this key later.'; $('#cWho').focus(); return; }
     const btn = $('#createGo'); btn.disabled = true;
     try {
-      const r = await post('/admin/keys', { customer: who, plan: cPlan, max_pcs: cMax, note: '' });
+      const r = await post('/admin/keys', { customer: who, plan: cPlan, tier: cTier, max_pcs: cMax, note: '' });
       const data = await api('/admin/keys');
       keys = data.keys.map(mapKey);
       stats = data.stats || {};
@@ -946,10 +1001,43 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       const days = PLAN[r.plan] ? PLAN[r.plan].days : null;
       $('#doneWho').textContent = who;
       $('#doneKey').textContent = r.key;
-      $('#doneSum').textContent = `${PLAN[r.plan].label}. ${days ? 'Expires ' + fmt(utc(r.expires_at)) : 'Never expires'}. ${plural(r.max_pcs,'PC')} allowed.`;
+      $('#doneSum').textContent = `${TIER[r.tier].label} tier, ${PLAN[r.plan].label}. ${days ? 'Expires ' + fmt(utc(r.expires_at)) : 'Never expires'}. ${plural(r.max_pcs,'PC')} allowed.`;
       const dc = $('#doneCopy'); dc.dataset.copy = r.key; dc.textContent = 'Copy key';
       $('#createForm').hidden = true; $('#createDone').hidden = false;
     } catch (e) { $('#cErr').textContent = e && e.message === 'session' ? '' : (e.message || 'Could not create the key.'); }
+    finally { btn.disabled = false; }
+  }
+
+  /* ---------- change tier ---------- */
+  const tierDlg = $('#tierDlg');
+  let pendingTier = null, pickTier = 'foundation';
+
+  function renderTierPick(){
+    $('#tierPick').innerHTML = TIER_ORDER.map(id => `
+      <label class="plancard ${pickTier===id?'on':''}">
+        <input class="sr" type="radio" name="picktier" value="${id}" ${pickTier===id?'checked':''}>
+        <b>${TIER[id].label}</b><small>${TIER[id].sub}</small>
+      </label>`).join('');
+  }
+  function openTier(key){
+    const k = keyOf(key); if (!k) return;
+    pendingTier = key; pickTier = k.tier;
+    $('#tierBody').innerHTML = `<b>${esc(k.who)}</b> (${esc(k.key)}) is on <b>${TIER[k.tier].label}</b> today.`;
+    renderTierPick();
+    if (!tierDlg.open) tierDlg.showModal();
+  }
+  async function doSetTier(){
+    const btn = $('#tierGo'); btn.disabled = true;
+    try {
+      await post('/admin/set-tier', { key: pendingTier, tier: pickTier });
+      const who = (keyOf(pendingTier) || {}).who || 'Key';
+      tierDlg.close(); pendingTier = null;
+      const data = await api('/admin/keys');
+      keys = data.keys.map(mapKey);
+      stats = data.stats || {};
+      render();
+      toast(`${who} is now ${TIER[pickTier].label}`);
+    } catch (e) { if (e && e.message !== 'session') toast(e.message); }
     finally { btn.disabled = false; }
   }
 
@@ -1168,6 +1256,7 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
       return;
     }
     if ((el = t.closest('[data-revoke]'))){ e.stopImmediatePropagation(); openRevoke(el.dataset.revoke); return; }
+    if ((el = t.closest('[data-tier]'))){ e.stopImmediatePropagation(); openTier(el.dataset.tier); return; }
     if ((el = t.closest('[data-ban]'))){ e.stopImmediatePropagation(); openBan(el.dataset.ban); return; }
     if ((el = t.closest('[data-timeout]'))){ e.stopImmediatePropagation(); openTimeout(el.dataset.timeout); return; }
     if ((el = t.closest('[data-thours]'))){ e.stopPropagation(); tHours = +el.dataset.thours; renderTimeoutChips(); return; }
@@ -1191,11 +1280,14 @@ refreshAll().catch(e => { if (e && e.message !== 'session') toast(e.message); })
   $('#q').addEventListener('input', e => { query = e.target.value; renderList(); });
 
   $('#plans').addEventListener('change', e => { cPlan = e.target.value; renderPlans(); const r = document.querySelector('#plans input:checked'); if (r) r.focus(); });
+  $('#tiers').addEventListener('change', e => { cTier = tierOf(e.target.value); renderTiers(); const r = document.querySelector('#tiers input:checked'); if (r) r.focus(); });
+  $('#tierPick').addEventListener('change', e => { pickTier = tierOf(e.target.value); renderTierPick(); const r = document.querySelector('#tierPick input:checked'); if (r) r.focus(); });
   $('#pcMinus').addEventListener('click', () => { cMax = Math.max(1, cMax - 1); $('#pcVal').textContent = cMax; });
   $('#pcPlus').addEventListener('click', () => { cMax = Math.min(10, cMax + 1); $('#pcVal').textContent = cMax; });
   $('#cWho').addEventListener('input', () => $('#cErr').textContent = '');
   $('#cWho').addEventListener('keydown', e => { if (e.key === 'Enter') createKey(); });
   $('#createGo').addEventListener('click', createKey);
+  $('#tierGo').addEventListener('click', doSetTier);
   $('#revokeGo').addEventListener('click', doRevoke);
   $('#banGo').addEventListener('click', doBan);
   $('#banWhy').addEventListener('keydown', e => { if (e.key === 'Enter') doBan(); });

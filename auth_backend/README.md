@@ -54,9 +54,10 @@ this is *not* a permanent bypass, and the backend remains the authority.
 | `GET /admin/licenses?status=`     | List licenses (filter by status)       |
 | `GET /admin/search?q=`            | Search licenses by key / customer / note       |
 | `GET /admin/stats`                | Totals by status                                 |
-| `POST /admin/generate`            | Generate 1..500 keys (`{count, prefix, duration, plan, customer, note, expires_at}`) |
-| `POST /admin/keys`                | Create one key with a plan + PC limit (`{customer, plan: '1m'\|'6m'\|'life', max_pcs: 1..10, note}`) |
-| `GET /admin/keys`                 | Admin overview: all keys + per-PC activity aggregates + dashboard stats |
+| `POST /admin/generate`            | Generate 1..500 keys (`{count, prefix, duration, plan, tier, customer, note, expires_at}`) |
+| `POST /admin/keys`                | Create one key with a duration + tier + PC limit (`{customer, plan: '1m'\|'6m'\|'life', tier, max_pcs: 1..10, note}`) |
+| `GET /admin/keys`                 | Admin overview: all keys (each with `tier`) + per-PC activity aggregates + dashboard stats incl. `by_tier` |
+| `POST /admin/set-tier`            | Change a key's level (`{key, tier}`) - upgrades and downgrades |
 | `GET /admin/keys/{key}/activity`  | 30-day per-PC check-in grid + recent refusals   |
 | `DELETE /admin/keys/{key}/pcs/{hwid}` | Free a PC slot immediately                  |
 | `DELETE /admin/keys/{key}`        | Permanently delete a license row               |
@@ -69,6 +70,28 @@ this is *not* a permanent bypass, and the backend remains the authority.
 `POST /admin/keys` are exact-day based: `1m` = 30 days, `6m` = 180 days,
 `life` = never. When `expires_at` is given it wins. `prefix` defaults to
 `LICENSE_KEY_PREFIX` (or `MAX`).
+
+**Subscription tiers.** `tier` is the *level* a key unlocks, and it is a
+separate fact from `plan`, which is only how long the key lasts:
+
+    foundation (free)  <  performance  <  maximum
+
+A yearly Foundation key and a yearly Maximum key are both the same `plan` and
+differ only by `tier`. `tier` can be chosen at creation (`POST /admin/keys`,
+`POST /admin/generate`) and changed later (`POST /admin/set-tier`), which is
+the single switch behind upgrades and downgrades. It is normalized on the
+server and **fails closed**: an absent, `null` or unrecognised value resolves
+to `foundation`, so a typo can never grant a paid level, and no input resolves
+above `maximum`. Marketing aliases are accepted (`free`/`basic`/`starter` →
+foundation, `pro`/`performance_monthly` → performance, `premium`/`ultra`/`max`
+→ maximum) and mirror `config/plans.py` exactly. Changing the tier never
+touches `plan` or `expires_at`, and because the desktop client re-reads the
+tier on every validate/check-in, an upgrade or downgrade reaches the
+subscriber's PC within the offline grace window without a reinstall.
+
+`GET /admin/keys` returns each key's `tier` plus a `stats.by_tier` breakdown
+that always lists all three tiers (including the ones with no keys yet), which
+is what the admin panel's tier badges and counters render from.
 
 **Heartbeat / PC limits.** While the customer app runs it POSTs a check-in
 every 5 minutes (`CHECKIN_INTERVAL_S`). The server records one activity row per
