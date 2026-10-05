@@ -111,7 +111,9 @@ class AppContext(QObject):
     def invalidate_state(self):
         """Drop cached system reads so the next audit re-queries Windows."""
         from engine import state_checker
+        from engine.probe import invalidate_cache as invalidate_probe_cache
         state_checker.invalidate_cache()
+        invalidate_probe_cache()
 
     def _on_live_result(self, tid, value):
         self.live[tid] = value

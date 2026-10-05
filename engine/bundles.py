@@ -26,7 +26,7 @@ BALANCED = {
         "game-003",    # Game DVR / Game Bar / capture off
         "win-006",     # Visual effects: best performance
         "reg-001",     # Foreground lock timeout
-        "mouse-001",   # Mouse acceleration off
+        "il-007",      # Mouse acceleration off (canonical; mouse-001 removed)
         "mmcss_game_priority",  # MMCSS gaming priority
         "audio-003",   # Audio MMCSS task
         "dd-013",      # TCP ack frequency
@@ -51,7 +51,7 @@ COMPETITIVE = {
         "power-003",   # PCIe ASPM off
         "power-009",   # Min processor state 20%
         "perf-034",    # Processor performance decrease policy
-        "perf-032",    # Win32 priority separation
+        "adv-006",     # Win32 priority separation (canonical; perf-032 removed)
         "reg-002",     # Active window tracking timeout 0
         "reg-003",     # Menu show delay 0
         "kbd-001",     # Key repeat delay zero
@@ -74,7 +74,7 @@ MAXIMUM = {
     "tweaks": COMPETITIVE["tweaks"] + [
         "exp-003",     # Hypervisor off (bcdedit)
         "fpsb-001",    # VBS off
-        "adv-006",     # Processor scheduling to programs
+        # adv-006 (Processor scheduling) is inherited via COMPETITIVE.
         "perf-004",    # Memory compression off
         "ram-058",     # I/O page lock limit
         "stor-016",    # Last access timestamps off
@@ -84,7 +84,7 @@ MAXIMUM = {
         "tel-001",     # Telemetry: security
         "db-003",      # OneDrive sync off
         "db-002",      # Startup apps cleanup
-        "fpsb-007",    # Background apps off
+        "lap-044",     # Background apps off (canonical; fpsb-007 removed)
         "win-018",     # Delivery optimization off
         "win-012",     # Advertising ID off
         "rep-008",     # Create a System Restore Point

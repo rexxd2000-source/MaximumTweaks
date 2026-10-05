@@ -30,7 +30,6 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
-    QPolygonF,
 )
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -67,14 +66,14 @@ class GlassCard(QFrame):
 
 
 class GlassPanel(QFrame):
-    """Dashboard glass panel with decorative bracket corners.
+    """Dashboard panel with decorative bracket corners.
 
-    Matches the reference dashboard: translucent gradient surface, 1px glass
-    border and two L-shaped corner brackets (top-left + bottom-right). The
-    corner color is passed in (violet / cyan per the reference layout).
+    Flat solid surface (styled by QSS #DashPanel) with a crisp single-accent
+    border and two L-shaped corner brackets (top-left + bottom-right), both
+    drawn in the same solid accent color.
     """
 
-    def __init__(self, corner="#9C80FF", parent=None):
+    def __init__(self, corner="#8B5CF6", parent=None):
         super().__init__(parent)
         self.setObjectName("DashPanel")
         self._corner = QColor(corner)
@@ -85,8 +84,8 @@ class GlassPanel(QFrame):
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.TextAntialiasing)
         pen = QPen(self._corner, 1.4)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.FlatCap)
+        pen.setJoinStyle(Qt.MiterJoin)
         p.setPen(pen)
         w, h = self.width(), self.height()
         s = 14
@@ -104,13 +103,11 @@ class GlassPanel(QFrame):
         br.lineTo(w - off, h - off - 3)
         br.quadTo(w - off, h - off, w - off - 3, h - off)
         br.lineTo(w - off - s, h - off)
-        p.setPen(QPen(QColor(self._corner.red(), self._corner.green(),
-                             self._corner.blue(), 140), 1.2))
         p.drawPath(br)
 
 
 class RingGauge(QWidget):
-    """96px circular utilization gauge with a glowing colored arc.
+    """96px circular utilization gauge with a flat colored arc.
 
     The track is a thin full ring; the value is an animated stroke-dashoffset
     style arc (1/4 turn advance toward the target), matching the reference
@@ -160,12 +157,7 @@ class RingGauge(QWidget):
 
         span = -int(round(self._display / 100.0 * 360.0)) * 16
         if abs(span) >= 16:
-            # soft glow pass
-            glow = QPen(QColor(self._color.red(), self._color.green(),
-                               self._color.blue(), 46), pen_w + 6)
-            p.setPen(glow)
-            p.drawArc(rect, 90 * 16, span)
-            # value arc
+            # value arc (flat, no glow)
             value = QPen(self._color, pen_w)
             value.setCapStyle(Qt.RoundCap)
             p.setPen(value)
@@ -557,36 +549,11 @@ class LatencyChart(QWidget):
             path.moveTo(*t_run[0][1])
             for _, pt in t_run[1:]:
                 path.lineTo(*pt)
-            for width, alpha in ((7, 14), (4, 40)):
-                glow = QPen(thermal_color)
-                glow.setWidthF(width)
-                glow.setCapStyle(Qt.RoundCap)
-                glow.setJoinStyle(Qt.RoundJoin)
-                glow.setColor(QColor(thermal_color.red(), thermal_color.green(),
-                                     thermal_color.blue(), alpha))
-                p.setPen(glow)
-                p.drawPath(path)
             line = QPen(thermal_color)
             line.setWidthF(2.0)
             line.setCapStyle(Qt.RoundCap)
             p.setPen(line)
             p.drawPath(path)
-
-            poly = QPolygonF()
-            poly.append(QPointF(t_run[0][1][0], plot.bottom()))
-            for _, pt in t_run:
-                poly.append(QPointF(*pt))
-            poly.append(QPointF(t_run[-1][1][0], plot.bottom()))
-            gradient = QLinearGradient(0, plot.top(), 0, plot.bottom())
-            gradient.setColorAt(0.0, QColor(thermal_color.red(),
-                                            thermal_color.green(),
-                                            thermal_color.blue(), 60))
-            gradient.setColorAt(1.0, QColor(thermal_color.red(),
-                                            thermal_color.green(),
-                                            thermal_color.blue(), 0))
-            p.setPen(Qt.NoPen)
-            p.setBrush(gradient)
-            p.drawPolygon(poly)
 
         # ---- clock line ----
         clock_color = self._clock_color
@@ -596,14 +563,6 @@ class LatencyChart(QWidget):
             path.moveTo(*c_run[0][1])
             for _, pt in c_run[1:]:
                 path.lineTo(*pt)
-            for width, alpha in ((6, 12), (3, 36)):
-                glow = QPen(clock_color)
-                glow.setWidthF(width)
-                glow.setCapStyle(Qt.RoundCap)
-                glow.setColor(QColor(clock_color.red(), clock_color.green(),
-                                     clock_color.blue(), alpha))
-                p.setPen(glow)
-                p.drawPath(path)
             line = QPen(clock_color)
             line.setWidthF(1.8)
             line.setCapStyle(Qt.RoundCap)

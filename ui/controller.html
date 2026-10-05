@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Controller &mdash; Overclock</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08070f; --card:#0f0d1a; --line:#221e3a;
+  --tx:#ece9fb; --mu:#8d88ac; --dim:#544f70;
+  --am:#f0b34a; --vi:#8b7cf6; --te:#2dd4a7;
+}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(700px 500px at 85% 0%,#1d1442 0,transparent 60%),
+    radial-gradient(600px 400px at 0% 40%,rgba(42,28,10,.33) 0,transparent 60%),
+    var(--bg);
+  color:var(--tx);
+  font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+  overflow-y:auto;
+}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#221e3a;border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:#332c56}
+::-webkit-scrollbar-track{background:transparent}
+
+.w{padding:34px 42px 118px}
+
+header{display:flex;align-items:center;gap:14px}
+h1{font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
+h1 b{color:var(--am);font-weight:800}
+.sub{font-size:13px;color:var(--mu);margin-top:3px}
+/* section head: copied from the app's .section-head / .panel-head pattern */
+.sech{display:flex;align-items:center;justify-content:space-between;margin:34px 0 6px}
+.sech .l{display:flex;align-items:center;gap:9px}
+.sech h2{margin:0;font-size:14px;font-weight:700;color:#d7d8e2}
+.sech .n{font-size:11px;color:var(--dim);letter-spacing:1px;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace}
+.chip{font-size:10.5px;font-weight:600;color:var(--mu);background:#0c0a16;
+  border:1px solid var(--line);padding:5px 10px;border-radius:100px}
+
+.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:22px}
+.card{
+  background:linear-gradient(180deg,#121022,var(--card));
+  border:1px solid var(--line);border-radius:18px
+}
+.stage{padding:22px;position:relative;overflow:hidden;min-height:300px;
+  display:flex;flex-direction:column}
+#dev{flex:1;display:flex;flex-direction:column;justify-content:center}
+.lab{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.6px;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace;margin-bottom:16px}
+.empty0{
+  border:1px dashed var(--line);border-radius:14px;min-height:230px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;padding:34px 28px;background:#0c0a16
+}
+.empty0 b{font-size:15px;font-weight:600}
+.empty0 span{font-size:12.5px;color:var(--mu);text-align:center;line-height:1.5}
+.dev{border:1px solid var(--line);border-radius:14px;background:#0c0a16;overflow:hidden}.dev .row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 14px;border-bottom:1px solid var(--line)
+}
+.dev .row:last-child{border-bottom:0}
+.dev .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace}
+.dev .v{font-size:13px;font-weight:600;text-align:right;word-break:break-word}
+.dev .v.mono{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-size:12px}
+
+.ring{padding:22px;display:flex;flex-direction:column;gap:14px}
+.gauge{position:relative;width:170px;height:170px;margin:4px auto 0}
+.gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
+.gauge .c{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center
+}
+.gauge b{font-size:30px;font-weight:700;line-height:1}
+.gauge span{font-size:10px;color:var(--dim);margin-top:5px;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace}
+.mini{display:flex;flex:1;flex-direction:column;gap:8px}
+.mini div{
+  display:flex;align-items:center;justify-content:space-between;
+  border:1px solid var(--line);border-radius:9px;padding:7px 13px;font-size:13px
+}
+.mini b{font-weight:600}
+.bars{height:54px;display:flex;align-items:flex-end;gap:3px}
+.bars i{
+  flex:1;background:linear-gradient(180deg,var(--vi),#3a2f8f);
+  border-radius:3px 3px 0 0;min-height:2px
+}
+
+.btn{
+  border:1px solid var(--line);background:#0c0a16;color:var(--tx);
+  border-radius:11px;padding:11px 20px;font-weight:600;font-size:13px;cursor:pointer;
+  font-family:inherit;transition:border-color .15s
+}
+.btn:hover{border-color:var(--vi)}
+.btn.a{background:linear-gradient(180deg,#f7c368,var(--am));color:#2a1c02;border:0}
+.btn.a:hover{filter:brightness(1.06)}
+.btn[disabled]{opacity:.42;cursor:not-allowed;filter:grayscale(.5)}
+.btn[disabled]:hover{border-color:var(--line)}
+.btnrow{display:flex;gap:10px}
+
+.tag{
+  font-size:10px;color:var(--mu);border:1px solid var(--line);background:#0c0a16;
+  border-radius:6px;padding:3px 8px;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace;white-space:nowrap
+}
+.tag.g{color:var(--te);border-color:#1c4d40;background:#0a1512}
+.tag.a{color:var(--am);border-color:#57431a;background:#151008}
+.tag.v{color:var(--vi);border-color:#3a3370;background:#0e0c1c}
+.sech .tag{margin-left:auto}
+
+.path{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.node{
+  position:relative;border:1px solid rgba(255,255,255,.1);border-radius:20px;
+  padding:20px;
+  background:
+    linear-gradient(160deg,rgba(255,255,255,.11),rgba(255,255,255,.02) 38%,transparent 62%),
+    linear-gradient(180deg,#191536,#0c0a17);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 -24px 40px rgba(0,0,0,.4),
+    0 14px 34px rgba(0,0,0,.45);
+  overflow:hidden;transform-style:preserve-3d;will-change:transform;
+  transition:transform .12s ease-out,box-shadow .2s ease
+}
+/* mouse-following spotlight, copied from tweak_cards.html. It needs its own
+   element because ::before is the index badge and ::after is the gloss. */
+.node .spot{
+  position:absolute;inset:0;pointer-events:none;border-radius:20px;opacity:0;
+  background:radial-gradient(220px circle at var(--mx,50%) var(--my,50%),
+    rgba(255,255,255,.09), transparent 60%);
+  transition:opacity .2s ease
+}
+.node:hover .spot{opacity:1}
+.node:hover{z-index:2}
+.node::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 28%,rgba(255,255,255,.08) 44%,transparent 60%)
+}
+.node::before{
+  content:attr(data-n);position:absolute;top:16px;right:16px;width:24px;height:24px;
+  border-radius:50%;background:#0c0a17;color:var(--dim);display:grid;place-items:center;
+  font-size:11px;font-family:ui-monospace,"Cascadia Code",Consolas,monospace
+}
+.node h4{font-size:15px;font-weight:700;margin-bottom:7px}
+.node p{font-size:13px;color:var(--mu);line-height:1.55;margin-bottom:16px}
+.node:not(.off):hover{transform:translateY(-4px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -24px 40px rgba(0,0,0,.4),
+    0 22px 48px rgba(0,0,0,.55)}
+.node.live{
+  border-color:rgba(240,179,74,.45);
+  background:
+    linear-gradient(160deg,rgba(240,179,74,.14),rgba(240,179,74,.03) 40%,transparent 62%),
+    linear-gradient(180deg,#241a10,#0f0b09);
+  box-shadow:
+    inset 0 1px 0 rgba(255,220,160,.3),
+    inset 0 -24px 40px rgba(0,0,0,.4),
+    0 14px 40px rgba(240,179,74,.2)
+}
+.node.off{opacity:.5}
+.node.off:hover{transform:none}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  position:relative;z-index:1}
+
+.sw{
+  position:relative;width:44px;height:24px;border-radius:12px;flex:0 0 44px;
+  background:#1b1832;border:1px solid var(--line);cursor:pointer;
+  transition:background .2s,border-color .2s
+}
+.sw::after{
+  content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;
+  border-radius:50%;background:var(--mu);transition:left .2s,background .2s
+}
+.sw.on{background:#4a3410;border-color:var(--am)}
+.sw.on::after{left:23px;background:var(--am)}
+.node.off .sw{cursor:not-allowed}
+
+.note{
+  margin-top:26px;padding:16px 20px;font-size:12.5px;color:var(--mu);line-height:1.65;
+  background:linear-gradient(180deg,#121022,var(--card));
+  border:1px solid var(--line);border-radius:12px
+}
+.note b{color:var(--tx);font-weight:600}
+
+.bar{
+  position:fixed;left:0;right:0;bottom:0;padding:14px 22px;
+  background:rgba(11,9,19,.94);border-top:1px solid var(--line);
+  backdrop-filter:blur(8px);z-index:20
+}
+.bar .in{display:flex;gap:10px;align-items:center}
+.sp{flex:1;font-size:13px;color:var(--mu)}
+
+.hzbox{
+  display:grid;gap:10px;padding:14px;border:1px solid var(--line);
+  border-radius:14px;background:linear-gradient(180deg,#141127,#0c0a16)
+}
+.hzrow{display:flex;align-items:center;gap:10px}
+.hzrow .lab{margin:0}
+.seg{display:flex;gap:6px}
+.seg button{
+  flex:1;padding:9px 0;border-radius:10px;border:1px solid var(--line);
+  background:#0c0a16;color:var(--mu);font-weight:600;font-size:13px;cursor:pointer;
+  font-family:ui-monospace,"Cascadia Code",Consolas,monospace;transition:all .15s
+}
+.seg button:hover{border-color:var(--vi)}
+.seg button.on{background:linear-gradient(180deg,#4a3410,#2a1d0c);
+  border-color:var(--am);color:var(--am)}
+.hzhint{font-size:11.5px;color:var(--dim);line-height:1.5}
+.hzhint.warn{color:var(--am)}
+
+#toast{
+  position:fixed;right:22px;bottom:82px;max-width:340px;z-index:30;
+  display:flex;flex-direction:column;gap:8px
+}
+#toast div{
+  padding:11px 14px;border-radius:11px;font-size:12.5px;line-height:1.5;
+  background:rgba(12,10,22,.97);border:1px solid var(--line);
+  box-shadow:0 10px 30px rgba(0,0,0,.5)
+}
+#toast div.ok{border-color:#1c4d40;color:#8ff0d4}
+#toast div.bad{border-color:#6b2a2a;color:#ffb0a0}
+#toast div.info{border-color:#3a3370;color:#cfc7ff}
+
+@media(max-width:1180px){
+  .hero{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .path{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+  .path{grid-template-columns:1fr}
+  .w{padding:22px 16px 120px}
+  h1{font-size:21px}
+}
+</style>
+</head>
+<body>
+<div class="w">
+
+  <header>
+    <div>
+      <h1>Controller <b>Overclock</b></h1>
+      <div class="sub">Everything here changes a real Windows setting &mdash; and you can put every one of them back.</div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="card stage">
+      <div class="lab">01 &mdash; controller</div>
+      <div id="dev">
+        <div class="empty0">
+          <b>No controller detected</b>
+          <span>Connect a gamepad over USB or Bluetooth,<br>then reopen this page.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card ring">
+      <div class="lab">02 &mdash; polling rate</div>
+      <div class="gauge">
+        <svg viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="ag" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#f7c368"/>
+              <stop offset="1" stop-color="#f0b34a"/>
+            </linearGradient>
+          </defs>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="#1b1832" stroke-width="8"/>
+          <circle id="arc" cx="50" cy="50" r="42" fill="none" stroke="url(#ag)"
+                  stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="264" stroke-dashoffset="264"/>
+        </svg>
+        <div class="c"><b id="hz">&mdash;&mdash;</b><span id="hzsub">HERTZ</span></div>
+      </div>
+      <div class="mini">
+        <div><b>Consistency</b><span id="mcons" class="tag">&mdash;</span></div>
+        <div><b>Interval</b><span id="miv" class="tag">&mdash;</span></div>
+        <div><b>Path</b><span id="mpath" class="tag">&mdash;</span></div>
+      </div>
+      <div class="bars" id="bars"></div>
+
+      <div class="hzbox">
+        <div class="hzrow">
+          <span class="lab" style="margin:0">Target</span>
+          <div class="seg" id="seg">
+            <button data-hz="125">125 Hz</button>
+            <button data-hz="250">250 Hz</button>
+            <button data-hz="500">500 Hz</button>
+            <button data-hz="1000" class="on">1000 Hz</button>
+          </div>
+          <span class="tag a" id="tgt">target 1000 Hz</span>
+        </div>
+        <div class="hzhint warn" id="hzwhy">A pad only reports at the rate its firmware and driver were built for. Overriding it means rewriting the bInterval on the pad's interrupt endpoint, which is kernel work &mdash; a signed USB filter driver. This app ships no driver, so the rate selector is disabled rather than faked.</div>
+        <div class="btnrow">
+          <button class="btn" id="runtest">Run polling test</button>
+          <button class="btn a" id="applyrate" disabled title="Requires a signed USB filter driver, which this app does not ship">Apply rate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sech">
+    <div class="l"><span class="n">03</span><h2>Optimizations</h2></div>
+    <span class="chip" id="avail">&mdash; available</span>
+  </div>
+  <div class="sub" style="margin-bottom:2px">Follow the signal from the pad to Windows. Each stop is one reversible setting.</div>
+
+  <div class="path" id="grid"></div>
+
+  <div class="note">
+    <b>What these switches actually do.</b> Each one is a single, real Windows setting that the app snapshots before touching it, so
+    <b>Revert all</b> puts the previous value back exactly &mdash; including removing the override entirely when Windows was using its default.
+    Settings marked <b>system-wide</b> affect every USB, Bluetooth or scheduling decision Windows makes; per-device and hub rows touch only the
+    controller that is plugged in right now. Some rows need administrator rights or a reboot, and the app tells you when that is the case instead of
+    claiming a change it could not make.
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div class="bar">
+  <div class="in">
+    <div class="sp" id="cnt">0 enabled</div>
+    <button class="btn" id="revert">Revert all</button>
+    <button class="btn a" id="apply">Apply enabled</button>
+  </div>
+</div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+function api(){ return (window.pywebview && window.pywebview.api) || null; }
+
+function toast(msg, cls){
+  var box = document.getElementById('toast');
+  var d = document.createElement('div');
+  d.className = cls || 'info';
+  d.textContent = msg;
+  box.appendChild(d);
+  setTimeout(function(){
+    d.style.transition = 'opacity .35s';
+    d.style.opacity = '0';
+    setTimeout(function(){ d.remove(); }, 360);
+  }, 4600);
+}
+function showToast(type, title, sub){
+  var cls = (type === 'success') ? 'ok' : (type === 'warn' || type === 'error') ? 'bad' : 'info';
+  toast(title + (sub ? ' \u2014 ' + sub : ''), cls);
+}
+
+var RATES = [125, 250, 500, 1000];
+function pickRate(hz){
+  RATES.forEach(function(r){
+    var b = document.querySelector('#seg button[data-hz="'+r+'"]');
+    if(b) b.classList.toggle('on', r === hz);
+  });
+  var t = document.getElementById('tgt');
+  if(t) t.textContent = 'target ' + hz + ' Hz';
+}
+
+function renderDev(d){
+  var box = document.getElementById('dev');
+  if(!box || !d) return;
+  if(!d.found){
+    box.innerHTML = '<div class="empty0"><b>No controller detected</b>' +
+      '<span>Connect a gamepad over USB or Bluetooth,<br>then reopen this page.</span></div>';
+    return;
+  }
+  function row(k, v, mono){
+    return '<div class="row"><span class="k">'+k+'</span>'+
+           '<span class="v'+(mono?' mono':'')+'">'+v+'</span></div>';
+  }
+  box.innerHTML =
+    '<div class="dev">' +
+      row('Model', d.name || 'Unknown pad') +
+      row('Connection', (d.conn || '').toUpperCase() || '&mdash;') +
+      row('Device ID', d.id || '&mdash;', true) +
+      row('Driver', d.driver || 'unavailable', true) +
+    '</div>';
+}
+
+function renderGauge(r){
+  var hz = (r && r.ok) ? r.hz : null;
+  var arc = document.getElementById('arc');
+  document.getElementById('hz').textContent = hz ? hz : '--';
+  document.getElementById('hzsub').textContent = hz ? 'HERTZ MEASURED' : 'NOT MEASURED';
+  if(arc) arc.setAttribute('stroke-dashoffset', hz ? (264 - 198 * Math.min(hz,1000) / 1000) : 264);
+  document.getElementById('mcons').textContent = (r && r.consistency != null) ? r.consistency + '%' : '--';
+  document.getElementById('miv').textContent   = (r && r.avg_ms != null)
+      ? (r.avg_ms < 10 ? r.avg_ms.toFixed(2) : r.avg_ms.toFixed(1)) + ' ms' : '--';
+  document.getElementById('mpath').textContent = (r && r.path) ? r.path : '--';
+
+  var bars = document.getElementById('bars');
+  if(!bars) return;
+  var N = 40, iv = (r && r.intervals) || [];
+  bars.innerHTML = '';
+  for(var i = 0; i < N; i++){
+    var b = document.createElement('i');
+    var h = 4;
+    if(iv.length && r.avg_ms){
+      var v = iv[Math.floor(i * iv.length / N)] || 0;
+      var ratio = v / (r.avg_ms || 1);
+      h = 6 + 48 * Math.max(0, Math.min(1, (ratio - 0.5) * 1.4));
+      if(h < 6) h = 6;
+    }
+    b.style.height = h + 'px';
+    b.style.opacity = iv.length ? (0.45 + 0.55 * (h / 54)).toFixed(2) : '0.18';
+    bars.appendChild(b);
+  }
+}
+
+function renderCards(cards){
+  var grid = document.getElementById('grid');
+  if(!grid || !cards) return;
+  grid.innerHTML = '';
+  cards.forEach(function(c){
+    var el = document.createElement('div');
+    el.className = 'node' + (c.on ? ' live' : '') + (c.avail ? '' : ' off');
+    el.setAttribute('data-n', c.n);
+    var reg = '';
+    el.innerHTML =
+      '<i class="spot"></i>' +
+      '<div class="foot" style="margin-bottom:12px">' +
+        '<span class="tag ' + (c.tagcls || 'a') + '">' + c.tag + '</span>' +
+      '</div>' +
+      '<h4>' + c.title + '</h4>' +
+      '<p>' + c.desc + '</p>' + reg +
+      '<div class="foot">' +
+        '<span class="tag">' + c.scope + '</span>' +
+        '<span class="sw' + (c.on ? ' on' : '') + '" data-id="' + c.id + '"></span>' +
+      '</div>';
+    grid.appendChild(el);
+  });
+  var n = cards.filter(function(c){ return c.avail; }).length;
+  document.getElementById('avail').textContent = n + ' of ' + cards.length + ' available';
+  attachTilt();
+}
+
+/* Mouse-following tilt, copied from tweak_cards.html so Controller Overclock
+   leans the same way the other card pages do. */
+function attachTilt(){
+  document.querySelectorAll('.node').forEach(function(card){
+    if(card.dataset.tilt) return;
+    card.dataset.tilt = '1';
+    card.addEventListener('mousemove', function(e){
+      var r = card.getBoundingClientRect();
+      if(!r.width || !r.height) return;
+      /* Clamp to the card bounds so a stale/moved event can never push a
+         card into an extreme angle (the "full backflip" look). */
+      var x = Math.max(0, Math.min(r.width,  e.clientX - r.left));
+      var y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+      var rx = ((y / r.height) - 0.5) * -10;
+      var ry = ((x / r.width)  - 0.5) *  10;
+      card.style.transform = 'perspective(800px) rotateX(' + rx + 'deg) rotateY('
+        + ry + 'deg) scale(1.02)';
+      card.style.setProperty('--mx', ((x / r.width) * 100) + '%');
+      card.style.setProperty('--my', ((y / r.height) * 100) + '%');
+    });
+    card.addEventListener('mouseleave', function(){
+      card.style.transform = 'perspective(800px) rotateX(0deg) rotateY(0deg) scale(1)';
+    });
+  });
+}
+
+function refreshCount(){
+  var on = document.querySelectorAll('.node:not(.off) .sw.on').length;
+  document.getElementById('cnt').textContent = on + ' enabled';
+}
+
+window.mx = {
+  data: {},
+  setData: function(d){
+    window.mx.data = d || {};
+    renderDev(window.mx.data.dev);
+    renderCards(window.mx.data.cards);
+    renderGauge(window.mx.data.poll);
+    refreshCount();
+  },
+  setBusy: function(busy, label){
+    var b = document.getElementById('runtest');
+    if(!b) return;
+    b.disabled = !!busy;
+    b.textContent = busy ? (label || 'Working...') : 'Run polling test';
+  },
+  showToast: showToast,
+  setPoll: function(color, label){
+    var p = document.getElementById('mpath');
+    if(p && label) p.textContent = label;
+  }
+};
+
+document.addEventListener('click', function(e){
+  var sw = e.target.closest('.sw');
+  if(sw){
+    var node = sw.closest('.node');
+    if(node && node.classList.contains('off')){
+      showToast('warn', 'Nothing to apply', 'That optimization has no matching device on this machine.');
+      return;
+    }
+    sw.classList.toggle('on');
+    refreshCount();
+    return;
+  }
+  var b = e.target.closest('#seg button');
+  if(b){ pickRate(parseInt(b.getAttribute('data-hz'), 10)); }
+});
+
+document.getElementById('runtest').addEventListener('click', function(){
+  api() && api().test();
+});
+document.getElementById('applyrate').addEventListener('click', function(){
+  showToast('warn', 'Cannot change the report rate',
+    'It needs a signed USB filter driver. This app ships none, so nothing was changed.');
+});
+document.getElementById('apply').addEventListener('click', function(){
+  var ids = [];
+  document.querySelectorAll('.node:not(.off) .sw.on').forEach(function(s){
+    ids.push(s.getAttribute('data-id'));
+  });
+  if(!ids.length){ showToast('info', 'Nothing selected', 'No optimizations are switched on.'); return; }
+  api() && api().applyMany(JSON.stringify(ids));
+});
+document.getElementById('revert').addEventListener('click', function(){
+  api() && api().revertAll();
+});
+
+window.pickRate = pickRate;
+window.showToast = showToast;
+
+if(window.qt && window.qt.webChannelTransport && window.QWebChannel){
+  new QWebChannel(window.qt.webChannelTransport, function(ch){
+    window.pywebview = window.pywebview || {};
+    window.pywebview.api = ch.objects.api;
+    setTimeout(function(){ api() && api().ready(); }, 10);
+  });
+} else {
+  setTimeout(function(){ api() && api().ready(); }, 10);
+}
+</script>
+</body>
+</html>

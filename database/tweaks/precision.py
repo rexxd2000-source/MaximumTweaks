@@ -36,20 +36,6 @@ TWEAKS = validate_module("precision", [
       risk="low", impact="high", recommended="recommended", admin=True,
       tags=["mmcss", "tcp", "frame", "precision"]),
 
-    T("pre-002", "Fire Timing",
-      "Normalizes animation state and shot calculation timing.",
-      actions=[
-          ("reg", "HKLM", _MMCSS, "SystemResponsiveness", 10, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM", _MMCSS, "SystemResponsiveness"),
-      ],
-      why="Consistent CPU scheduling with a small background margin keeps "
-          "animation state and shot-calculation timing uniform each spray.",
-      changes="Sets MMCSS responsiveness to 10 for steadier scheduling.",
-      risk="low", impact="moderate", recommended="optional", admin=True,
-      tags=["mmcss", "cpu", "precision"]),
-
     T("pre-003", "Packet Flow",
       "Packet flow optimization for stable network timing.",
       actions=[
@@ -129,21 +115,6 @@ TWEAKS = validate_module("precision", [
       risk="safe", impact="moderate", recommended="optional", admin=True,
       tags=["qos", "tcp", "jitter", "precision"]),
 
-    T("pre-008", "Stick Sync",
-      "Controller polling rate & analog deadzone sync.",
-      actions=[
-          ("guidance", "Set your controller to its highest polling rate in the "
-                       "controller/elite app, lower the analog stick deadzone to "
-                       "~0-5%, and use Steam Input for consistent input mapping."),
-      ],
-      revert=[
-          ("guidance", "Restore your controller's previous polling rate and deadzone settings."),
-      ],
-      why="A high polling rate with a minimal deadzone keeps stick input and "
-          "correction samples aligned with the game's input read.",
-      changes="Guide: controller polling rate and analog deadzone setup.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["controller", "polling", "deadzone", "precision"]),
 
     T("pre-009", "Taste Tester",
       "Preset mix of lighter tweaks across all categories.",

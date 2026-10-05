@@ -128,15 +128,37 @@ def _day_labels(span: int) -> list[str]:
             for i in range(span)]
 
 
+# Billing duration -> (label, backend plan/duration code, days granted).
+#
+# `yearly` was labelled "6 Months" while granting 365 days. That label is what
+# an operator reads before issuing a key, so it was actively misleading - an
+# admin would tell a customer "6 months" and hand them a year. The label is now
+# correct.
+#
+# The stored code is deliberately left as "yearly" rather than a new value:
+# it is what the backend already accepts and what the desktop client's
+# plan_label() already understands.
+#
+# These are DURATIONS only. The subscription level is a separate `tier`
+# (foundation / performance / maximum) and is never derived from this table.
 PLANS = {
-    "1m": ("1 Month", "m1", 30),
-    "monthly": ("1 Month", "m1", 30),
-    "6m": ("6 Months", "m6", 180),
-    "custom": ("6 Months", "m6", 180),
-    "yearly": ("6 Months", "m6", 365),
-    "life": ("Lifetime", "life", None),
-    "lifetime": ("Lifetime", "life", None),
+    "1m": ("1 Month", "1m", 30),
+    "monthly": ("1 Month", "1m", 30),
+    "6m": ("6 Months", "6m", 180),
+    "custom": ("6 Months", "6m", 180),
+    "yearly": ("1 Year", "yearly", 365),
+    "annual": ("1 Year", "yearly", 365),
+    "life": ("Lifetime", "lifetime", None),
+    "lifetime": ("Lifetime", "lifetime", None),
 }
+
+# Subscription tiers, lowest first. Mirrors config/plans.py.
+TIERS = {
+    "foundation": "Foundation (free)",
+    "performance": "Performance",
+    "maximum": "Maximum",
+}
+TIER_ORDER = ("foundation", "performance", "maximum")
 
 
 def plan_label(plan: str) -> str:

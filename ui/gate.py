@@ -3,14 +3,14 @@
 Port of the four reference HTML screens (01-boot-activation, 02-banned,
 03-timeout, 04-key-revoked) into the PySide6 app. Shown at every launch until
 a valid license session exists, and re-shown the instant the heartbeat learns
-the key was banned / revoked / suspended mid-session — no restart required.
+the key was banned / revoked / suspended mid-session â€” no restart required.
 
 Pages (QStackedWidget):
-  * activation — key entry + "reconnect to verify" flows.
-  * banned     — the operator permanently banned this account (red).
-  * timeout    — temporary suspension with a live countdown that auto-unlocks
+  * activation â€” key entry + "reconnect to verify" flows.
+  * banned     â€” the operator permanently banned this account (red).
+  * timeout    â€” temporary suspension with a live countdown that auto-unlocks
                  when the timer reaches zero (amber).
-  * revoked    — a staff member revoked this key (magenta).
+  * revoked    â€” a staff member revoked this key (magenta).
 
 The page is chosen from the structured ``payload`` returned by the server when
 it refuses a key (see engine.license.last_refusal()).
@@ -20,14 +20,17 @@ from __future__ import annotations
 import time as _time
 from datetime import datetime, timezone
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import (QEasingCurve, QPointF, QPropertyAnimation,
+                            QRectF, Qt, QTimer, Signal, QSize, QUrl)
+from PySide6.QtGui import (QColor, QDesktopServices, QFontMetrics, QIcon,
+                           QPainter, QPalette, QPen, QPolygonF)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -43,20 +46,145 @@ from engine import license as license_mgr
 from ui.license import LicenseActivateWorker, LicenseHeartbeatWorker, \
     publish_identity, mask_key
 from ui.monitor_widgets import AppLogo
-from ui.widgets import qss_rgba, toast
+from ui.widgets import brand_icon_pixmap, nav_icon_pixmap, qss_rgba, toast
 
 MONO = '"JetBrains Mono", "Cascadia Mono", monospace'
 DISPLAY = '"Space Grotesk", "Segoe UI", sans-serif'
+
+
+def default_gate_geometry() -> object:
+    """A large, centred window no bigger than 92% of the primary screen.
+
+    The gate defaults to windowed (not fullscreen) so it is clearly a normal,
+    movable window; the topbar fullscreen button then toggles true fullscreen.
+    """
+    from PySide6.QtWidgets import QApplication
+    prim = QApplication.primaryScreen().availableGeometry()
+    w = min(int(prim.width() * 0.92), 1440)
+    h = min(int(prim.height() * 0.92), 900)
+    x = prim.x() + int((prim.width() - w) / 2)
+    y = prim.y() + int((prim.height() - h) / 2)
+    from PySide6.QtCore import QRect
+    return QRect(x, y, w, h)
 
 # ---------------------------------------------------------------------------
 # Shared chrome (topbar brand + live clock, footer statusbar)
 # ---------------------------------------------------------------------------
 
+class _ChromeBtn(QWidget):
+    """Self-painting window-chrome button: crisp minimize / fullscreen /
+    close glyphs rendered with QPainter (no blurry system icons)."""
+
+    MINIMIZE = "minimize"
+    FULLSCREEN = "fullscreen"
+    CLOSE = "close"
+
+    def __init__(self, kind: str, parent=None):
+        super().__init__(parent)
+        self._kind = kind
+        self._hover = False
+        self._pressed = False
+        self.setFixedSize(30, 30)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip({
+            self.MINIMIZE: "Minimize",
+            self.FULLSCREEN: "Toggle fullscreen",
+            self.CLOSE: "Close",
+        }[kind])
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        rect = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+
+        if self._kind == self.CLOSE:
+            if self._hover:
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor("#ff5f56"))
+                p.drawRoundedRect(rect, 8, 8)
+                p.setPen(QPen(QColor("#1a1a22"), 1.6))
+            else:
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(255, 95, 86, 18))
+                p.drawRoundedRect(rect, 8, 8)
+                p.setPen(QPen(QColor(255, 125, 125, 200), 1.6))
+            c = QPointF(rect.center())
+            r = rect.width() * 0.24
+            p.drawLine(c.x() - r, c.y() - r, c.x() + r, c.y() + r)
+            p.drawLine(c.x() - r, c.y() + r, c.x() + r, c.y() - r)
+        else:
+            bg = QColor(255, 255, 255, 70 if self._hover else 40)
+            if self._pressed:
+                bg = QColor(255, 255, 255, 95)
+            p.setPen(Qt.NoPen)
+            p.setBrush(bg)
+            p.drawRoundedRect(rect, 8, 8)
+            p.setPen(QPen(QColor("#e6e9f5"), 2.0))
+
+            if self._kind == self.MINIMIZE:
+                w = rect.width() * 0.46
+                y = rect.center().y()
+                p.drawLine(rect.center().x() - w / 2, y,
+                           rect.center().x() + w / 2, y)
+            else:  # fullscreen
+                cx, cy = rect.center().x(), rect.center().y()
+                s = rect.width() * 0.30
+                off = s * 0.55
+                pts = [
+                    QPointF(cx - off, cy - off),
+                    QPointF(cx + off, cy - off),
+                    QPointF(cx + off, cy + off),
+                    QPointF(cx - off, cy + off),
+                ]
+                p.drawPolygon(QPolygonF(pts))
+                p.setBrush(QColor("#0c0a14"))
+                for dx, dy in ((0.14, 0.14), (0.14, -0.14),
+                               (-0.14, 0.14), (-0.14, -0.14)):
+                    p.drawRect(QRectF(cx + off * dx - 2.4,
+                                      cy + off * dy - 2.4, 4.8, 4.8))
+        p.end()
+
+    def enterEvent(self, _event):
+        self._hover = True
+        self.update()
+
+    def leaveEvent(self, _event):
+        self._hover = False
+        self._pressed = False
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._pressed = True
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._pressed = False
+        if (event.button() == Qt.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self._emit_click()
+        self.update()
+
+    def _emit_click(self):
+        if self._kind == self.MINIMIZE:
+            self.window().showMinimized()
+        elif self._kind == self.CLOSE:
+            from PySide6.QtWidgets import QApplication
+            QApplication.instance().quit()
+        else:
+            win = self.window()
+            if win.isFullScreen():
+                win.showNormal()
+            else:
+                win.showFullScreen()
+
+
 class _TopBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(32, 22, 32, 22)
+        lay.setContentsMargins(32, 20, 20, 14)
         lay.setSpacing(10)
 
         brand = QHBoxLayout()
@@ -75,6 +203,16 @@ class _TopBar(QWidget):
             f"font-family: {MONO}; font-size: 12px;"
             f" letter-spacing: .08em; color: #524d6b;")
         lay.addWidget(self.clock)
+
+        chrome = QHBoxLayout()
+        chrome.setSpacing(6)
+        self._min_btn = _ChromeBtn(_ChromeBtn.MINIMIZE)
+        self._fs_btn = _ChromeBtn(_ChromeBtn.FULLSCREEN)
+        self._close_btn = _ChromeBtn(_ChromeBtn.CLOSE)
+        chrome.addWidget(self._min_btn)
+        chrome.addWidget(self._fs_btn)
+        chrome.addWidget(self._close_btn)
+        lay.addLayout(chrome)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -170,62 +308,140 @@ class _ProgressBar(QWidget):
         p.drawRoundedRect(0, 0, fw, h, 2, 2)
 
 
-class _Field(QFrame):
-    """Labled value block like the HTML .field: dark inset, tiny uppercase key.
+class _WrapLabel(QLabel):
+    """QLabel that can never paint clipped wrapped text: on every resize it
+    enforces the exact wrapped height for the width it actually has, so the
+    enclosing layout is forced to give it the full height."""
 
-    The value label's wrapped height is reserved exactly once against the
-    fixed content width the card actually uses (mirrors the activation card,
-    which is the page that matches its HTML reference 1:1). This keeps the
-    block compact: no per-resize re-inflation, no clipped words.
+    def __init__(self, text="", extra=0, parent=None):
+        super().__init__(text, parent)
+        self.setWordWrap(True)
+        self._min_w = -1
+        self._last_w = -1
+        self._extra = extra
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return super().heightForWidth(width)
+
+    def _reserve(self, force: bool = False):
+        """Reserve the exact wrapped height for the width we actually have.
+        Only runs when the width changed (or force=True on a text change), so
+        the setMinimumHeight() -> relayout -> resize loop terminates instead of
+        recursing forever."""
+        w = self.width()
+        if not force and w == self._last_w:
+            return
+        self._last_w = w
+        h = self.heightForWidth(w) + self._extra + 1
+        if h != self._min_w:
+            self._min_w = h
+            self.setMinimumHeight(h)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reserve()
+
+    def setText(self, text: str):
+        super().setText(text)
+        self._reserve(force=True)
+
+
+class _StrikeLabel(QLabel):
+    """Muted mono label whose text is struck through with the reference's red
+    2px line (like .key-display .v). Long masked keys are elided in the middle
+    so they can never overflow the box."""
+
+    def __init__(self, text="", strike="#ff4d63", parent=None):
+        super().__init__(text, parent)
+        self._strike = QColor(strike)
+        self.setStyleSheet(
+            f"font-family: {MONO}; font-size: 17px; letter-spacing: .12em;"
+            f" color: #988aa3;")
+
+    def paintEvent(self, event):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        rect = self.contentsRect()
+        fm = QFontMetrics(p.font())
+        text = fm.elidedText(self.text() or "â€”", Qt.ElideMiddle, rect.width())
+        pen = QPen(QColor("#988aa3"))
+        p.setPen(pen)
+        p.drawText(rect, Qt.AlignCenter, text)
+        fw = fm.horizontalAdvance(text)
+        if fw <= 0:
+            p.end()
+            return
+        y = rect.center().y()
+        x0 = rect.center().x() - fw / 2.0
+        strike = QPen(self._strike, 2)
+        p.setPen(strike)
+        p.drawLine(round(x0), y, round(x0 + fw), y)
+        p.end()
+
+
+class _Field(QFrame):
+    """Labeled value block styled like the HTML .field.
+
+    boxed=True renders the reference's dark inset box (border + tinted
+    background, used on the banned / timeout pages). boxed=False keeps the
+    same typography but transparent and borderless, with no outer padding --
+    used on the revoked page. center=True centers key + value instead of
+    left-aligning them.
+
+    The value label never clips: it re-reserves its exact wrapped height on
+    every resize (see _WrapLabel), so a long reason can never be cut off.
     """
 
-    def __init__(self, key_text: str, value_text: str = "—",
+    def __init__(self, key_text: str, value_text: str = "â€”",
                  key_color="#524d6b", value_color="#eae7f8",
                  border="rgba(139,124,246,.18)", wrap_width: int = 0,
+                 boxed: bool = True, center: bool = False,
                  parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)  # no native frame, QSS border only
         self.setLineWidth(0)
-        # Plain label + value pair — NO box. The key is a tiny uppercase grey
-        # label, the value sits under it at normal reading size in light
-        # lavender. (The HTML reference has no dark box around each field,
-        # only the card itself.)
-        self.setStyleSheet("background: transparent; border: none;")
+        if boxed:
+            # Dark inset box exactly like the reference .field block.
+            self.setStyleSheet(
+                f"background: rgba(0,0,0,.32); border: 1px solid {border};"
+                f" border-radius: 10px;")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(4)
+        lay.setContentsMargins(16, 14 if boxed else 0, 16, 14 if boxed else 0)
+        lay.setSpacing(6)
+        align = Qt.AlignCenter if center else Qt.AlignLeft
         k = QLabel(key_text)
-        k.setAlignment(Qt.AlignLeft)
+        k.setAlignment(align)
         k.setStyleSheet(
-            f"font-family: {MONO}; font-size: 10px; letter-spacing: .18em;"
+            f"font-family: {MONO}; font-size: 10px; letter-spacing: .14em;"
             f" color: {key_color};")
         lay.addWidget(k)
-        self.value = QLabel(value_text)
-        self.value.setAlignment(Qt.AlignLeft)
-        self.value.setWordWrap(True)
+        self.value = _WrapLabel(value_text)
+        self.value.setAlignment(align)
         self.value.setStyleSheet(
-            f"font-family: {DISPLAY}; font-size: 14px; color: {value_color};"
-            f" line-height: 1.5;")
+            f"font-family: {MONO}; font-size: 13px; line-height: 1.55;"
+            f" color: {value_color};")
         lay.addWidget(self.value)
-        if wrap_width > 0:
-            # Reserve the wrapped height once against the card's real fixed
-            # content width (the card is fixed-width, so the reservation
-            # stays correct forever — no per-resize re-inflation).
-            self.value.setMinimumHeight(
-                self.value.heightForWidth(wrap_width) + 2)
 
     def set_value(self, text: str):
-        self.value.setText(text or "—")
+        self.value.setText(text or "â€”")
 
 
 class _MetaField(_Field):
     """Half-width field used in the BAN ID / ISSUED / REVOKED-BY rows."""
 
-    def __init__(self, key_text: str, value_text: str = "—",
+    def __init__(self, key_text: str, value_text: str = "â€”",
+                 key_color="#524d6b", value_color="#eae7f8",
                  border="rgba(139,124,246,.18)", wrap_width: int = 0,
+                 boxed: bool = True, center: bool = False,
                  parent=None):
-        super().__init__(key_text, value_text, border=border,
-                         wrap_width=wrap_width, parent=parent)
+        super().__init__(key_text, value_text, key_color=key_color,
+                         value_color=value_color, border=border,
+                         wrap_width=wrap_width, boxed=boxed, center=center,
+                         parent=parent)
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +452,7 @@ class _ActivationPage(QWidget):
     activate_requested = Signal(str)      # key text
     retry_requested = Signal()            # reconnect-to-verify round
     support_requested = Signal()
+    discord_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -275,7 +492,7 @@ class _ActivationPage(QWidget):
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
         desc.setStyleSheet(
-            f"font-family: {MONO}; font-size: 12.5px; line-height: 1.6;"
+            f"font-family: {MONO}; font-size: 13px; line-height: 1.6;"
             f" color: #8b87a3;")
         desc.setMinimumHeight(desc.heightForWidth(card.width() - 68))
         cl.addWidget(desc)
@@ -304,7 +521,7 @@ class _ActivationPage(QWidget):
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #7c5cff, stop:1 #4c2fb8); color: #fff; border: none;"
             " border-radius: 10px; font-family: " + DISPLAY +
-            "; font-weight: 600; font-size: 14.5px; }"
+            "; font-weight: 600; font-size: 15px; }"
             "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "   stop:0 #8a6cff, stop:1 #5a3cc8); }"
             "QPushButton:pressed { background: #4c2fb8; }"
@@ -312,6 +529,20 @@ class _ActivationPage(QWidget):
         self.activate_btn.clicked.connect(self._emit_activate)
         cl.addSpacing(14)
         cl.addWidget(self.activate_btn)
+        cl.addSpacing(10)
+
+        self.discord_btn = QPushButton("Continue with Discord")
+        self.discord_btn.setCursor(Qt.PointingHandCursor)
+        self.discord_btn.setMinimumHeight(46)
+        self.discord_btn.setStyleSheet(
+            "QPushButton { background: #5865F2; color: #fff; border: none; border-radius: 10px; font-family: " + DISPLAY + "; font-weight: 600; font-size: 15px; }"
+            "QPushButton:hover { background: #4752C4; }"
+            "QPushButton:pressed { background: #3C45A5; }"
+            "QPushButton:disabled { opacity: .6; }")
+        self.discord_btn.clicked.connect(self.discord_requested.emit)
+        self.discord_btn.setVisible(True)
+        cl.addWidget(self.discord_btn)
+        cl.addSpacing(8)
 
         # Reconnect-to-verify block: shown instead of the key prompt when a
         # session exists but the 30-day offline grace has run out.
@@ -337,7 +568,7 @@ class _ActivationPage(QWidget):
         rd.setAlignment(Qt.AlignCenter)
         rd.setWordWrap(True)
         rd.setStyleSheet(
-            f"font-family: {MONO}; font-size: 12.5px; color: #8b87a3;")
+            f"font-family: {MONO}; font-size: 13px; color: #8b87a3;")
         rl.addWidget(rd)
 
         self.reconnect_btn = QPushButton("Try again")
@@ -375,6 +606,8 @@ class _ActivationPage(QWidget):
         support = QPushButton("Contact support")
         support.setCursor(Qt.PointingHandCursor)
         support.setFlat(True)
+        support.setIcon(QIcon(brand_icon_pixmap("discord", size=15)))
+        support.setIconSize(QSize(15, 15))
         support.setStyleSheet(
             "QPushButton { background: rgba(124,92,255,.07);"
             " border: 1px solid rgba(139,124,246,.38);"
@@ -478,7 +711,20 @@ class _TimeoutPage(QWidget):
         super().__init__(parent)
         self._total_seconds = 0
         lay = QVBoxLayout(self)
-        lay.addStretch(1)
+        lay.setContentsMargins(0, 0, 0, 0)
+
+        self._scroll = QScrollArea(self)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; } "
+            "QScrollArea > QWidget > QWidget { background: transparent; }")
+        host = QWidget()
+        hl = QVBoxLayout(host)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.addStretch(1)
 
         WARN = "#ffb340"
         WARN_2 = "#e2951f"
@@ -486,22 +732,24 @@ class _TimeoutPage(QWidget):
         BORDER = "rgba(255,176,64,.18)"
 
         card = QFrame()
+        card.setObjectName("TimeoutCard")
         card.setFixedWidth(440)
         card.setFrameShape(QFrame.Shape.NoFrame)
         card.setLineWidth(0)
         card.setStyleSheet(
-            "QFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "QFrame#TimeoutCard { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "   stop:0 #1c150d, stop:1 #16110c);"
             f" border: 1px solid {BORDER}; border-radius: 16px; }}")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(36, 32, 36, 22)
         cl.setSpacing(0)
 
-        icon = QLabel("\u23f3")
+        icon = QLabel()
         icon.setFixedSize(56, 56)
         icon.setAlignment(Qt.AlignCenter)
+        icon.setPixmap(nav_icon_pixmap("hourglass", "#ffb340", 24))
         icon.setStyleSheet(
-            f"color: {WARN}; font-size: 24px; border-radius: 14px;"
+            f"border-radius: 14px;"
             f" background: qradialgradient(cx:.3,cy:.25,radius:1,"
             f"   fx:.3,fy:.25, stop:0 rgba(255,179,64,.4), stop:1 rgba(226,149,31,.08));"
             f" border: 1px solid rgba(255,176,64,.38);")
@@ -516,14 +764,12 @@ class _TimeoutPage(QWidget):
         cl.addWidget(title)
         cl.addSpacing(6)
 
-        self.sub = QLabel(
+        self.sub = _WrapLabel(
             "Access is temporarily suspended. It will restore automatically "
             "when the timer reaches zero.")
         self.sub.setAlignment(Qt.AlignCenter)
-        self.sub.setWordWrap(True)
         self.sub.setStyleSheet(
-            f"font-family: {MONO}; font-size: 12.5px; color: #a99a86;")
-        self.sub.setMinimumHeight(self.sub.heightForWidth(card.width() - 72))
+            f"font-family: {MONO}; font-size: 13px; color: #a99a86;")
         cl.addWidget(self.sub)
         cl.addSpacing(18)
 
@@ -547,31 +793,33 @@ class _TimeoutPage(QWidget):
         cl.addWidget(self.bar)
         cl.addSpacing(16)
 
-        self.reason_field = _Field("REASON", "—", key_color="#5c5142",
+        self.reason_field = _Field("REASON", "â€”", key_color="#5c5142",
                                    value_color="#ffd699", border=BORDER,
-                                   wrap_width=card.width() - 72)
+                                   wrap_width=368)
         cl.addWidget(self.reason_field)
         cl.addSpacing(10)
 
-        self.key_field = _Field("KEY", "—", key_color="#5c5142",
+        self.key_field = _Field("KEY", "â€”", key_color="#5c5142",
                                 value_color="#f6efe6", border=BORDER,
-                                wrap_width=card.width() - 72)
+                                wrap_width=368)
         cl.addWidget(self.key_field)
+        cl.addSpacing(22)
 
-        self.note = QLabel(
+        self.note = _WrapLabel(
             "No action is needed. Keep this window open and Maximum Tweaks "
-            "will unlock automatically once the timeout ends.")
+            "will unlock automatically once the timeout ends.",
+            extra=16)
         self.note.setAlignment(Qt.AlignCenter)
-        self.note.setWordWrap(True)
         self.note.setStyleSheet(
-            f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
+            f"font-family: {MONO}; font-size: 12px; line-height: 1.6;"
             f" color: #5c5142; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
-        self.note.setMinimumHeight(self.note.heightForWidth(card.width() - 72) + 16)
         cl.addWidget(self.note)
 
-        lay.addWidget(card, 0, Qt.AlignHCenter)
-        lay.addStretch(1)
+        hl.addWidget(card, 0, Qt.AlignHCenter)
+        hl.addStretch(1)
+        self._scroll.setWidget(host)
+        lay.addWidget(self._scroll, 1)
 
     def configure(self, total_seconds: int, reason: str, masked_key: str):
         self._total_seconds = max(1, total_seconds)
@@ -615,22 +863,24 @@ class _BannedPage(QWidget):
         lay.addStretch(1)
 
         card = QFrame()
+        card.setObjectName("BannedCard")
         card.setFixedWidth(460)
         card.setFrameShape(QFrame.Shape.NoFrame)
         card.setLineWidth(0)
         card.setStyleSheet(
-            "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            "QFrame#BannedCard { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             f"   stop:0 #170f16, stop:1 #120c14);"
-            f" border-radius: 16px; }}")
+            f" border: 1px solid {BORDER}; border-radius: 16px; }}")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(36, 40, 36, 30)
         cl.setSpacing(0)
 
-        icon = QLabel("\u26d4")
+        icon = QLabel()
         icon.setFixedSize(56, 56)
         icon.setAlignment(Qt.AlignCenter)
+        icon.setPixmap(nav_icon_pixmap("ban", DANGER, 24))
         icon.setStyleSheet(
-            f"color: {DANGER}; font-size: 24px; border-radius: 14px;"
+            f"border-radius: 14px;"
             f" background: qradialgradient(cx:.3,cy:.25,radius:1,"
             f"   fx:.3,fy:.25, stop:0 rgba(255,77,99,.4), stop:1 rgba(226,31,62,.08));"
             f" border: 1px solid rgba(255,90,110,.38);")
@@ -645,16 +895,14 @@ class _BannedPage(QWidget):
         cl.addWidget(title)
         cl.addSpacing(8)
 
-        sub = QLabel("This account is permanently blocked from Maximum Tweaks.")
+        sub = _WrapLabel("This account is permanently blocked from Maximum Tweaks.")
         sub.setAlignment(Qt.AlignCenter)
-        sub.setWordWrap(True)
         sub.setStyleSheet(
-            f"font-family: {MONO}; font-size: 12.5px; color: #a68b90;")
-        sub.setMinimumHeight(sub.heightForWidth(card.width() - 72))
+            f"font-family: {MONO}; font-size: 13px; color: #a68b90;")
         cl.addWidget(sub)
         cl.addSpacing(26)
 
-        self.reason_field = _Field("REASON", "—", key_color="#5c4a4e",
+        self.reason_field = _Field("REASON", "â€”", key_color="#5c4a4e",
                                    value_color="#ffb3bd", border=BORDER,
                                    wrap_width=card.width() - 72)
         cl.addWidget(self.reason_field)
@@ -662,9 +910,9 @@ class _BannedPage(QWidget):
 
         meta = QHBoxLayout()
         meta.setSpacing(12)
-        self.ban_id_field = _MetaField("BAN ID", "—", border=BORDER,
+        self.ban_id_field = _MetaField("BAN ID", "â€”", border=BORDER,
                                        wrap_width=(card.width() - 84) // 2)
-        self.ban_date_field = _MetaField("BANNED", "—", border=BORDER,
+        self.ban_date_field = _MetaField("BANNED", "â€”", border=BORDER,
                                          wrap_width=(card.width() - 84) // 2)
         meta.addWidget(self.ban_id_field)
         meta.addWidget(self.ban_date_field)
@@ -700,16 +948,15 @@ class _BannedPage(QWidget):
         cl.addLayout(actions)
         cl.addSpacing(18)
 
-        note = QLabel(
+        note = _WrapLabel(
             "Bans are enforced per device and account. Attempting to bypass "
-            "this ban may result in permanent denial of any future appeal.")
+            "this ban may result in permanent denial of any future appeal.",
+            extra=16)
         note.setAlignment(Qt.AlignCenter)
-        note.setWordWrap(True)
         note.setStyleSheet(
-            f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
+            f"font-family: {MONO}; font-size: 12px; line-height: 1.6;"
             f" color: #5c4a4e; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
-        note.setMinimumHeight(note.heightForWidth(card.width() - 44) + 30)
         cl.addWidget(note)
 
         cl.addSpacing(8)
@@ -730,13 +977,13 @@ class _BannedPage(QWidget):
         if revoked_at:
             digest = revoked_at.replace("-", "").replace(" ", "")[:8]
             return f"BAN-{digest.upper()}"
-        return "—"
+        return "â€”"
 
     @staticmethod
     def _issued(payload: dict) -> str:
         revoked_at = payload.get("revoked_at") or ""
         if not revoked_at:
-            return "—"
+            return "â€”"
         try:
             dt = datetime.strptime(revoked_at, "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%b %d, %Y")
@@ -763,13 +1010,14 @@ class _RevokedPage(QWidget):
         lay.addStretch(1)
 
         card = QFrame()
+        card.setObjectName("RevokedCard")
         card.setFixedWidth(440)
         card.setFrameShape(QFrame.Shape.NoFrame)
         card.setLineWidth(0)
         card.setStyleSheet(
-            "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            "QFrame#RevokedCard { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             f"   stop:0 #170f16, stop:1 #120c14);"
-            f" border-radius: 16px; }}")
+            f" border: 1px solid {BORDER}; border-radius: 16px; }}")
         cl = QVBoxLayout(card)
         cl.setContentsMargins(36, 34, 36, 20)
         cl.setSpacing(0)
@@ -793,23 +1041,21 @@ class _RevokedPage(QWidget):
         cl.addWidget(title)
         cl.addSpacing(6)
 
-        sub = QLabel(
+        sub = _WrapLabel(
             "A Maximum staff member has revoked this key. It can no longer "
             "activate the app on any device.")
         sub.setAlignment(Qt.AlignCenter)
-        sub.setWordWrap(True)
         sub.setStyleSheet(
-            f"font-family: {MONO}; font-size: 12.5px; color: #988aa3;")
-        sub.setMinimumHeight(sub.heightForWidth(card.width() - 72))
+            f"font-family: {MONO}; font-size: 13px; color: #988aa3;")
         cl.addWidget(sub)
         cl.addSpacing(18)
 
         self.key_display = QFrame()
-        self.key_display.setStyleSheet(
-            f"background: rgba(0,0,0,.32); border: 1px solid {BORDER};"
-            f" border-radius: 10px;")
+        self.key_display.setFrameShape(QFrame.Shape.NoFrame)
+        self.key_display.setLineWidth(0)
+        self.key_display.setStyleSheet("background: transparent;")
         kl = QVBoxLayout(self.key_display)
-        kl.setContentsMargins(16, 14, 16, 14)
+        kl.setContentsMargins(0, 0, 0, 0)
         kl.setSpacing(8)
         kk = QLabel("REVOKED KEY")
         kk.setAlignment(Qt.AlignCenter)
@@ -817,31 +1063,30 @@ class _RevokedPage(QWidget):
             f"font-family: {MONO}; font-size: 10px;"
             f" letter-spacing: .14em; color: #524a5c;")
         kl.addWidget(kk)
-        self.revoked_key = QLabel("—")
+        self.revoked_key = _StrikeLabel("â€”")
         self.revoked_key.setAlignment(Qt.AlignCenter)
-        self.revoked_key.setStyleSheet(
-            f"font-family: {MONO}; font-size: 17px; letter-spacing: .12em;"
-            f" color: #988aa3;")
-        canceled = self.revoked_key.font()
-        canceled.setStrikeOut(True)
-        self.revoked_key.setFont(canceled)
         kl.addWidget(self.revoked_key)
         cl.addWidget(self.key_display)
         cl.addSpacing(12)
 
-        self.reason_field = _Field("REASON", "—", key_color="#524a5c",
+        self.reason_field = _Field("REASON", "â€”", key_color="#524a5c",
                                    value_color="#e6bfff", border=BORDER,
-                                   wrap_width=card.width() - 72)
+                                   boxed=False, center=True)
         cl.addWidget(self.reason_field)
         cl.addSpacing(8)
 
         meta = QHBoxLayout()
-        meta.setSpacing(12)
+        meta.setSpacing(16)
         self.revoked_by_field = _MetaField("REVOKED BY", "Staff",
+                                           key_color="#524a5c",
+                                           value_color="#efe7f8",
                                            border=BORDER,
-                                           wrap_width=(card.width() - 72 - 72) // 2)
-        self.revoked_on_field = _MetaField("REVOKED ON", "—", border=BORDER,
-                                           wrap_width=(card.width() - 72 - 72) // 2)
+                                           boxed=False, center=True)
+        self.revoked_on_field = _MetaField("REVOKED ON", "â€”",
+                                           key_color="#524a5c",
+                                           value_color="#efe7f8",
+                                           border=BORDER,
+                                           boxed=False, center=True)
         meta.addWidget(self.revoked_by_field)
         meta.addWidget(self.revoked_on_field)
         cl.addLayout(meta)
@@ -856,8 +1101,8 @@ class _RevokedPage(QWidget):
         support_btn.setStyleSheet(
             "QPushButton { background: rgba(198,110,255,.06);"
             " color: #efe7f8; border: 1px solid rgba(196,110,255,.38);"
-            " border-radius: 10px; font-family: " + DISPLAY +
-            "; font-weight: 600; font-size: 13px; }"
+            " border-radius: 10px; font-family: \"Segoe UI\", \"Inter\","
+            " sans-serif; font-weight: 600; font-size: 13px; }"
             "QPushButton:hover { background: rgba(198,110,255,.14); }")
         support_btn.clicked.connect(self.support_requested.emit)
         actions.addWidget(support_btn)
@@ -868,24 +1113,23 @@ class _RevokedPage(QWidget):
         new_key_btn.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             f"   stop:0 {MAG_2}, stop:1 {MAG_DEEP}); color: #fff; border: none;"
-            " border-radius: 10px; font-family: " + DISPLAY +
-            "; font-weight: 600; font-size: 13px; }")
+            " border-radius: 10px; font-family: \"Segoe UI\", \"Inter\","
+            " sans-serif; font-weight: 600; font-size: 13px; }")
         new_key_btn.clicked.connect(self.support_requested.emit)
         actions.addWidget(new_key_btn)
 
         cl.addLayout(actions)
         cl.addSpacing(14)
 
-        note = QLabel(
+        note = _WrapLabel(
             "If you believe this was a mistake, contact support with your "
-            "order reference so it can be reviewed.")
+            "order reference so it can be reviewed.",
+            extra=16)
         note.setAlignment(Qt.AlignCenter)
-        note.setWordWrap(True)
         note.setStyleSheet(
-            f"font-family: {MONO}; font-size: 11.5px; line-height: 1.6;"
+            f"font-family: {MONO}; font-size: 12px; line-height: 1.6;"
             f" color: #524a5c; border-top: 1px solid {BORDER};"
             f" padding-top: 16px;")
-        note.setMinimumHeight(note.heightForWidth(card.width() - 72) + 16)
         cl.addWidget(note)
         cl.addSpacing(8)
 
@@ -895,7 +1139,7 @@ class _RevokedPage(QWidget):
     def configure(self, payload: dict):
         sess = license_mgr.session()
         key = (sess or {}).get("license") or ""
-        masked = mask_key(key) if key else "MAX-\u2022\u2022\u2022\u2022-\u2022\u2022\u2022\u2022"
+        masked = mask_key(key) if key else "MAX-\u25cf\u25cf\u25cf\u25cf-\u25cf\u25cf\u25cf\u25cf"
         self.revoked_key.setText(masked)
         self.reason_field.set_value(
             payload.get("reason")
@@ -907,7 +1151,7 @@ class _RevokedPage(QWidget):
     def _date(payload: dict) -> str:
         revoked_at = payload.get("revoked_at") or ""
         if not revoked_at:
-            return "—"
+            return "â€”"
         try:
             dt = datetime.strptime(revoked_at, "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%b %d, %Y")
@@ -931,7 +1175,7 @@ class GateWindow(QWidget):
 
     def __init__(self, parent=None, payload=None):
         # Plain top-level window: it may overlap the screen but NEVER stays
-        # on top — the user must be able to tab out and reach support pages.
+        # on top â€” the user must be able to tab out and reach support pages.
         super().__init__(parent, Qt.FramelessWindowHint | Qt.Window)
         self.setObjectName("GateWindow")
         self.setStyleSheet(
@@ -965,6 +1209,7 @@ class GateWindow(QWidget):
         self.page_activation.activate_requested.connect(self._on_activate)
         self.page_activation.retry_requested.connect(self._on_reconnect)
         self.page_activation.support_requested.connect(self._open_support)
+        self.page_activation.discord_requested.connect(self._on_discord_login)
         self.page_banned.support_requested.connect(self._open_support)
         self.page_banned.appeal_requested.connect(self._open_support)
         self.page_revoked.support_requested.connect(self._open_support)
@@ -1017,7 +1262,8 @@ class GateWindow(QWidget):
                 reason=self._current_payload.get("reason")
                 or self._current_payload.get("message")
                 or "Access is temporarily suspended by the operator.",
-                masked_key=mask_key((license_mgr.session() or {})
+                masked_key=mask_key(self._current_payload.get("license", "")
+                                    or (license_mgr.session() or {})
                                     .get("license", "")))
             self.stack.setCurrentIndex(self.PAGE_TIMEOUT)
             if self._remaining_seconds() > 0:
@@ -1156,7 +1402,7 @@ class GateWindow(QWidget):
             self.unlocked.emit(sess)
             return
         if status == "refused":
-            # The key is genuinely gone / paused server-side — reroute to the
+            # The key is genuinely gone / paused server-side â€” reroute to the
             # matching status screen from the refusal payload.
             license_mgr.set_session(None)
             publish_identity()
@@ -1164,7 +1410,7 @@ class GateWindow(QWidget):
             self.page_activation.hide_feedback()
             self._route_from_payload()
             return
-        # offline / transient — keep the session (offline grace), report.
+        # offline / transient â€” keep the session (offline grace), report.
         self.page_activation.reconnect_status.setText(
             message or "Couldn't reach the license server. Check your "
                        "internet connection and try again.")
@@ -1209,8 +1455,7 @@ class GateWindow(QWidget):
             reason=self._current_payload.get("reason")
             or self._current_payload.get("message")
             or "Access is temporarily suspended by the operator.",
-            masked_key=mask_key((license_mgr.session() or {})
-                                .get("license", "")))
+            masked_key=mask_key(self._current_payload.get("license", "")))
         self._countdown_last_state = self._countdown_total
         self._countdown_timer = QTimer(self)
         self._countdown_timer.timeout.connect(self._tick_countdown)
@@ -1254,7 +1499,7 @@ class GateWindow(QWidget):
             self._current_payload = dict(license_mgr.last_refusal() or {})
             self._route_from_payload()
             return
-        # offline / suspended again — keep counting from the fresh payload.
+        # offline / suspended again â€” keep counting from the fresh payload.
         self._current_payload = dict(license_mgr.last_refusal() or {}) \
             if license_mgr.last_refusal() else self._current_payload
         if self._remaining_seconds() > 0:
@@ -1263,3 +1508,29 @@ class GateWindow(QWidget):
             # Server momentarily down; retry shortly so it still auto-unlocks.
             from PySide6.QtCore import QTimer as _Q
             _Q.singleShot(30000, self._on_countdown_zero)
+    def _on_discord_login(self):
+        if self._busy:
+            return
+        self.set_busy(True)
+        self.page_activation.show_feedback("Opening Discord...", error=False)
+        try:
+            from ui.license import LicenseDiscordWorker
+            worker = LicenseDiscordWorker(self)
+            self._license_worker = worker
+            worker.done.connect(self._on_discord_done)
+            worker.start()
+        except Exception as e:
+            self.set_busy(False)
+            self.page_activation.show_feedback(f"Discord login failed: {e}", error=True)
+
+    def _on_discord_done(self, status, message, session=None):
+        self.set_busy(False)
+        if status == "ok":
+            sess = session or {}
+            from ui.license import publish_identity
+            publish_identity()
+            from ui.widgets import toast
+            toast("Discord connected - Foundation access granted", "success", self)
+            self.unlocked.emit(sess)
+            return
+        self.page_activation.show_feedback(message or "Discord login failed", error=True)

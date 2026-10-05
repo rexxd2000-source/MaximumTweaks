@@ -201,12 +201,12 @@ QDialog {{
 /* ---------- column header + list head ---------- */
 #ColHead {{
     color: {T["muted"]};
-    font-size: 11.5px;
+    font-size: 12px;
 }}
 #Key {{
     color: {T["muted"]};
     font-family: "{MONO}", Consolas, monospace;
-    font-size: 11.5px;
+    font-size: 12px;
 }}
 
 /* ---------- chips ---------- */
@@ -267,8 +267,8 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
 #Row:hover {{ background: {rgba("#ffffff", 0.03)}; }}
 #Row[selected="true"] {{ background: {rgba("#e6cc92", 0.075)}; }}
 #RowName {{ font-weight: 700; font-size: 13px; }}
-#RowLast {{ font-size: 12.5px; }}
-#Online {{ color: {T["live"]}; font-weight: 600; font-size: 12.5px; }}
+#RowLast {{ font-size: 13px; }}
+#Online {{ color: {T["live"]}; font-weight: 600; font-size: 13px; }}
 #Dot {{ background: {T["live"]}; border-radius: 3px; }}
 
 /* ---------- detail ---------- */
@@ -277,7 +277,7 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
     font-size: 25px;
     color: {T["ink"]};
 }}
-#DetailSub {{ color: {T["muted"]}; font-size: 12.5px; }}
+#DetailSub {{ color: {T["muted"]}; font-size: 13px; }}
 #KeyBox {{
     background: {rgba("#000000", 0.28)};
     border: 1px solid {T["line"]};
@@ -289,15 +289,15 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
     letter-spacing: 1px;
     color: {T["gold"]};
 }}
-#FactName {{ color: {T["muted"]}; font-size: 11.5px; }}
-#FactValue {{ font-weight: 600; font-size: 12.5px; }}
-#FactWarn {{ color: {T["warn"]}; font-weight: 600; font-size: 12.5px; }}
+#FactName {{ color: {T["muted"]}; font-size: 12px; }}
+#FactValue {{ font-weight: 600; font-size: 13px; }}
+#FactWarn {{ color: {T["warn"]}; font-weight: 600; font-size: 13px; }}
 #NoteRose {{
     color: #f6b3bc;
     border: 1px solid {rgba("#ec7686", 0.35)};
     background: {rgba("#ec7686", 0.07)};
     border-radius: 11px;
-    font-size: 12.5px;
+    font-size: 13px;
     padding: 10px 13px;
 }}
 #NoteAmber {{
@@ -305,7 +305,7 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
     border: 1px solid {rgba("#efb56a", 0.35)};
     background: {rgba("#efb56a", 0.07)};
     border-radius: 11px;
-    font-size: 12.5px;
+    font-size: 13px;
     padding: 10px 13px;
 }}
 #SectionTitle {{
@@ -313,7 +313,7 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
     font-size: 18px;
     color: {T["ink"]};
 }}
-#SectionSum {{ color: {T["muted"]}; font-size: 12.5px; }}
+#SectionSum {{ color: {T["muted"]}; font-size: 13px; }}
 
 /* ---------- pill ---------- */
 #Pill {{
@@ -331,8 +331,8 @@ QPushButton:focus {{ border-color: {T["gold"]}; outline: none; }}
 #PcvPC {{ border-bottom: 1px solid {T["line_soft"]}; }}
 #PcName {{ font-weight: 600; font-size: 13px; }}
 #PcHw {{ font-family: "{MONO}", Consolas, monospace; font-size: 11px; color: {T["muted"]}; }}
-#PcStatus {{ font-size: 12.5px; }}
-#PcStatus small {{ color: {T["muted"]}; font-size: 11.5px; }}
+#PcStatus {{ font-size: 13px; }}
+#PcStatus small {{ color: {T["muted"]}; font-size: 12px; }}
 #MiniStat {{ font-size: 12px; color: {T["muted"]}; }}
 #TextDi {{ color: {T["ink_2"]}; }}
 
@@ -366,7 +366,7 @@ QSpinBox:focus {{ border-color: {T["gold"]}; }}
     font-size: 16px; font-weight: 700; background: transparent; color: {T["ink"]};
 }}
 #PlanCardSub {{
-    color: {T["muted"]}; font-size: 12.5px; background: transparent;
+    color: {T["muted"]}; font-size: 13px; background: transparent;
 }}
 #PlanCardCheck {{
     color: {T["gold"]}; font-size: 16px; font-weight: 900;
@@ -410,7 +410,7 @@ QDialog #DialogTitle {{
     font-size: 22px;
 }}
 #DlgHint {{ color: {T["muted"]}; font-size: 13px; }}
-#DlgFieldName {{ font-size: 12.5px; font-weight: 600; }}
+#DlgFieldName {{ font-size: 13px; font-weight: 600; }}
 #DlgErr {{ color: {T["rose"]}; font-size: 12px; }}
 """
 

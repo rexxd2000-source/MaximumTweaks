@@ -1,0 +1,517 @@
+﻿tweak_id,name,description,classification,required_tier,category,mutating_actions,verified,disposition
+adv-003,Disable Insecure Guest Fallback,Disables SMB guest fallback.,FOUNDATION,performance,Advanced,1,False,UNVERIFIED
+adv-006,Set Processor Scheduling to Programs,Prioritizes programs over background services.,FREE,foundation,Advanced,1,True,VERIFIED
+adv-007,Disable Credential Manager,Disables the credential manager service.,MAXIMUM,maximum,Advanced,1,True,VERIFIED
+adv-008,Disable Print Job History,Disables print job history tracking via registry.,FREE,foundation,Advanced,1,True,VERIFIED
+adv-009,Disable Font Cache Service,Disables the font cache service.,FOUNDATION,performance,Advanced,1,True,VERIFIED
+adv-015,Optimize BCD Boot Settings,Sets the boot menu policy to standard for faster boots.,FOUNDATION,performance,Advanced,1,False,UNVERIFIED
+aim-002,Remove QoS Bandwidth Reservation,Sets the QoS NonBestEffortLimit to 0 so Windows stops reserving ~20% of network bandwidth.,FOUNDATION,performance,Aim,1,False,DANGEROUS
+audio-001,Mute System Startup Sound,Disables the Windows startup chime.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-002,Mute Notification Sounds,Silences default notification sounds.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-003,High Priority Audio MMCSS Task,Raises the MMCSS 'Audio' class scheduling priority.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-004,High Priority Playback MMCSS Task,Raises the MMCSS 'Playback' class scheduling priority.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-005,Audio Services Automatic,Sets the Windows Audio and AudioEndpointBuilder services to automatic.,FREE,foundation,Audio,2,True,VERIFIED
+audio-006,Disable Spatial Audio,Disables Windows Sonic spatial audio via registry.,FREE,foundation,Audio,1,True,VERIFIED
+audio-007,Enable Exclusive Mode,Enables audio exclusive mode for lower latency via registry.,FREE,foundation,Audio,2,True,VERIFIED
+audio-008,Disable Audio Enhancements,Disables all audio DSP enhancements via registry.,FREE,foundation,Audio,1,True,VERIFIED
+audio-013,Disable System Sounds,Turns off the default Windows system sound scheme.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-014,Disable Windows Error Sounds,"Silences Windows error, critical stop and default beep sounds.",FREE,foundation,Audio,4,False,UNVERIFIED
+audio-015,Audio Service Recovery on Failure,Configures the Windows Audio service to auto-restart on failure.,FREE,foundation,Audio,2,False,UNVERIFIED
+audio-017,Disable Exclusive Mode Application Launch,Prevents applications from hijacking the audio device in exclusive mode.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-018,Disable Audio Resampling Quality Boost,Sets the Windows audio resampler to basic quality to reduce latency.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-019,Disable Communication Ducking,Prevents Windows from automatically reducing volume when it detects communications activity.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-020,Disable Volume Auto-Limiting,Prevents Windows from automatically capping peak volume.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-023,Audio MMCSS Scheduling Category,Sets the Audio MMCSS task to High scheduling category.,FOUNDATION,performance,Audio,2,False,UNVERIFIED
+audio-024,Playback MMCSS Scheduling Category,Sets the Playback MMCSS task to High scheduling category.,FOUNDATION,performance,Audio,2,False,UNVERIFIED
+audio-025,Audio MMCSS GPU Priority,Raises the GPU priority for the Audio MMCSS task.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-026,Disable Realtek Audio DSP,Disables Realtek audio processing effects.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-027,Disable Realtek Signal Enhancement,Disables the Realtek signal enhancement feature.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-028,Disable Bluetooth Hands-Free Profile,Disables the Bluetooth HFP (hands-free) audio profile to prefer A2DP.,FOUNDATION,performance,Audio,1,False,UNVERIFIED
+audio-030,Disable Microphone Exclusive Mode,Prevents applications from taking exclusive control of the microphone.,FREE,foundation,Audio,1,False,UNVERIFIED
+audio-032,Disable Microphone Processing,"Disables Windows automatic microphone processing (noise suppression, echo cancellation).",FREE,foundation,Audio,2,False,UNVERIFIED
+bg-005,Exclude Game Folders from Defender,Adds common game folders to the Defender exclusion list.,FOUNDATION,performance,Background,1,True,VERIFIED
+bg-008,Disable Settings Sync,Disables settings sync via Group Policy.,FREE,foundation,Background,1,True,VERIFIED
+bg-009,Disable Tips and Suggestions,Disables Windows tips background suggestions.,FREE,foundation,Background,1,False,UNVERIFIED
+bg-010,Set Active Hours,Sets Windows Update active hours to cover a typical gaming session.,FREE,foundation,Background,2,True,VERIFIED
+cpu_amd_decrease_policy,Performance Decrease Policy (AMD),"Chooses which signal is allowed to drop the clock back down, which changes how quickly the chip settles after a burst.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_amd_decrease_threshold,Performance Decrease Threshold (AMD),How far utilisation must rise before the clock steps up.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_amd_increase_policy,Performance Increase Policy (AMD),"Chooses which hardware performance boost signal is allowed to raise the clock, instead of letting the CPU decide.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_amd_increase_threshold,Performance Increase Threshold (AMD),How far utilisation must fall before the clock steps down.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_amd_unpark_all,Minimum Unparked Cores (100%),"Asks the scheduler to keep every core out of the parked state, so spreading work does not stall on a waking core.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
+cpu_boost_mode_aggressive,Processor Boost Mode,"Sets the hardware turbo behaviour to aggressive, letting the chip exceed its sustained base clock for short bursts.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
+cpu_epp_performance,Energy Performance Preference,Biases the hardware scheduler toward performance over energy saving when it picks between equally valid cores.,FOUNDATION,performance,CPU,1,False,UNVERIFIED
+cpu_hybrid_sched_performant,Heterogeneous Scheduling (Performance),Tells Windows to place long-running threads on the performance cores rather than letting it choose between P-cores and E-cores.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_hybrid_short_sched_performant,Short-Thread Scheduling (Performance),"Applies the same performance-core preference to short-running threads, which the long-thread policy deliberately leaves alone.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_idle_disable,Disable Processor Idle States,"Stops the processor dropping into its low-power C-states, keeping cores clocked up at the cost of idle power and heat.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_decrease_policy,Performance Decrease Policy (Intel),"Chooses which signal is allowed to drop the clock back down, which changes how quickly the chip settles after a burst.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_decrease_threshold,Performance Decrease Threshold (Intel),How far utilisation must rise before the clock steps up.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_increase_policy,Performance Increase Policy (Intel),"Chooses which hardware performance boost signal is allowed to raise the clock, instead of letting the CPU decide.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_increase_threshold,Performance Increase Threshold (Intel),How far utilisation must fall before the clock steps down.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_max_state_100,Maximum Processor State,Lets the processor use its full advertised frequency instead of being held below the maximum by the power plan.,FREE,foundation,CPU,1,False,UNVERIFIED
+cpu_min_state_100,Minimum Processor State,"Holds cores at full clock while the system is busy, trading idle power and heat for a floor under clock speed.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
+mmcss_game_priority,MMCSS Game Priority,Marks the game as a high-priority Multimedia Class Scheduler task so audio and video threads get dedicated CPU time.,FOUNDATION,performance,CPU,3,False,UNVERIFIED
+process_priority,Foreground Priority Boost,Gives the foreground app more CPU share than background services when both want the processor.,FOUNDATION,performance,CPU,1,False,UNVERIFIED
+db-001,Remove Default UWP Apps,Uninstalls common pre-installed UWP apps.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-002,Remove Xbox App,Removes the Xbox app.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-003,Remove Windows Mixed Reality,Removes Windows Mixed Reality apps.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-004,Remove News & Weather,Removes the MSN News & Weather apps.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-005,Stop OneDrive Process,Stops the running OneDrive sync process (it stays installed).,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-006,Disable Pre-Installed Store Auto-Install,Prevents auto re-install of removed apps.,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-015,Disable OneDrive,Disables OneDrive file synchronization via Group Policy.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-016,Uninstall Cortana,Removes the Cortana app package from all user accounts.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
+db-017,Disable Widgets,Disables the Widgets board via Group Policy.,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-018,Disable Windows Copilot,Disables the Windows Copilot sidebar via Group Policy.,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-019,Disable Chat Icon,Hides the Chat icon from the taskbar.,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-020,Disable Windows Spotlight,Disables Windows Spotlight lock screen and desktop features.,FREE,foundation,Debloat,1,False,UNVERIFIED
+db-021,Disable Widgets News & Interests,Disables the Widgets news feed via the Dsh policy (AllowNewsAndInterests).,FREE,foundation,Debloat,1,False,UNVERIFIED
+dd-001,Reduce Mouse Input Buffer,Shrinks the OS mouse input queue so cursor updates reach applications faster.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-002,Reduce Keyboard Input Buffer,Shrinks the OS keyboard input queue so key events reach applications faster.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-003,Disable Mouse Ballistics,Disables the OS-level mouse sensitivity scaling for raw 1:1 pointer movement.,FREE,foundation,Delay Destroyer,1,False,DANGEROUS
+dd-004,Optimize HID Button Response,Reduces the low-level hook timeout so HID button presses are processed faster.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-005,Disable USB Hub Power Management,Prevents USB hubs from entering power-saving states that add wake latency.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
+dd-010,Disable Game Bar Tips,Disables Game Bar tip notifications that appear during gameplay.,FREE,foundation,Delay Destroyer,1,False,DANGEROUS
+dd-011,Disable Game Bar Keyboard Shortcuts,Disables Game Bar keyboard shortcuts that can trigger during gameplay.,FREE,foundation,Delay Destroyer,1,False,DANGEROUS
+dd-012,Optimize Fullscreen Game Priority,Boosts the CPU priority of fullscreen exclusive games.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
+dd-013,Optimize TCP ACK Frequency,Disables delayed ACKs so TCP acknowledgments are sent immediately.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
+dd-014,Disable TCP Nagle Algorithm,Disables Nagle's algorithm so small packets are sent immediately.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
+dd-015,Optimize Network Interrupt Moderation,"Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe).",MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-016,Optimize DNS Cache Timeout,Reduces DNS cache timeout to refresh DNS entries more frequently.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
+dd-017,Optimize USB Transfer Timeout,Reduces the USB transfer timeout for faster error recovery.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-018,Optimize USB Endpoint Response,Reduces USB endpoint error recovery time for faster device responsiveness.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+dd-019,Optimize USB Selective Suspend Delay,Reduces the delay before USB devices enter selective suspend.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
+disp-002,Outline-Only Window Dragging,Shows only the window outline while dragging.,FREE,foundation,Display,1,False,UNVERIFIED
+disp-004,Solid Color Wallpaper,Replaces the wallpaper with a solid color to reduce desktop redraws.,FREE,foundation,Display,1,False,UNVERIFIED
+disp-005,Disable Translucent Selection,Turns off the translucent rectangle used for file selection.,FREE,foundation,Display,1,False,UNVERIFIED
+disp-009,Compact Icon Spacing,Tightens desktop icon spacing.,FREE,foundation,Display,1,False,UNVERIFIED
+disp-012,Disable Overlays,Disables Game DVR overlay capture via registry.,FREE,foundation,Display,1,True,VERIFIED
+disp-014,Disable Hardware Overlay,Turns off the hardware overlay plane to force GPU compositing.,FOUNDATION,performance,Display,1,False,UNVERIFIED
+disp-016,Disable Night Light,Turns off the Windows Night Light blue-light filter.,FREE,foundation,Display,1,False,UNVERIFIED
+eth-001,Disable Adapter Power Management,Turns off all power-saving on the wired adapter.,FREE,foundation,Ethernet,1,False,UNVERIFIED
+eth-004,Disable Large Send Offload IPv4,Turns off LSOv4 segmentation offload.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-005,Enable RSS on Adapter,Enables receive-side scaling on the wired adapter.,FREE,foundation,Ethernet,1,False,UNVERIFIED
+eth-006,Disable Flow Control,Turns off Ethernet flow control.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-008,Disable Energy Efficient Ethernet,Turns off EEE/Green Ethernet power saving.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-009,Disable Wake on Magic Packet,Turns off Wake-on-LAN wake on magic packet.,FREE,foundation,Ethernet,1,False,UNVERIFIED
+eth-010,Raise Receive Buffers,Increases the adapter receive ring buffer size.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-011,Raise Transmit Buffers,Increases the adapter transmit ring buffer size.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-014,Disable IPv6 Large Send Offload,Turns off IPv6 LSO independently of IPv4.,FOUNDATION,performance,Ethernet,1,False,UNVERIFIED
+eth-015,Disable Adapter Power-Off (Allow Computer to Turn Off),Disables 'Allow the computer to turn off this device' on the wired adapter.,FREE,foundation,Ethernet,1,False,UNVERIFIED
+exp-001,Enable Dev Mode,Enables Developer Mode features.,FREE,foundation,Experimental,1,False,EXPERIMENTAL
+exp-002,Enable Windows Subsystem for Linux,Enables WSL support.,FOUNDATION,performance,Experimental,1,False,EXPERIMENTAL
+exp-003,Disable Hypervisor via BCDEdit,Disables the hypervisor at boot.,MAXIMUM,maximum,Experimental,1,False,EXPERIMENTAL
+exp-004,Enable Test Mode,Enables test signing mode.,MAXIMUM,maximum,Experimental,1,False,EXPERIMENTAL
+exp-005,Disable Core Isolation,Disables memory integrity.,MAXIMUM,maximum,Experimental,1,False,EXPERIMENTAL
+fpsb-001,Disable Virtualization-Based Security (VBS),Disables VBS and HVCI to recover 2-15% FPS lost to virtualization overhead.,MAXIMUM,maximum,FPS Boost,3,False,UNVERIFIED
+fpsb-005,Disable Nagle's Algorithm (Network Latency),Disables TCP packet batching for lower network latency in online games.,FREE,foundation,FPS Boost,2,False,UNVERIFIED
+fpsb-008,Disable Windows Spotlight,Turns off the Windows lock screen Spotlight feature that downloads images.,FREE,foundation,FPS Boost,2,False,UNVERIFIED
+fpsb-009,Disable Windows Tips and Suggestions,Turns off Windows promotional tips and suggestion notifications.,FREE,foundation,FPS Boost,2,False,UNVERIFIED
+fpsb-010,Disable Activity History,Turns off Windows activity tracking to free background CPU and disk I/O.,FREE,foundation,FPS Boost,3,False,UNVERIFIED
+fpsb-012,Disable Spectre/Meltdown Mitigations,Disables CPU vulnerability mitigations for 1-8% FPS improvement.,MAXIMUM,maximum,FPS Boost,2,False,UNVERIFIED
+fpsb-021,Disable PCIe ASPM,Disables PCI Express Active State Power Management for maximum GPU/SSD bandwidth.,FOUNDATION,performance,FPS Boost,2,False,UNVERIFIED
+fpsb-025,Disable NTFS Last Access Timestamps,Stops NTFS from updating file access timestamps to reduce disk I/O.,FREE,foundation,FPS Boost,1,False,UNVERIFIED
+fn-011,Disable Dynamic Shadows,Turns off dynamic character/building shadows in Fortnite's config.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-012,Lowest Shadow Quality,Forces Fortnite shadow quality to Low.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-013,Disable Post-Processing,"Drops Fortnite post-processing (bloom, DOF, color grading).",FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-014,Lowest Effects Quality,"Lowers Fortnite effects (smoke, explosions, particles) quality.",FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-015,Disable Motion Blur,Turns off Fortnite motion blur for clearer tracking.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-016,Disable Grass,Removes Fortnite grass rendering entirely.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-017,Disable Anti-Aliasing,Forces Fortnite to render with anti-aliasing disabled.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-018,Disable Global Illumination,Drops Fortnite global illumination quality to off.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-019,Disable Reflections,Drops Fortnite reflection quality to off.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-020,Lowest Shading Quality,Forces the cheapest shading mode for maximum FPS.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-021,Lowest Texture Quality,Frees VRAM by forcing lowest texture streaming quality.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-022,Foliage Off,Removes Fortnite foliage quality.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-023,Competitive View Distance,Sets Fortnite view distance to Medium for visibility with FPS saved.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-024,Disable Ray Tracing,Turns off Fortnite ray tracing entirely.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-025,Disable Nanite,Turns off Nanite geometry for faster CPU-side culling.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-026,Disable DLSS Frame Generation,Turns off DLSS Frame Generation for lower render latency.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-027,Reflex Low Latency,Enables Fortnite's low-latency input mode.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-028,Disable VSync,Turns off VSync to remove added input latency.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-029,Disable Dynamic Resolution,Turns off Fortnite's dynamic resolution scaling.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-030,Multithreaded Rendering,Enables Fortnite multithreaded rendering.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-031,Keep Rendering in Background,Prevents Fortnite dropping to the fake-frame hitch when unfocused.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-032,Disable Energy Saving,Turns off Fortnite energy-saving throttling.,FREE,foundation,Fortnite,2,False,UNVERIFIED
+fn-033,Disable Mouse Acceleration,Turns off Fortnite mouse acceleration for 1:1 pointer input.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-034,Show FPS Counter,Enables Fortnite's in-game FPS counter.,FREE,foundation,Fortnite,1,False,UNVERIFIED
+fn-035,Lowest Textures (Scalability),Forces lowest texture quality in Fortnite scalability.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-036,Foliage Off (Scalability),Disables foliage quality in Fortnite scalability.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-037,Lowest Shading (Scalability),Forces lowest shading quality in Fortnite scalability.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+fn-038,View Distance (Scalability),Sets Fortnite scalability view distance to Medium.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
+gpu-001,Enable Hardware Accelerated GPU Scheduling,Lets the GPU driver schedule work without CPU help.,FOUNDATION,performance,GPU,1,False,UNVERIFIED
+gpu-002,Disable Multiplane Overlay,Turns off MPO to avoid composition glitches.,FOUNDATION,performance,GPU,1,False,UNVERIFIED
+gpu-003,Increase TDR Delay,Lets the driver recover instead of resetting on long renders.,FOUNDATION,performance,GPU,1,False,UNVERIFIED
+gpu-018,Raise TDR Recovery Attempts,Allows more driver recoveries before Windows gives up on a hung display adapter.,MAXIMUM,maximum,GPU,1,False,UNVERIFIED
+gpu-019,Extend TDR Detection Window,"Widens the time window in which TDR recoveries are counted, avoiding unnecessary full resets.",MAXIMUM,maximum,GPU,1,False,UNVERIFIED
+gpu-020,Extend GPU Hung Timeout,"Raises how long Windows waits before declaring the GPU hung, protecting long shader compiles.",MAXIMUM,maximum,GPU,1,False,UNVERIFIED
+gpu-021,Disable Multi-GPU Switching,Stops Microsoft's hybrid graphics stack from hot-swapping between integrated and discrete adapters.,MAXIMUM,maximum,GPU,1,False,UNVERIFIED
+gpu-022,Prefer Hardware Render Path,Forces the desktop composition stack onto the hardware renderer instead of software fallbacks.,FOUNDATION,performance,GPU,1,False,UNVERIFIED
+gpu-024,Disable DWM Visual Effects,"Cuts DWM visual effects (animations, shadows) for snappier UI redraws on weaker GPUs.",FREE,foundation,GPU,1,False,UNVERIFIED
+gpu-025,Disable Aero Peek,Turns off the Aero Peek taskbar preview animations to save a little composition work.,FREE,foundation,GPU,1,False,UNVERIFIED
+gpu-060,Enable MSI Mode for GPU,Enables Message Signaled Interrupts on the display adapter for lower interrupt latency.,MAXIMUM,maximum,GPU,1,False,UNVERIFIED
+gproc-001,Disable Game Efficiency Mode,Removes EcoQoS execution-speed throttling from the running game process (High QoS). Windows-only for Efficiency Mode behavior.,FOUNDATION,performance,Game Process,1,False,UNVERIFIED
+gproc-002,Restore Game CPU Sets,Detects an explicit per-game CPU Set restriction and clears it so Windows scheduling becomes unrestricted again.,FOUNDATION,performance,Game Process,1,False,UNVERIFIED
+gproc-003,Normalize Game Memory Priority,Restores a game that another optimizer set to a low memory priority back to Windows Normal (5).,FOUNDATION,performance,Game Process,1,False,UNVERIFIED
+gproc-004,Game CPU Priority,Lets a running supported game use the Windows 'Above Normal' CPU scheduling priority class.,FOUNDATION,performance,Game Process,1,False,UNVERIFIED
+game-001,Enable Game Mode,Turns on Windows Game Mode.,FREE,foundation,Gaming,2,False,UNVERIFIED
+game-003,Disable Game DVR / Game Bar / Background Capture,"Single owner for the Game DVR and Game Bar capture pipeline: disables background recording, the Game Bar widget/overlay hook, and the policy-level capture switches.",FOUNDATION,performance,Gaming,7,True,VERIFIED
+il-006,Disable Pointer Trails,Turns off mouse pointer trails via registry.,FREE,foundation,Input Latency,1,True,VERIFIED
+il-007,Disable Enhanced Pointer Precision,Disables enhanced pointer precision (mouse acceleration) via registry.,FREE,foundation,Input Latency,3,True,VERIFIED
+int-003,Disable Intel VSync,Disables driver-enforced VSync via the Intel graphics registry.,FOUNDATION,performance,Intel,1,True,VERIFIED
+int-009,Opt Out of Intel Telemetry,Disables Intel driver telemetry via registry keys.,FOUNDATION,performance,Intel,2,True,VERIFIED
+int-013,Enable Intel Speed Shift,Enables Intel Speed Shift Technology for faster CPU frequency transitions.,FOUNDATION,performance,Intel,1,False,UNVERIFIED
+int-014,Enable Intel Turbo Boost Max 3.0,Ensures Intel Turbo Boost Max 3.0 is active for best single-core performance.,FOUNDATION,performance,Intel,1,False,UNVERIFIED
+kbd-001,Zero Key Repeat Delay,Sets the key repeat delay to its minimum.,FREE,foundation,Keyboard,1,True,VERIFIED
+kbd-003,Disable Filter Keys,Turns off the Filter Keys accessibility feature.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-004,Disable Sticky Keys,Turns off the Sticky Keys accessibility feature.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-005,Disable Toggle Keys,Turns off the Toggle Keys beep indicator.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-006,NumLock On at Logon,Turns NumLock on at the sign-in screen.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-014,Instant Key Acceptance,"Zeroes the Filter Keys delay before a press is accepted, so no keystroke is swallowed.",FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-015,Zero FilterKeys Bounce Time,Sets Filter Keys bounce time to zero so a key can be re-pressed immediately.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-016,Fast FilterKeys Auto-Repeat,Speeds up Filter Keys' internal auto-repeat delay and rate for held keys.,FREE,foundation,Keyboard,2,False,UNVERIFIED
+kbd-017,No FilterKeys Auto-Disable Timeout,Disables the timeout that auto-turns off Filter Keys while you step away.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-018,Turn Off Filter Keys Switch,Flips the Filter Keys on/off switch value to fully off.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-019,Silence Sticky Keys Feedback,Disables the audible and visual feedback Sticky Keys plays when a modifier activates.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-020,Disable Sticky Keys Hotkey,Disables the Shift x5 hotkey that turns Sticky Keys on mid-game.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-021,Turn Off Sticky Keys Switch,Sets the Sticky Keys main on/off value to disabled.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-022,Sticky Keys Off at Logon,Disables Sticky Keys for the logon session before any profile loads.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-023,Silence Toggle Keys Beep,Disables the Toggle Keys beep audio feedback.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-024,Disable Toggle Keys Hotkey,Disables the Num Lock x5 hotkey that turns Toggle Keys on by accident.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-025,Turn Off Toggle Keys Switch,Sets the Toggle Keys main on/off value to disabled.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-026,Toggle Keys Off at Logon,Disables Toggle Keys for the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-027,Disable High Contrast Mode,Turns off the High Contrast theme renderer.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-028,Disable Mouse Keys Hotkey,Disables the hotkey that turns Mouse Keys on from the numeric keypad.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-029,Keep Mouse Keys Active,"Sets the Mouse Keys auto-off delay to never, so the feature stays active.",FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-030,Disable Sound Sentry,Turns off Sound Sentry's flash-based sound alerts.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-031,Disable Show Sounds Captions,Disables Show Sounds so no accessibility caption overlay is drawn.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-032,Disable Ignore Repeated Keystrokes,Turns off the accessibility option that deliberately ignores repeated keystrokes.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-033,Filter Keys Off at Logon,Disables Filter Keys for the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-034,Hide Touch Keyboard Taskbar Button,Hides the touch keyboard taskbar button from the tray.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-035,Caps Lock to Control Remap,Remaps Caps Lock to the left Control key using a scancode map.,FOUNDATION,performance,Keyboard,1,False,UNVERIFIED
+kbd-046,Disable Firmware PCI Settings,Stops firmware PCI settings overriding MSI-capable interrupt routing.,MAXIMUM,maximum,Keyboard,1,False,EXPERIMENTAL
+kbd-047,Block Keyboard Wake from Sleep,Stops the HID keyboard from waking the PC from sleep.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-048,NumLock On at Logon Screen,Turns NumLock on for the sign-in screen itself.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-049,Fast Key Repeat at Logon Screen,Applies the zero key repeat delay to the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-050,Mouse Keys Off at Logon,Disables Mouse Keys for the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-051,High Contrast Off at Logon,Disables High Contrast mode for the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-052,Sound Sentry Off at Logon,Disables Sound Sentry for the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-053,Silence Toggle Keys Beep at Logon,Disables Toggle Keys beep feedback at the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-054,Silent Sticky Keys at Logon,Disables Sticky Keys feedback sounds at the logon session.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-055,Mouse Keys Off Switch,Sets the Mouse Keys main on/off value to disabled.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-056,High Contrast Off Switch,Sets the High Contrast main on/off value to disabled.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+kbd-057,Sound Sentry Off Switch,Sets the Sound Sentry main on/off value to disabled.,FREE,foundation,Keyboard,1,False,UNVERIFIED
+audio-036,Disable Audio Endpoint Auto-Scaling,Prevents Windows from dynamically adjusting audio buffer sizes on laptops.,FOUNDATION,performance,Laptop,1,False,UNVERIFIED
+lap-001,Lid Close: Do Nothing (AC),Prevent sleep when closing the laptop lid while plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-002,Lid Close: Sleep (Battery),Ensure the laptop sleeps when the lid is closed on battery.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-003,Lid Close: Hibernate (Battery),Hibernate when the lid is closed on battery for zero drain.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-004,Display Never Off (AC),Keep the display on when plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-005,Display Off After 5 min (Battery),Turn the display off after 5 minutes on battery to save power.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-006,Never Sleep (AC),Prevent the system from sleeping on AC power.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-007,Sleep After 15 min (Battery),Sleep after 15 minutes of inactivity on battery.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-008,Disable Hibernate on AC,Prevent hibernation while plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-009,Hibernate After 30 min (Battery),Hibernate after 30 minutes of sleep on battery to prevent drain.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-010,HDD Never Spindown (AC),Keep hard drives spinning when plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-011,HDD Spindown After 10 min (Battery),Spin down the HDD after 10 minutes on battery.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-012,Max CPU on Battery,Allow the CPU to reach maximum performance on battery power.,FOUNDATION,performance,Laptop,1,False,UNVERIFIED
+lap-013,Min CPU 5% on Battery,Set the minimum processor performance state on battery.,FOUNDATION,performance,Laptop,1,False,UNVERIFIED
+lap-014,Disable Turbo Boost on Battery,Disable CPU turbo boost when on battery to extend playtime.,FOUNDATION,performance,Laptop,1,False,UNVERIFIED
+lap-016,Enable Network Connectivity in Standby,Allow the network adapter to stay connected during Modern Standby.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-017,Wi-Fi: Maximum Performance (AC),Set Wi-Fi adapter to maximum performance on AC power.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-018,Wi-Fi: Moderate Power Saving (Battery),Use moderate Wi-Fi power saving on battery.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-019,Disable Bluetooth Power Saving,Disable Bluetooth adapter power saving to reduce input latency.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-020,Disable PCIe Power Management,Disable PCIe ASPM to reduce device wake latency.,FOUNDATION,performance,Laptop,1,False,UNVERIFIED
+lap-021,Disable USB Selective Suspend,Disable USB selective suspend to prevent device disconnections.,FREE,foundation,Laptop,3,False,UNVERIFIED
+lap-029,Aggressive Fan Policy (AC),Set the system cooling policy to Active on AC power.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-030,Passive Cooling on Battery,Set the system cooling policy to Passive on battery power.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-032,Use Balanced Plan on Battery,Switch to the Balanced power plan on battery for efficiency.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-033,Reduce Hibernate File Size,Set hibernation to reduced mode to save disk space.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-034,Aggressive Boost on AC,Set CPU boost mode to Aggressive when plugged in for maximum clocks.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-035,Disable Boost on Battery,Disable CPU turbo boost on battery to extend playtime.,FOUNDATION,performance,Laptop,3,False,UNVERIFIED
+lap-036,PCI Express Max Power on AC,Set PCI Express link state power management to off on AC.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-037,PCI Express Moderate Saving on Battery,Set PCI Express to moderate power saving on battery.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-038,USB Selective Suspend on Battery,Enable USB selective suspend on battery to conserve power.,FREE,foundation,Laptop,2,False,UNVERIFIED
+lap-039,NVMe Aggressive Idle on Battery,Allow NVMe drives to enter deep power states on battery.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-040,NVMe Responsive on AC,Keep NVMe drives in responsive mode when plugged in.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-041,Disk Never Idle on AC,Prevent hard drives from idling on AC power.,FREE,foundation,Laptop,2,False,UNVERIFIED
+lap-042,Disk Idle 5 min on Battery,Spin down the disk after 5 minutes on battery.,FREE,foundation,Laptop,2,False,UNVERIFIED
+lap-043,High Refresh on AC,Ensure the display uses its highest refresh rate when plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-044,Restrict Background Apps on Battery,Restrict UWP background app activity when on battery power.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-045,Disable Game Mode on Battery,Disable Windows Game Mode when on battery to save power.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-046,Deep CPU Idle on Battery,Allow the CPU to enter deeper idle states on battery.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-047,Disable Hybrid Sleep on Battery,Disable hybrid sleep on battery to prevent disk writes.,FREE,foundation,Laptop,2,False,UNVERIFIED
+lap-048,Disable Wake Timers on Battery,Prevent scheduled tasks from waking the laptop on battery.,FREE,foundation,Laptop,2,False,UNVERIFIED
+lap-049,Disable Adaptive Brightness,Disable ambient light sensor-based brightness adjustment.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-050,Moderate C-States on Battery,Allow moderate CPU C-states on battery for power savings.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-052,Standard Timer on Battery,Use standard timer resolution on battery to save power.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
+lap-053,Disable DWM Effects on Battery,Disable DWM visual effects on battery to reduce GPU power draw.,FREE,foundation,Laptop,1,False,UNVERIFIED
+mon-001,Disable Monitor Auto-Detect Sleep,Prevents the display from entering power save during long play sessions.,FREE,foundation,Monitor,1,True,VERIFIED
+mon-006,Disable Adaptive Brightness,Turns off display adaptive brightness in the power plan.,FREE,foundation,Monitor,2,True,VERIFIED
+mouse-002,Disable Cursor Suppression,Stops Windows from hiding the cursor during typing in games.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-004,Instant Hover Time,Sets the pointer hover activation time to its minimum.,FREE,foundation,Mouse,1,True,VERIFIED
+mouse-014,Fast Double-Click,Lowers the double-click speed threshold so rapid clicks register faster.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-015,Compact Double-Click Zone,Shrinks the vertical double-click hit zone for precise rapid clicking.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-016,Compact Double-Click Zone Width,Shrinks the horizontal double-click hit zone for rapid clicking.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-017,Disable Pointer Trails,"Turns off cursor motion trails for a clean, precise pointer.",FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-018,Disable Snap-To,Prevents the pointer from jumping to the default button in dialogs.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-019,Linear Pointer Curve,Replaces the Windows acceleration curves with a flat 1:1 pointer response.,FREE,foundation,Mouse,2,False,UNVERIFIED
+mouse-020,Tight Hover Zone,Narrows the horizontal pointer hover zone for faster hover activation.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-021,Tight Hover Zone Height,Narrows the vertical pointer hover zone for faster hover activation.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-022,Disable Click Lock,Turns off Click Lock so dragging never sticks after a long press.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-023,Faster Click Lock Engage,Shortens the hold time before Click Lock engages when it is enabled.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-024,Disable Cursor Blink,Stops the text cursor from blinking.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-027,Horizontal Wheel Chars,Sets how many characters a horizontal wheel tilt scrolls.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-028,Snappy Window Drag,Lowers the vertical threshold before a window switches to full-window drag.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-029,Snappy Window Drag Width,Lowers the horizontal threshold before a window switches to full-window drag.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-030,Activate Window on Hover,Makes windows activate as soon as the pointer passes over them.,FOUNDATION,performance,Mouse,1,False,UNVERIFIED
+mouse-031,Disable Snap Layouts,Turns off the Win11 Snap Layouts popup when dragging a window to an edge.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-032,Minimize Flash Count,Sets the number of flashes a background window makes when it steals attention.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-047,Scroll Inactive Windows on Hover,Lets the wheel scroll windows under the pointer without activating them.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-048,Disable Snap Assist,Disables the Snap Assist layout buttons shown when dragging a window to an edge.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-049,Disable Snap Fill,Prevents windows from auto-filling available space when snapped.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-050,Drag Maximized Windows,Allows dragging a maximized window off the top edge to restore and move it.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-051,Disable MouseKeys,Turns off the numpad-based MouseKeys pointer control.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-052,Faster MouseKeys Speed,Raises the top pointer speed for the numpad MouseKeys control.,FREE,foundation,Mouse,1,False,UNVERIFIED
+mouse-053,Faster MouseKeys Acceleration,Shortens the time MouseKeys takes to reach its top pointer speed.,FREE,foundation,Mouse,1,False,UNVERIFIED
+nv-001,Enable Persistence Mode,Keeps the NVIDIA driver resident to lower launch stalls.,FOUNDATION,performance,NVIDIA,1,False,UNVERIFIED
+nv-002,Reset Auto Boost Defaults,Returns GPU boost clocks to driver defaults.,FOUNDATION,performance,NVIDIA,1,False,UNVERIFIED
+nv-018,Disable NVIDIA Logging Services,Stops and disables the NVIDIA logging and monitoring services.,MAXIMUM,maximum,NVIDIA,4,False,UNVERIFIED
+net-002,TCP Congestion Provider CTCP,Switches the TCP congestion provider to Compound TCP (modern Win11 + legacy fallback).,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-003,Enable Receive-Side Scaling,Turns on RSS so network processing spreads across CPU cores.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-004,Enable ECN Capability,Enables Explicit Congestion Notification on TCP.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-005,Disable TCP Timestamps,Turns off TCP timestamp options.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-006,Initial RTO 2000 ms,Sets the TCP initial retransmission timeout to 2000 ms.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-007,Max Connections Per Server (IE/Apps),Raises simultaneous connections per HTTP server to 8.,FREE,foundation,Network,1,True,VERIFIED
+net-008,Max Connections Per 1.0 Server,Raises parallel connections for HTTP/1.0 servers to 8.,FREE,foundation,Network,1,False,UNVERIFIED
+net-009,Disable Network Throttling,Raises the MMCSS network throttling index to maximum.,FOUNDATION,performance,Network,1,True,VERIFIED
+net-010,Default TTL 64,Sets the default IPv4 time-to-live to 64.,FREE,foundation,Network,1,False,UNVERIFIED
+net-012,Set DNS to Cloudflare,Switches DNS to Cloudflare's fast public resolvers.,FREE,foundation,Network,2,True,VERIFIED
+net-013,Disable Delivery Optimization P2P,Disables peer-to-peer Windows Update sharing.,FREE,foundation,Network,1,False,UNVERIFIED
+net-017,Disable Nagle Algorithm,Disables Nagle's algorithm on all network interfaces for lower latency.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-019,Disable RSS on Low RAM,Disables Receive-Side Scaling on systems with limited RAM to free memory for games.,MAXIMUM,maximum,Network,1,False,UNVERIFIED
+net-020,Disable NIC Interrupt Moderation,Turns off the active adapter's Interrupt Moderation so every packet is raised to the CPU immediately instead of being batched.,MAXIMUM,maximum,Network,1,False,UNVERIFIED
+net-021,Restore Receive-Side Scaling (Adapter),Re-enables RSS on the TCP stack and on the adapter when it is supported but was switched off.,FOUNDATION,performance,Network,1,False,UNVERIFIED
+net-022,Network Adapter Performance Mode,"Disables the NIC's low-power link features (EEE, Green Ethernet, Power Saving Mode, Gigabit Lite, Ultra Low Power Mode) for lower jitter.",FOUNDATION,performance,Network,1,False,UNVERIFIED
+gpu-027,Suppress Animations While Shifting,"Lets you hold Shift to instantly disable window animations, useful for remote sessions.",FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-028,Disable DWM Telemetry,Stops the DWM Customer Experience Improvement Program from collecting UI rendering data.,FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-029,Disable DWM Machine Check Redraw,"Stops DWM's full-surface redraw when the desktop changes, cutting jank on low-end GPUs.",MAXIMUM,maximum,Performance,1,False,UNVERIFIED
+gpu-030,Skip DWM Machine Check Fast Path,Prevents the DWM machine-check fast-path shortcut that can degrade presentation cadence.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
+gpu-032,Disable Window Blur,Turns off the blur-behind-windows effect that costs extra GPU fill passes.,FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-035,Enable WPF Hardware Acceleration,Ensures WPF (.NET) apps render on the GPU instead of the software rasterizer.,FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-042,Disable DirectX Update Checks,Stops the DirectX runtime from checking for optional updates during installs.,FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-046,Clear DirectX Shader Cache,Wipes the DirectX shader cache so stale or corrupt shader blobs recompile cleanly.,FREE,foundation,Performance,1,False,UNVERIFIED
+gpu-058,Enable GPU MMCSS Scheduling,Tunes the Multimedia Class Scheduler Service profile for GPU-priority tasks.,FOUNDATION,performance,Performance,3,False,UNVERIFIED
+perf-001,Timer Resolution Diagnostic,"One optional timer card. Permits applications to request a higher timer resolution; it does not force 0.5 ms. Games already request the resolution they need, so this rarely changes anything.",FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-002,Enable Game Mode,Enable Windows Game Mode for better gaming performance.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-003,Disable Game Mode,Disable Windows Game Mode if it causes issues with your system.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-004,Disable Memory Compression,Disable Windows Memory Compression which can add CPU overhead.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-005,Disable Superfetch (SysMain),Disable Superfetch/SysMain service which can cause disk thrashing.,FREE,foundation,Performance,2,False,UNVERIFIED
+perf-008,Disable Hibernation,Disable hibernation to free disk space and reduce overhead.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-009,Throttle Windows Update During Gaming,Configure Windows Update to avoid downloading during active gaming.,FREE,foundation,Performance,2,False,UNVERIFIED
+perf-012,Disable Toast Notifications,Disable Windows toast notifications to avoid interruptions.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-013,Disable NIC Interrupt Moderation,"Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe).",MAXIMUM,maximum,Performance,1,False,EXPERIMENTAL
+perf-019,Optimize Interrupt Affinity,Configure interrupt affinity for better CPU load distribution.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
+perf-029,Set MMCSS Gaming Priority,Configure MMCSS to give game processes highest scheduling priority.,FOUNDATION,performance,Performance,4,False,UNVERIFIED
+perf-034,Set Processor Performance Decrease Policy,Configure aggressive processor performance decrease for faster frequency scaling under gaming loads.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
+perf-035,Disable USB Selective Suspend,Disable USB selective suspend to prevent USB device disconnections.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-037,Force TRIM,Ensure TRIM is always enabled for optimal SSD performance.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-038,Disable I/O Coalescing,Disable I/O coalescing in the LAN server driver for lower latency.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-042,Disable Memory Compression (Cmd),Disable Windows Memory Compression via PowerShell to reduce CPU overhead on systems with ample RAM.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-043,Disable Page Combining (Registry),Disable Windows page combining through registry to reduce memory management overhead.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-046,Disable Background Maintenance,Disable scheduled maintenance tasks that consume disk and CPU resources during gaming sessions.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+perf-049,Set IRPStackSize,Increase the I/O Request Packet stack size for better network throughput in LAN gaming scenarios.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
+perf-053,Optimize Non-Paged Pool Size,Let Windows auto-manage non-paged pool size for optimal memory allocation on gaming systems.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-054,Disable Game DVR Recording (Policy),Disable Game DVR background recording via Group Policy to free up system resources.,FREE,foundation,Performance,1,False,UNVERIFIED
+perf-055,Optimize Thread Scheduling,Disable scheduler profiling overhead for lower context switch latency in gaming workloads.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
+power-002,Disable USB Selective Suspend,Prevents USB ports from suspending.,FREE,foundation,Power,1,False,UNVERIFIED
+power-003,Disable PCI Express ASPM,Prevents PCIe link power saving.,FOUNDATION,performance,Power,1,False,UNVERIFIED
+power-004,Set Sleep to Never,Prevents the system from sleeping.,FREE,foundation,Power,1,False,UNVERIFIED
+power-005,Set Display Off Timeout,Sets display-off timeout to 15 minutes.,FREE,foundation,Power,1,False,UNVERIFIED
+power-006,Disable Hibernation,Turns off hibernation and deletes the hibernation file.,FREE,foundation,Power,1,False,UNVERIFIED
+power-009,Set Minimum Processor State,Keeps the CPU at a high clock floor on AC.,FOUNDATION,performance,Power,1,False,UNVERIFIED
+power-010,Disable Adaptive Brightness,Turns off display adaptive brightness.,FREE,foundation,Power,1,False,UNVERIFIED
+power-011,Disable Hard Disk Sleep,Prevents the disk from idling down.,FREE,foundation,Power,1,False,UNVERIFIED
+power-016,Disable Fast Startup,Turns off Windows Fast Startup so the system performs a full cold boot every time.,FREE,foundation,Power,1,False,UNVERIFIED
+power-018,Disable Power Telemetry,Turns off Windows power telemetry collection to reduce background CPU and disk activity.,FREE,foundation,Power,1,False,UNVERIFIED
+power-019,Disable Power Estimation,Turns off the Windows power estimation engine to stop periodic CPU wake-ups for power tracking.,FREE,foundation,Power,1,False,UNVERIFIED
+power-021,Disable Power Throttling,Turns off Windows Power Throttling globally so background processes are not duty-cycled to save energy.,FOUNDATION,performance,Power,1,False,UNVERIFIED
+power-022,Disable Lazy Mode,Turns off CPU lazy idle mode so cores transition out of idle states immediately instead of waiting.,FOUNDATION,performance,Power,1,False,UNVERIFIED
+power-023,Disable DIPM,Disables Device Initiated Power Management on NVMe drives to prevent aggressive low-power transitions.,MAXIMUM,maximum,Power,1,False,UNVERIFIED
+power-024,Disable HIPM,Disables Host Initiated Power Management on NVMe drives to prevent the OS from putting drives into low-power states.,MAXIMUM,maximum,Power,1,False,UNVERIFIED
+power-025,Disable Hidden Power Saving,Turns off the AoAcOverride that enables Always On Always Connected hidden power-saving states.,FOUNDATION,performance,Power,1,False,UNVERIFIED
+power-026,Disable Sleep Study,Turns off the Windows Sleep Study diagnostic logger to reduce background disk and CPU activity.,FREE,foundation,Power,1,False,UNVERIFIED
+power-027,Disable Connected Standby,Disables Connected Standby (Modern Standby) via the platform override to force classic S3 sleep behavior.,MAXIMUM,maximum,Power,1,False,UNVERIFIED
+pp-013,Maximum Power Plan,"Create and activate the Maximum Power Plan — a maximum-performance gaming power plan that lets the CPU boost to 100% under load while idling down at rest, minimizing throttling for consistent frame times.",MAXIMUM,maximum,Power Plans,35,False,UNVERIFIED
+pre-001,Trajectory Timing,Tweaks frame timing & send intervals.,MAXIMUM,maximum,Precision Tweaks,2,True,VERIFIED
+pre-003,Packet Flow,Packet flow optimization for stable network timing.,MAXIMUM,maximum,Precision Tweaks,2,True,VERIFIED
+pre-004,Tick Sync,Server timing tick alignment.,MAXIMUM,maximum,Precision Tweaks,2,False,UNVERIFIED
+pre-005,Latency Consistency,Latency spike reduction & response consistency.,MAXIMUM,maximum,Precision Tweaks,2,True,VERIFIED
+pre-006,Click Timing,Click-to-shot timing tightness.,MAXIMUM,maximum,Precision Tweaks,1,True,VERIFIED
+pre-007,Packet Timing,Network jitter & micro-loss mitigation.,MAXIMUM,maximum,Precision Tweaks,2,False,UNVERIFIED
+pre-009,Taste Tester,Preset mix of lighter tweaks across all categories.,FREE,foundation,Precision Tweaks,2,True,VERIFIED
+priv-001,Disable Suggested Content,Turns off suggested app content in Start.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-002,Disable Tailored Experiences,Turns off tailored ad experiences.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-003,Disable Online Speech,Turns off online speech recognition.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-004,Disable Handwriting Data,Turns off handwriting data collection.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-005,Disable Advertiser Tracking,Turns off the ad tracking ID.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-006,Disable Camera Access,Denies camera access to apps.,FOUNDATION,performance,Privacy,1,False,UNVERIFIED
+priv-008,Disable Contacts Access,Denies contacts access.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-009,Disable Email Access,Denies email access to apps.,FREE,foundation,Privacy,1,False,UNVERIFIED
+priv-010,Disable Notifications,Disables app notification access.,FOUNDATION,performance,Privacy,1,False,UNVERIFIED
+priv-011,Disable Call History Access,Denies call history access.,FREE,foundation,Privacy,1,False,UNVERIFIED
+ram-001,Enable Prefetch,Turns on boot and application prefetching.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-002,Enable SysMain Service,Sets the SysMain (Superfetch) service to automatic.,FOUNDATION,performance,RAM,2,False,UNVERIFIED
+ram-003,Disable SysMain on SSD,Disables Superfetch on SSD-only systems.,FOUNDATION,performance,RAM,2,False,UNVERIFIED
+ram-004,Disable Superfetch Registry (SSD),Turns off the Superfetch prefetcher at the registry level.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-005,Enable Superfetch on HDD,Turns on the Superfetch prefetcher for HDD systems.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-008,Disable Hibernation Reserve,Frees the RAM-space reserved for the hibernation file.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-009,32-bit Large Address Space,Raises the user address space for 32-bit games.,MAXIMUM,maximum,RAM,1,False,UNVERIFIED
+ram-014,Disable Memory Diagnostics at Boot,Prevents the scheduled memory check at boot.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-021,Cache Memory-Mapped Images,Lets Windows keep loaded DLL and executable pages in the standby cache.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-022,Physical Address Extension (32-bit),Enables PAE so 32-bit Windows can address more physical RAM.,MAXIMUM,maximum,RAM,1,False,UNVERIFIED
+ram-023,Enable Hibernation for Fast Startup,Turns hibernation back on so Fast Startup can preload the kernel.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-024,System-Managed Pagefile,Lets Windows automatically size the pagefile on all drives.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-028,Restore Automatic Pagefile Size,Returns the system-drive pagefile to Windows-managed sizing.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-030,Disable Telemetry Service,Stops the Connected User Experiences and Telemetry service.,FOUNDATION,performance,RAM,2,False,UNVERIFIED
+ram-031,Disable Maps Broker,Stops the downloaded-maps manager service.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-032,Disable WMP Network Sharing,Stops the Windows Media Player network sharing service.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-033,Disable Retail Demo Service,Stops the retail demo mode service.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-035,Disable Device WAP Push,Stops the Device Management WAP Push service.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-036,Disable Diagnostics Hub,Stops the Diagnostics Hub Standard Collector service.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-038,Disable Windows Error Reporting,Stops the WerSvc error reporting service.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-039,Disable Windows Error Reporting (WER),Stops Windows Error Reporting from collecting crash dumps.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-040,Disable Memory Compression,Turns off Windows 10/11 memory compression.,FOUNDATION,performance,RAM,1,False,EXPERIMENTAL
+ram-042,Shorten Service Shutdown Timeout,Cuts how long Windows waits for services to stop at shutdown.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-043,Disable Boot Memory Diagnostic,Prevents the scheduled Windows Memory Diagnostic run.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-044,Disable Data Sharing Service,Stops the DsmSvc data sharing service.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-046,Disable Push Notifications,Stops the Windows Push Notifications System service.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-047,Disable Full Memory Diagnostic Task,Disables the scheduled full memory check task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-048,Disable Memory Diagnostic Events,Disables the memory-diagnostic event processing task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-049,Disable Compatibility Appraiser,Disables the Microsoft Compatibility Appraiser task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-050,Disable Program Data Updater,Disables the Application Experience ProgramDataUpdater task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-051,Disable CEIP Consolidator,Disables the Customer Experience Improvement Program task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-052,Disable WER Queue Reporting,Disables the error-reporting queue task.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-053,Remove Solitaire and Casual Games,Uninstalls the built-in Solitaire Collection and casual games.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-054,Remove Xbox Gaming Overlay,Uninstalls the Xbox Game Bar overlay app.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-056,Remove Pagefile From Second Drive,Deletes a pagefile that was placed on D:.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-057,Enable Large System Cache,Sets the LargeSystemCache registry value to optimize file system caching.,MAXIMUM,maximum,RAM,1,False,UNVERIFIED
+ram-058,Increase Io Page Lock Limit,Lets Windows auto-manage the I/O page lock limit.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-059,Disable Paging Executive,Keeps the kernel and drivers in physical RAM instead of paging them to disk.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-060,Set System Pages,Lets Windows manage the number of system page table entries.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-061,Optimize Paged Pool Size,Lets Windows auto-manage the paged pool size.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+ram-062,Enable Memory Compression,Enables Windows memory compression to fit more data in RAM.,FREE,foundation,RAM,1,False,UNVERIFIED
+ram-063,Set Process Count Limit,Optimizes the shared section size for desktop heap.,MAXIMUM,maximum,RAM,1,False,UNVERIFIED
+ram-064,Disable Prefetch (SSD),Turns off boot and application prefetching at the registry level.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
+reg-001,Foreground Lock Timeout 0,Removes the delay before a clicked window receives focus.,FREE,foundation,Registry,1,True,VERIFIED
+reg-002,Active Window Tracking Timeout 0,Removes the hover delay for focus-follows-mouse tracking.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-003,Suppress Low Disk Space Warnings,Stops the low-disk-space balloon warnings.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-004,Disable Recent Documents History,Stops tracking of recently opened documents.,FREE,foundation,Registry,1,True,VERIFIED
+reg-005,Disable Screen Saver,Turns the screen saver off.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-006,Disable Taskbar Animations,Turns off taskbar animation effects.,FREE,foundation,Registry,1,True,VERIFIED
+reg-007,Disable ListView Shadows,Turns off drop shadows behind list views.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-008,Never Combine Taskbar Buttons,Shows every window as a separate taskbar button.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-009,Explorer Separate Processes,Runs each Explorer folder in its own process.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-010,Hide Sync Provider Notifications,Removes cloud sync badges and banners in Explorer.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-011,Disable Desktop Peek Preview,Turns off the Aero Peek hover preview.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-012,Disable Icons Only Thumbnails,Shows only file icons instead of embedded thumbnail previews in lists.,FREE,foundation,Registry,1,True,VERIFIED
+reg-013,Hide Frequent Folders in Quick Access,Removes the frequent folders section from Quick Access.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-014,Disable AutoPlay Handlers,Disables AutoPlay for removable media.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-015,Disable Widgets Button,Removes the Widgets button from the taskbar.,FREE,foundation,Registry,1,False,UNVERIFIED
+reg-016,Disable Copilot Button,Removes the Copilot icon from the taskbar.,FREE,foundation,Registry,1,True,VERIFIED
+rep-005,Reset Windows Update Components,"Stops the update service, renames the SoftwareDistribution cache, and restarts it.",FOUNDATION,performance,Repair,1,True,VERIFIED
+rep-015,CPU Optimization Repair,"Detect-first cleaner for bad scheduling values left behind by old MaximumTweaks builds, REG packs, BAT packs or other optimizers.",FOUNDATION,performance,Repair,2,False,UNVERIFIED
+sec-001,Add Game Folder to Defender Exclusions,Excludes game folders from real-time scanning.,FOUNDATION,performance,Security & Performance,1,False,UNVERIFIED
+sec-002,Exclude Game Processes,Excludes game executables from scanning.,FOUNDATION,performance,Security & Performance,1,False,UNVERIFIED
+sec-008,Disable Remote Desktop,Disables RDP if unused.,FREE,foundation,Security & Performance,1,False,UNVERIFIED
+sec-010,Disable PowerShell Script Logging,Disables PowerShell ScriptBlock Logging via Group Policy.,FOUNDATION,performance,Security & Performance,1,True,VERIFIED
+sec-011,Disable Network Discovery,Disables network discovery.,FREE,foundation,Security & Performance,1,False,UNVERIFIED
+svc-001,Disable SysMain,Disables the SysMain (Superfetch) service.,FOUNDATION,performance,Services,1,False,UNVERIFIED
+svc-002,Disable Windows Search,Disables the Windows Search indexer.,FOUNDATION,performance,Services,1,True,VERIFIED
+svc-005,Disable Remote Registry,Disables remote registry access.,FREE,foundation,Services,1,True,VERIFIED
+svc-006,Disable Print Spooler,Disables the print spooler if you have no printers.,FOUNDATION,performance,Services,1,True,VERIFIED
+svc-007,Disable Xbox Services,Disables the Xbox Live services.,FOUNDATION,performance,Services,2,True,VERIFIED
+svc-010,Disable Bluetooth Support,Disables the Bluetooth service if unused.,FOUNDATION,performance,Services,2,True,VERIFIED
+svc-011,Disable Fax Service,Disables the Fax service.,FREE,foundation,Services,1,True,VERIFIED
+svc-012,Disable Touch Keyboard Service,Disables the touch keyboard if not needed.,FOUNDATION,performance,Services,2,True,VERIFIED
+svc-013,Disable Phone Service,Disables the Phone Link service.,FOUNDATION,performance,Services,1,True,VERIFIED
+svc-016,Disable Infrared Service,Disables the infrared device service.,FREE,foundation,Services,1,True,VERIFIED
+svc-019,Disable Windows Insider Service,Disables the Windows Insider Preview service.,FREE,foundation,Services,1,False,UNVERIFIED
+start-005,Enable Multi-Core Boot,Uses all CPU cores while booting Windows.,FOUNDATION,performance,Startup,1,False,UNVERIFIED
+start-012,Disable Automatic Sign-in Animations,Disables the Windows logon background image and sign-in animation.,FREE,foundation,Startup,1,True,VERIFIED
+start-016,Disable Maintenance Tasks,Disables the automatic Windows Maintenance scheduler.,FOUNDATION,performance,Startup,1,False,UNVERIFIED
+stor-001,Enable SSD TRIM,Turns on the TRIM command for SSD/NVMe drives.,FREE,foundation,Storage,1,False,UNVERIFIED
+stor-002,Disable 8.3 Short Names,Stops NTFS from generating legacy 8.3 filenames.,FOUNDATION,performance,Storage,1,False,UNVERIFIED
+stor-004,MFT Zone Reservation,Reserves extra space for the NTFS Master File Table.,FOUNDATION,performance,Storage,1,False,UNVERIFIED
+stor-005,Disable HDD Idle Spin-Down,Prevents the hard drive from spinning down during long sessions.,FREE,foundation,Storage,1,True,VERIFIED
+stor-006,Disable Scheduled Defragmentation,Disables the automatic disk defrag task.,FOUNDATION,performance,Storage,1,True,VERIFIED
+stor-007,Disable Storage Sense,Turns off automatic storage cleanup.,FREE,foundation,Storage,1,False,UNVERIFIED
+stor-016,Optimize NTFS Last Access,Disables NTFS last-access timestamp updates to reduce metadata writes on every file read.,FREE,foundation,Storage,1,False,UNVERIFIED
+sys-002,Do Not Clear Pagefile at Shutdown,Skips clearing the pagefile during shutdown.,FREE,foundation,System,1,True,VERIFIED
+sys-004,Disable Windows Error Reporting,Turns off WER popups and background report submission.,FREE,foundation,System,2,False,UNVERIFIED
+sys-006,Disable Auto Reboot on Crash,Prevents automatic restart after a system failure.,FREE,foundation,System,1,False,UNVERIFIED
+sys-007,Enable Long Paths,Enables Win32 long path support (>260 chars).,FREE,foundation,System,1,True,VERIFIED
+sys-009,Boot Manager Timeout 0,Removes the boot manager selection delay.,FOUNDATION,performance,System,1,False,UNVERIFIED
+sys-010,Disable Automatic Driver Downloads,Stops Windows Update from automatically installing drivers.,MAXIMUM,maximum,System,1,False,UNVERIFIED
+sys-012,Fast App Shutdown Timeouts,Reduces how long Windows waits for hung applications at shutdown.,MAXIMUM,maximum,System,2,False,UNVERIFIED
+sys-013,Auto-End Tasks at Logoff,Forces hung applications to close when you log off.,FOUNDATION,performance,System,1,True,VERIFIED
+sys-014,Disable Drive AutoRun,Disables AutoRun for all drive types.,FREE,foundation,System,1,False,UNVERIFIED
+sys-015,Disable Aero Shake,Turns off the Aero Shake minimize gesture.,FREE,foundation,System,1,True,VERIFIED
+sys-016,Disable Minimize Animation,Turns off window minimize/restore animations.,FREE,foundation,System,1,False,UNVERIFIED
+sys-017,Disable Notification Center,Turns off the notification center via policy.,FOUNDATION,performance,System,1,False,UNVERIFIED
+sys-019,Disable 'Start Full-Screen Optimizations' Help,Turns off the fullscreen optimization compatibility help overlay.,FREE,foundation,System,1,False,UNVERIFIED
+sys-021,Reduce Hung App Timeout,Lowers the threshold before Windows considers an app hung.,FOUNDATION,performance,System,1,False,UNVERIFIED
+tel-002,Disable Compatibility Telemetry,Turns off the compatibility appraiser telemetry.,FREE,foundation,Telemetry,1,True,VERIFIED
+tel-003,Disable Inventory Collector,Disables the Device Inventory Collector.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-004,Disable Activity History,Turns off activity history tracking.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-005,Disable Advertising ID,Turns off the advertising ID.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-009,Disable Windows Update Telemetry,Sets Windows Data Collection telemetry level to minimum.,FREE,foundation,Telemetry,1,True,VERIFIED
+tel-010,Disable Feedback Requests,Turns off Windows feedback prompts.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-012,Disable Location Service,Turns off location access.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-013,Disable Find My Device,Turns off device-finder telemetry.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-016,Disable App Diagnostics,Turns off per-app diagnostic data access.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-017,Disable Customer Experience,Disables the Customer Experience Improvement Program.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+tel-019,Disable Diagnostic Data Viewer,Disables the Diagnostic Data Viewer plugin.,FREE,foundation,Telemetry,1,False,UNVERIFIED
+usb-001,Disable USB Selective Suspend,Turns off USB selective suspend in the active power scheme.,FREE,foundation,USB,1,True,VERIFIED
+usb-006,Disable USB Host Controller Power Management,Disables power management on all USB host controllers to prevent input device sleep.,FOUNDATION,performance,USB,1,True,VERIFIED
+usb-014,Set USB Data Queue Size,Sets the minimum USB transfer bytes to zero for lower latency.,FOUNDATION,performance,USB,1,False,UNVERIFIED
+usb-015,Disable USB Hub Power Management,Disables 'Allow the computer to turn off this device' on selected USB hubs.,FREE,foundation,USB,1,False,UNVERIFIED
+usb-016,Disable HID Keyboard/Mouse Power Management,Disables 'Allow the computer to turn off this device' for detected HID keyboard and mouse instances.,FREE,foundation,USB,1,False,UNVERIFIED
+usb-017,Disable Bluetooth HID Power Saving,Disables power-saving on the Bluetooth HID adapter that serves BT keyboards and mice.,FOUNDATION,performance,USB,1,False,UNVERIFIED
+wifi-001,Disable Wi-Fi Power Saving,Turns off power management on the wireless adapter.,FREE,foundation,Wi-Fi,1,False,UNVERIFIED
+wifi-002,Highest Roaming Aggressiveness,Sets roaming aggressiveness to its highest value.,FOUNDATION,performance,Wi-Fi,1,False,UNVERIFIED
+wifi-003,Disable LSO on Wi-Fi,Turns off Large Send Offload on the wireless adapter.,FOUNDATION,performance,Wi-Fi,1,False,UNVERIFIED
+wifi-005,Prefer 5 GHz / 6 GHz Band,Sets the wireless adapter preferred band to 5 GHz / 6 GHz.,FREE,foundation,Wi-Fi,1,True,VERIFIED
+wifi-007,Disable Auto-Connect to Hotspots,Stops automatic connections to suggested open hotspots via registry.,FREE,foundation,Wi-Fi,1,True,VERIFIED
+wifi-009,Disable Wake on Magic Packet (Wi-Fi),Turns off wireless Wake-on-LAN.,FREE,foundation,Wi-Fi,1,False,UNVERIFIED
+wifi-010,Disable LSO IPv6 (Wi-Fi),Turns off IPv6 large send offload on Wi-Fi.,FOUNDATION,performance,Wi-Fi,1,False,UNVERIFIED
+wifi-011,Disable Background Scanning,Reduces frequent wireless background scans via registry.,FREE,foundation,Wi-Fi,1,True,VERIFIED
+win-005,Disable Balloon Tip Notifications,Turns off Explorer balloon tips and toasts.,FREE,foundation,Windows,1,True,VERIFIED
+win-006,Visual Effects: Best Performance,Sets the system visual effects preset to 'best performance'.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-007,Menu Show Delay 0,Removes the delay before submenus open.,FREE,foundation,Windows,1,True,VERIFIED
+win-008,Disable Transparency Effects,Turns off acrylic/blur transparency in the UI.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-009,Disable Windows Tips and Suggestions,Disables the Start/tips content delivered by Windows.,FREE,foundation,Windows,4,False,UNVERIFIED
+win-012,Disable Web Search in Start,Stops Start menu web search results.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-013,Disable Cortana,Turns off Cortana via policy.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-014,Disable Bing Search in Start,Disables Bing results in Windows Search.,FREE,foundation,Windows,1,True,VERIFIED
+win-015,Legacy Windows 10 Context Menu,Restores the classic full context menu in Windows 11.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-017,Disable First Sign-in Animation,Skips the Windows welcome/first-sign-in animation.,FREE,foundation,Windows,2,False,UNVERIFIED
+win-018,Disable Start Menu App Suggestions,Removes promoted app suggestions from the Start menu.,FREE,foundation,Windows,2,False,UNVERIFIED
+win-019,Disable Timeline,Turns off Windows Timeline activity history tracking.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-021,Disable Search Cloud,Stops Windows Search from fetching cloud/web results.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-022,Disable Search Box Suggestions,Turns off predictive suggestions in the Windows Search box.,FREE,foundation,Windows,1,False,UNVERIFIED
+win-023,Disable News and Interests,Turns off the News and Interests widget on the taskbar.,FREE,foundation,Windows,1,False,UNVERIFIED
+expl-001,Show Hidden Files,Displays hidden files and folders in Explorer.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-002,Show Protected Operating System Files,Reveals protected system files in Explorer.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-003,Show File Name Extensions,Displays full file name extensions.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-004,Disable Thumbnail Cache,Stops Explorer from generating thumbnail previews.,FREE,foundation,Windows Explorer,1,True,VERIFIED
+expl-005,Disable Network Thumbnail Cache,Turns off thumbnail caching for network folders.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-006,Disable thumbs.db Creation,Stops creation of thumbs.db database files on network folders.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-007,Enlarge Icon Cache,Raises the shell icon cache size to 8192 entries.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-008,Explorer Opens to This PC,Changes File Explorer's default landing page to This PC.,FREE,foundation,Windows Explorer,1,True,VERIFIED
+expl-009,Disable Recent Item Tracking,Stops Start menu and jump list from tracking opened items.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-010,Full Path in Explorer Title Bar,Shows the complete folder path in the window title bar.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-011,Hide Taskbar Search Box,Reduces the taskbar search box to an icon (or removes it).,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-012,Disable Search Highlights,Turns off the search box highlights content.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+expl-013,Explorer Compact Mode,Enables compact spacing in Windows 11 Explorer.,FREE,foundation,Windows Explorer,1,False,UNVERIFIED
+wgr-003,Disable Auto HDR,Disables Windows Auto HDR via policy registry key.,FREE,foundation,Windows Graphics,1,True,VERIFIED
+wgr-006,Restore MPO Composition,Re-enables Multiplane Overlay (undo of the MPO disable tweak).,FOUNDATION,performance,Windows Graphics,1,False,UNVERIFIED
+wgr-012,Reset Graphics Settings,Deletes Windows' per-app DirectX GPU preference blob (stale per-app assignments and performance flags are removed at once).,FOUNDATION,performance,Windows Graphics,1,False,UNVERIFIED
+wgr-013,DirectX Graphics Flags,Sets all four DirectXUserGlobalSettings performance flags in one write (replaces the old four separate cards that fought over one value).,FOUNDATION,performance,Windows Graphics,1,False,UNVERIFIED

@@ -307,7 +307,16 @@ def _detect_gpu(p):
 
     for row in rows:
         name = (row.get("Name") or "Unknown Video Controller").strip()
-        if not name or "microsoft" in name.lower():
+        # Skip the generic fallback driver (no real GPU attached), but NOT
+        # real cards whose driver reports "...(Microsoft Corporation - WDDM)".
+        # AMD in particular carries that suffix, so a bare "microsoft" check
+        # wrongly hid every AMD GPU and left only NVIDIA visible.
+        if not name or name.lower().startswith((
+            "microsoft basic display adapter",
+            "microsoft hyper-v video",
+            "microsoft remote display adapter",
+            "microsoft basic render driver",
+)):
             continue
         pnp = (row.get("PNPDeviceID") or "").strip()
         # The PNP hardware id is authoritative for vendor and integrated/dedicated.

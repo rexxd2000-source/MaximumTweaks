@@ -17,8 +17,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-_tmpdir = tempfile.mkdtemp(prefix="mt-tiers-")
-os.environ["LICENSE_DB_PATH"] = os.path.join(_tmpdir, "test.db")
+# LICENSE_DB_PATH is pinned by tests/conftest.py (isolated sqlite temp file)
 os.environ["LICENSE_SECRET"] = "test-secret-not-for-production"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
 os.environ["SESSION_TTL_HOURS"] = "2"
@@ -43,11 +42,8 @@ from keys import generate_key  # noqa: E402
 import main as backend  # noqa: E402
 
 client = TestClient(backend.app)
-# Deliberately the same singleton the API handlers use. Each test module builds
-# its own LicenseDB() from its own LICENSE_DB_PATH, but ``main`` is imported
-# once per pytest session, so ``backend._DB`` is bound to whichever module got
-# there first. Reading through it keeps these assertions pointed at the exact
-# rows the endpoints wrote, whatever order the suite runs in.
+# Every module shares the one sqlite file pinned by tests/conftest.py,
+# so this is the same store the API handlers write to.
 db = backend._DB
 
 DEVICE_A = "a" * 64

@@ -20,6 +20,20 @@ for rel in ("database", "assets"):
 # Provider-published IP range snapshot (GCP gstatic + AWS ip-ranges) used by
 # engine/netmonitor/cloudmap.py for geo overrides.
 datas.append((str(ROOT / "engine/netmonitor/cloud_regions.json"), "engine/netmonitor"))
+# Smart Debloater screen HTML + its locally-bundled fonts (Bricolage Grotesque
+# woff2; JetBrains Mono comes from assets/fonts bundled above).
+datas.append((str(ROOT / "ui/smart_debloater.html"), "ui"))
+datas.append((str(ROOT / "ui/tweak_cards.html"), "ui"))
+datas.append((str(ROOT / "ui/diagnostics.html"), "ui"))
+datas.append((str(ROOT / "ui/dock_nav.html"), "ui"))
+datas.append((str(ROOT / "ui/controller.html"), "ui"))
+datas.append((str(ROOT / "ui/dashboard.html"), "ui"))
+datas.append((str(ROOT / "ui/qos.html"), "ui"))
+datas.append((str(ROOT / "ui/app_optimizers.html"), "ui"))
+datas.append((str(ROOT / "ui/fonts"), "ui/fonts"))
+# Full-bleed step-1 Updater screen (updater_fullscreen.html); fonts come from
+# assets/fonts bundled above.
+datas.append((str(ROOT / "ui/updater_fullscreen.html"), "ui"))
 
 # Nothing from auth_backend/ is bundled; the app talks to the hosted license
 # backend over HTTPS and holds no secrets in the EXE.
@@ -31,6 +45,16 @@ a = Analysis(
     datas=datas,
     hiddenimports=[
         "database.executor",
+        # Loaded via importlib at runtime (database/tweaks/__init__.py), so the
+        # static analysis pass cannot see the reference.
+        "database.tiers",
+        # Subscription system. config.checkout and ui.pages.pricing are reached
+        # through __import__ / deferred imports, so they must be named here or
+        # the frozen app raises ImportError on the pricing route.
+        "config.plans",
+        "config.checkout",
+        "engine.entitlements",
+        "ui.pages.pricing",
         "hardware.detector",
         "engine.applier",
         "engine.bundles",
@@ -39,6 +63,8 @@ a = Analysis(
         "engine.activity",
         "engine.audit",
         "engine.state_checker",
+        "engine.chat",
+        "engine.troubleshooter",
         "engine.nvprofile",
         "engine.nvprofiles",
         "engine.nip_parser",
@@ -64,9 +90,16 @@ a = Analysis(
         "engine.debloat.engine",
         "engine.debloat.scanner",
         "engine.debloat.backup",
+        "engine.debloat.smart",
+        "engine.app_optimizer",
+        "engine.app_optimizer.core",
+        "engine.app_optimizer.apps",
+        "PySide6.QtWebEngineWidgets",
+        "PySide6.QtWebChannel",
         "ui.main_window",
         "ui.categories",
         "ui.updater_dialog",
+        "ui.updater_screen",
         "ui.pages.tweaks",
         "ui.pages.dashboard",
         "ui.pages.detect",
@@ -75,11 +108,19 @@ a = Analysis(
         "ui.pages.profiles",
         "ui.pages.tools",
         "ui.pages.settings",
+        "ui.pages.controller",
+        "ui.pages.qos",
+        "ui.pages.diagnostics",
+        "engine.controller",
+        "engine.qos",
+        "engine.diagnostics",
         "ui.pages.chat",
         "ui.pages.ram_selector",
         "ui.pages.delay_destroyer",
         "ui.pages.debloat",
+        "ui.pages.app_optimizers",
         "ui.widgets",
+        "ui.dock_nav",
         "ui.premium_widgets",
         "ui.context",
         "ui.styles",

@@ -17,4 +17,35 @@ the active row, matching the reference design).
   lucide-static package, https://unpkg.com/lucide-static), rendered in the same
   glossy Tools-amber style (ISC, https://lucide.dev/license).
 
-Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03).
+Beyond the PNG sidebar set, the application also renders the following
+crisp line icons at runtime from inline lucide SVG path data (ISC license,
+https://lucide.dev/license; glyphs are re-used verbatim from lucide-static
+lucide/lucide-icons, stroke-width 1.5, `fill="none"`):
+
+- Sidebar nav icons and page-header icons: ui/widgets.py NAV_LUCIDE
+  (home, cpu, gpu, ram, games, fpsboost/bolt, system/settings gear, storage,
+  audio/waveform, network, keyboard, mouse, input/clock, tools/wrench,
+  delay_destroyer, debloat/broom-sparkles, route_analyzer/globe, profiles,
+  controller/gamepad-2, fortnite/flag, chat/sparkles, search, check, close,
+  alert, info, hourglass, ban, shield).
+- Dashboard/route pages: ui/pages/settings.py REF_ICONS and
+  ui/pages/route_coming_soon.py _LUCIDE (clock, cpu, gpu, ram, storage, os,
+  uptime, check, bolt, arrow-up-right).
+- These runtime icons are used for status glyphs such as the search field,
+  license shield tile, lock/ban and timeout hourglass on the gate screen,
+  optimization dialog close, and toast indicators (success/error/warning/info),
+  replacing the earlier font-glyph (Unicode character) icons.
+
+Brand logos are bundled the same way — inline SVG path data rendered at
+runtime, no network needed. Glyphs come from simple-icons (CC0-1.0,
+https://github.com/simple-icons/simple-icons, path data reused verbatim):
+
+- ui/widgets.py BRAND_SVGS + brand_icon_pixmap(): discord, steam, epicgames,
+  riotgames, battledotnet. Rendered on the "Join Discord" button (About page),
+  the gate "Contact support" buttons, the game profile cards, and the premium
+  game-list platform tags. Microsoft/Win11 has no Simple Icon glyph (removed
+  from the set), so the Microsoft platform keeps its text tag.
+- Simple Icons is CC0-1.0; brand marks remain property of their owners.
+
+Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
+icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).

@@ -139,3 +139,4 @@ data/       state.json — tracks which tweaks you applied
   explicit opt-in.
 - "Guidance" tweaks only print recommendations (they never change the system).
 - Reboot after applying for the full effect; all tweaks are revertible.
+\n## Releasing a new version\n\n1. Update CHANGELOG.md with release notes.\n2. Create and push git tag: git tag vX.Y.Z && git push --tags\n3. GitHub Actions builds installer MaximumTweaks-Setup-<version>.exe with SHA256 checksum and creates a release.\n4. In-app updater verifies SHA256 before installing.\n

@@ -26,6 +26,7 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QIcon,
     QLinearGradient,
     QPainter,
     QPainterPath,
@@ -51,7 +52,7 @@ from PySide6.QtWidgets import (
 from config.app_config import THEME as T
 from engine.optimizer import BUTTON_LABELS, merge_reports
 from maxlog import logger
-from ui.widgets import BatchWorker, clear_layout, toast
+from ui.widgets import BatchWorker, clear_layout, nav_icon_pixmap, toast
 
 # ---- reference palette (optimize_system_flow.html) ----
 BG = "#0D0B14"
@@ -358,14 +359,16 @@ class OptimizeDialog(QDialog):
             "stop:0 #9B8CFF,stop:1 #6F5DE0);}")
         lbl = QLabel(self.group_title + " \u2014 Maximum Tweaks")
         lbl.setStyleSheet(
-            f"color:{TEXT2};font-size:12.5px;font-weight:500;"
+            f"color:{TEXT2};font-size:13px;font-weight:500;"
             "background:transparent;border:none;")
-        close = QPushButton("\u2715")
+        close = QPushButton()
         close.setFixedSize(24, 24)
         close.setCursor(Qt.PointingHandCursor)
+        close.setIcon(QIcon(nav_icon_pixmap("close", TEXT3, 12)))
+        close.setIconSize(close.size())
         close.setStyleSheet(
             "QPushButton{color:" + TEXT3 + ";background:transparent;"
-            "border:none;border-radius:6px;font-size:11px;}"
+            "border:none;border-radius:6px;}"
             "QPushButton:hover{background:" + SURF2 + ";color:" + TEXT1 + ";}")
         close.clicked.connect(self.reject)
         lay.addWidget(mark)
@@ -403,12 +406,12 @@ class OptimizeDialog(QDialog):
                 b.setStyleSheet(
                     "QPushButton{background:" + VIOLET_DIM + ";border:none;"
                     "color:#fff;border-radius:7px;padding:7px 11px;"
-                    "font-size:11.5px;font-weight:500;}")
+                    "font-size:12px;font-weight:500;}")
             else:
                 b.setStyleSheet(
                     "QPushButton{background:transparent;border:none;color:"
                     + TEXT2 + ";border-radius:7px;padding:7px 11px;"
-                    "font-size:11.5px;font-weight:500;}"
+                    "font-size:12px;font-weight:500;}"
                     "QPushButton:hover:enabled{color:" + TEXT1 + ";}"
                     "QPushButton:disabled{color:#3B3850;}")
 
@@ -484,7 +487,7 @@ class OptimizeDialog(QDialog):
         lay.addSpacing(6)
         self.scan_status = QLabel("Scanning")
         self.scan_status.setStyleSheet(
-            f"color:{TEXT2};font-size:12.5px;background:transparent;")
+            f"color:{TEXT2};font-size:13px;background:transparent;")
         lay.addWidget(self.scan_status)
         lay.addSpacing(16)
 
@@ -622,7 +625,7 @@ class OptimizeDialog(QDialog):
     def _on_scan_error(self, msg):
         self._dots_timer.stop()
         self.scan_status.setText(f"Scan failed: {msg}")
-        self.scan_status.setStyleSheet(f"color:{RED};font-size:12.5px;")
+        self.scan_status.setStyleSheet(f"color:{RED};font-size:13px;")
         toast(f"Optimization scan failed \u2014 {msg}", "error", self)
 
     def _on_scanned(self, report):
@@ -684,7 +687,7 @@ class OptimizeDialog(QDialog):
         self.ov_sub = QLabel()
         self.ov_sub.setWordWrap(True)
         self.ov_sub.setStyleSheet(
-            f"color:{TEXT2};font-size:12.5px;background:transparent;")
+            f"color:{TEXT2};font-size:13px;background:transparent;")
         self.ov_sub.setMaximumWidth(480)
         hb.addWidget(self.ov_title)
         hb.addWidget(self.ov_sub)
@@ -764,7 +767,7 @@ class OptimizeDialog(QDialog):
         for idx, (k, v) in enumerate(rows[:12]):
             kk = QLabel(str(k))
             kk.setStyleSheet(
-                f"color:{TEXT3};font-size:10.5px;background:transparent;")
+                f"color:{TEXT3};font-size:11px;background:transparent;")
             vv = QLabel(str(v))
             vv.setWordWrap(True)
             vv.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -824,7 +827,7 @@ class OptimizeDialog(QDialog):
             numf.setPixelSize(11.5)
             num.setFont(numf)
             num.setStyleSheet(
-                f"color:{TEXT1};font-size:11.5px;background:transparent;")
+                f"color:{TEXT1};font-size:12px;background:transparent;")
             row.addWidget(nm)
             row.addWidget(bar, 1)
             row.addWidget(num)
@@ -1026,12 +1029,12 @@ class OptimizeDialog(QDialog):
                 ch.setStyleSheet(
                     "QPushButton{background:" + VIOLET_DIM + ";border:1px solid "
                     + VIOLET_DIM + ";color:#fff;border-radius:20px;"
-                    "padding:6px 12px;font-size:11.5px;font-weight:500;}")
+                    "padding:6px 12px;font-size:12px;font-weight:500;}")
             else:
                 ch.setStyleSheet(
                     "QPushButton{background:" + SURF2 + ";border:1px solid "
                     + BORDER_SOFT + ";color:" + TEXT2 + ";border-radius:20px;"
-                    "padding:6px 12px;font-size:11.5px;font-weight:500;}"
+                    "padding:6px 12px;font-size:12px;font-weight:500;}"
                     "QPushButton:hover{color:" + TEXT1 + ";border-color:#332F47;}")
 
     def _add_tweak_card(self, rec):
@@ -1068,7 +1071,7 @@ class OptimizeDialog(QDialog):
         trow.setSpacing(8)
         nm = QLabel(rec.name)
         nm.setStyleSheet(
-            f"color:{TEXT1};font-size:13.5px;font-weight:600;"
+            f"color:{TEXT1};font-size:14px;font-weight:600;"
             "background:transparent;")
         trow.addWidget(nm)
         tid = QLabel(rec.tid)
@@ -1077,7 +1080,7 @@ class OptimizeDialog(QDialog):
         tf.setPixelSize(10.5)
         tid.setFont(tf)
         tid.setStyleSheet(
-            f"color:{TEXT3};font-size:10.5px;background:transparent;")
+            f"color:{TEXT3};font-size:11px;background:transparent;")
         trow.addWidget(tid)
         ev = rec.evidence or rec.tweak.get("evidence", "UNKNOWN")
         trow.addWidget(self._pill(EVIDENCE_LABEL.get(ev, ev), VIOLET))
@@ -1131,7 +1134,7 @@ class OptimizeDialog(QDialog):
             "applied, and can be reverted anytime from the Tweaks page.")
         note.setWordWrap(True)
         note.setStyleSheet(
-            f"color:{TEXT2};font-size:11.5px;background:transparent;")
+            f"color:{TEXT2};font-size:12px;background:transparent;")
         lay.addWidget(note, 1)
         self._btn_back = QPushButton("Back")
         self._btn_back.setCursor(Qt.PointingHandCursor)
@@ -1216,7 +1219,7 @@ class OptimizeDialog(QDialog):
         lay.addSpacing(6)
         self.apply_status = QLabel("Starting…")
         self.apply_status.setStyleSheet(
-            f"color:{TEXT2};font-size:12.5px;background:transparent;")
+            f"color:{TEXT2};font-size:13px;background:transparent;")
         lay.addWidget(self.apply_status)
         lay.addSpacing(16)
         track = QFrame()

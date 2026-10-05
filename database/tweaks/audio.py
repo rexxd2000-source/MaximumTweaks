@@ -60,12 +60,13 @@ TWEAKS = validate_module("audio", [
           ("svc", "AudioEndpointBuilder", "auto"),
       ],
       revert=[
-          ("svc", "AudioSrv", "manual"),
-          ("svc", "AudioEndpointBuilder", "manual"),
+          ("svc", "AudioSrv", "auto"),
+          ("svc", "AudioEndpointBuilder", "auto"),
       ],
       why="Ensures the audio stack is fully initialized before games launch.",
       changes="Sets audio services to automatic startup.",
       risk="safe", impact="low", recommended="recommended", admin=True,
+      updated="2026-09-27",
       tags=["audio", "service", "startup"]),
 
     T("audio-013", "Disable System Sounds",
@@ -133,18 +134,6 @@ TWEAKS = validate_module("audio", [
       risk="safe", impact="low", recommended="recommended",
       tags=["enhancements", "dsp", "audio"]),
 
-    T("audio-016", "Disable Audio Processing Objects (APO)",
-      "Disables per-device Audio Processing Objects (APO) for the default render endpoint.",
-      actions=[
-          ("cmd", 'powershell -NoProfile -Command "$dev = Get-AudioDevice -List | Where-Object {$_.Default} | Select-Object -First 1; if ($dev) { Set-ItemProperty -Path \'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render\' -Name \'DisableAPO\' -Value 1 -ErrorAction SilentlyContinue }"'),
-      ],
-      revert=[
-          ("cmd", 'powershell -NoProfile -Command "Remove-ItemProperty -Path \'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render\' -Name \'DisableAPO\' -ErrorAction SilentlyContinue"'),
-      ],
-      why="APO drivers (equalizers, virtualizers, bass boost) add latency to the audio pipeline. Disabling them gives a cleaner path from game to speakers.",
-      changes="Disables audio processing objects on the default render device.",
-      risk="low", impact="low", recommended="optional", admin=True,
-      tags=["apo", "dsp", "enhancements", "audio"]),
 
     # =====================================================================
     #  SECTION 3 — EXCLUSIVE MODE & WASAPI
@@ -178,14 +167,6 @@ TWEAKS = validate_module("audio", [
     #  SECTION 4 — DEFAULT AUDIO FORMAT
     # =====================================================================
 
-    T("audio-009", "Set 48 kHz Default Format",
-      "Guidance to set the audio format to 48 kHz.",
-      actions=[("guidance", "In Sound > device Properties > Advanced set the default format to 48 kHz (or your headset's native rate). Avoid higher rates that force unnecessary resampling.")],
-      revert=[("guidance", "Restore the previous format.")],
-      why="48 kHz matches most game audio content, avoiding resampling work.",
-      changes="Shows default-format guidance.",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["format", "khz", "resample"]),
 
     T("audio-018", "Disable Audio Resampling Quality Boost",
       "Sets the Windows audio resampler to basic quality to reduce latency.",
@@ -222,32 +203,8 @@ TWEAKS = validate_module("audio", [
     #  SECTION 6 — USB AUDIO
     # =====================================================================
 
-    T("audio-010", "Disable Audio Device Power Savings",
-      "Prevents audio devices from entering power-saving mode via registry.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters\WDF", "DeviceSelectiveSuspended", 0, "DWORD")],
-      revert=[("regdel", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters\WDF", "DeviceSelectiveSuspended")],
-      why="Audio devices that sleep cause the first-sound-after-idle crackle.",
-      changes="Disables selective suspend on USB audio devices.",
-      risk="safe", impact="low", recommended="recommended", admin=True,
-      tags=["power", "sleep", "audio"]),
 
-    T("audio-021", "Disable USB Enhanced Power Management",
-      "Disables Enhanced Power Management on USB audio endpoints.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters", "EnhancedPowerManagementEnabled", 0, "DWORD")],
-      revert=[("regdel", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters", "EnhancedPowerManagementEnabled")],
-      why="Enhanced Power Management allows USB audio devices to enter deep sleep states, causing pop/click artifacts when waking.",
-      changes="Disables enhanced power management on USB audio endpoints.",
-      risk="safe", impact="low", recommended="recommended", admin=True,
-      tags=["usb", "power", "sleep", "audio"]),
 
-    T("audio-022", "Disable USB Audio Remote Wakeup",
-      "Prevents USB audio devices from waking the system.",
-      actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters\WDF", "SystemWakeEnabled", 0, "DWORD")],
-      revert=[("regdel", "HKLM", r"SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters\WDF", "SystemWakeEnabled")],
-      why="USB audio devices can trigger spurious wakeups, disrupting sleep/hibernate and causing audio stack re-initialization.",
-      changes="Disables remote wakeup on USB audio devices.",
-      risk="safe", impact="low", recommended="optional", admin=True,
-      tags=["usb", "wake", "power", "audio"]),
 
     # =====================================================================
     #  SECTION 7 — MMCSS AUDIO SCHEDULING (DEEP)
@@ -355,14 +312,6 @@ TWEAKS = validate_module("audio", [
       risk="safe", impact="low", recommended="recommended",
       tags=["microphone", "exclusive", "sharing", "audio"]),
 
-    T("audio-031", "Disable Microphone Boost",
-      "Guidance to disable the +20dB microphone boost level.",
-      actions=[("guidance", "Open Sound Settings > Input > Device Properties > Levels. If Microphone Boost is enabled (+10dB, +20dB, +30dB), reduce it to 0dB or the lowest setting. Boost amplifies background noise along with your voice.")],
-      revert=[("guidance", "Restore the previous boost level.")],
-      why="Microphone boost amplifies background noise along with the voice signal. A clean signal with proper gain staging produces clearer voice chat.",
-      changes="Shows microphone boost guidance.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["microphone", "boost", "noise", "voice"]),
 
     T("audio-032", "Disable Microphone Processing",
       "Disables Windows automatic microphone processing (noise suppression, echo cancellation).",
@@ -405,19 +354,6 @@ TWEAKS = validate_module("audio", [
     #  SECTION 12 — LAPTOP AUDIO
     # =====================================================================
 
-    T("audio-035", "Disable Audio Power Management (Laptop)",
-      "Prevents Windows from powering down audio devices to save battery on laptops.",
-      actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\238C9FA8-0AAD-41ED-83F4-97BE242C8F20\94AC6D29-73CE-41A6-809F-6363BA21B47E", "Attributes", 2, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\238C9FA8-0AAD-41ED-83F4-97BE242C8F20\94AC6D29-73CE-41A6-809F-6363BA21B47E", "Attributes", 1, "DWORD"),
-      ],
-      why="Laptop power management aggressively suspends audio devices to save battery, causing crackle and pops when audio resumes.",
-      changes="Exposes the audio power management setting in Power Options.",
-      risk="low", impact="low", recommended="optional", admin=True,
-      tags=["laptop", "power", "battery", "audio"],
-      when={"laptop": True}),
 
     T("audio-036", "Disable Audio Endpoint Auto-Scaling",
       "Prevents Windows from dynamically adjusting audio buffer sizes on laptops.",
@@ -433,52 +369,12 @@ TWEAKS = validate_module("audio", [
     #  SECTION 13 — LATENCY MONITORING
     # =====================================================================
 
-    T("audio-037", "LatencyMon DPC Guidance",
-      "Guidance on measuring DPC latency that affects audio.",
-      actions=[("guidance", "Install LatencyMon, let it run 5 minutes while a game is open, and check the 'Interrupt to process latency' values. Green = drivers healthy.")],
-      revert=[("guidance", "Close LatencyMon.")],
-      why="DPC spikes from bad drivers manifest as audio crackle and stutter. LatencyMon identifies the offending driver.",
-      changes="Shows LatencyMon guidance.",
-      risk="safe", impact="low", recommended="recommended",
-      tags=["latencymon", "dpc", "audio"]),
 
     # =====================================================================
     #  SECTION 14 — AUDIO PRESETS (GUIDANCE)
     # =====================================================================
 
-    T("audio-038", "Gaming Audio Preset",
-      "Optimizes audio for competitive gaming: disable ducking, enhancements, spatial audio, and set high MMCSS priority.",
-      actions=[("guidance", "Apply these tweaks for gaming: Enable Exclusive Mode, Disable Audio Enhancements, Disable Spatial Audio, Disable Communication Ducking, High MMCSS Audio Priority, Audio Services Automatic. These prevent audio interruptions, reduce latency, and keep game audio consistent.")],
-      revert=[("guidance", "Revert individual tweaks as needed.")],
-      why="Gaming audio needs low latency, no ducking interruptions, and consistent delivery.",
-      changes="Shows gaming audio preset guidance.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["gaming", "preset", "competitive", "audio"]),
 
-    T("audio-039", "Voice Chat Preset",
-      "Optimizes audio for voice chat: disable mic processing, mic exclusive mode, and communication ducking.",
-      actions=[("guidance", "For voice chat: Disable Microphone Exclusive Mode, Disable Microphone Processing, Disable Communication Ducking, keep Audio Services Automatic. These let Discord/game chat share the mic cleanly without Windows interference.")],
-      revert=[("guidance", "Revert individual tweaks as needed.")],
-      why="Voice chat needs reliable microphone sharing and no ducking.",
-      changes="Shows voice chat preset guidance.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["voice", "chat", "discord", "preset", "audio"]),
 
-    T("audio-040", "USB Headset Preset",
-      "Optimizes audio for USB headsets: disable USB power savings, disable enhancements, set exclusive mode.",
-      actions=[("guidance", "For USB headsets: Disable Audio Device Power Savings, Disable USB Enhanced Power Management, Disable Audio Enhancements, Enable Exclusive Mode, Disable Spatial Audio. These prevent USB sleep issues and reduce latency.")],
-      revert=[("guidance", "Revert individual tweaks as needed.")],
-      why="USB headsets are prone to power-management issues that cause pops and disconnects.",
-      changes="Shows USB headset preset guidance.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["usb", "headset", "preset", "audio"]),
 
-    T("audio-041", "DAC / Audio Interface Preset",
-      "Optimizes audio for external DACs and audio interfaces.",
-      actions=[("guidance", "For external DACs/audio interfaces: Disable Audio Enhancements, Disable APO, Disable Spatial Audio, Enable Exclusive Mode, Set 48kHz Format. External DACs handle their own DSP — Windows processing is redundant and adds latency.")],
-      revert=[("guidance", "Revert individual tweaks as needed.")],
-      why="External DACs and audio interfaces have their own processing; Windows DSP is redundant.",
-      changes="Shows DAC/audio interface preset guidance.",
-      risk="safe", impact="moderate", recommended="optional",
-      tags=["dac", "interface", "pro-audio", "preset", "audio"]),
 ])

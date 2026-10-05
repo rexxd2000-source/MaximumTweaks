@@ -10,8 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-_tmpdir = tempfile.mkdtemp(prefix="mt-waitlist-")
-os.environ["LICENSE_DB_PATH"] = os.path.join(_tmpdir, "test.db")
+# LICENSE_DB_PATH is pinned by tests/conftest.py (isolated sqlite temp file)
 os.environ["LICENSE_SECRET"] = "test-secret-not-for-production"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
 os.environ["WAITLIST_MAILER"] = "log"
@@ -40,7 +39,6 @@ db = LicenseDB()
 
 ADMIN_HEADERS = {"Authorization": "Bearer test-admin-token"}
 
-
 @pytest.fixture(autouse=True)
 def _clean_waitlist():
     with db._lock:
@@ -52,16 +50,13 @@ def _clean_waitlist():
             conn.close()
     yield
 
-
 def _join(email, source="ultra_mode"):
     return client.post("/api/waitlist/join",
                        json={"email": email, "source": source})
 
-
 # ---------------------------------------------------------------------------
 # Public join endpoint
 # ---------------------------------------------------------------------------
-
 
 def test_join_adds_lowercased_email():
     r = _join(" Some.User@Example.COM ")
@@ -70,13 +65,11 @@ def test_join_adds_lowercased_email():
     assert body["ok"] and body["added"] is True
     assert db.waitlist_get("some.user@example.com") is not None
 
-
 def test_join_rejects_invalid_email():
     for bad in ["", "nope", "a@b", "a b@c.com", "a@.com"]:
         r = _join(bad)
         assert r.status_code == 400, bad
         assert r.json()["error"] == "invalid_email"
-
 
 def test_join_duplicate_is_not_an_error():
     assert _join("dup@example.com").json()["added"] is True
@@ -85,7 +78,6 @@ def test_join_duplicate_is_not_an_error():
     body = r.json()
     assert body["ok"] and body["added"] is False
     assert db.waitlist_count(subscribed_only=False) == 1
-
 
 def test_join_rate_limited_per_ip():
     limiter = backend._limiter_waitlist_ip
@@ -102,11 +94,9 @@ def test_join_rate_limited_per_ip():
         limiter._limit = original
         limiter._buckets.clear()
 
-
 # ---------------------------------------------------------------------------
 # Unsubscribe
 # ---------------------------------------------------------------------------
-
 
 def test_unsubscribe_flips_subscribed_off():
     _join("list@example.com")
@@ -116,17 +106,14 @@ def test_unsubscribe_flips_subscribed_off():
     assert "unsubscribed" in r.text.lower()
     assert db.waitlist_get("list@example.com")["subscribed"] == 0
 
-
 def test_unsubscribe_unknown_token_shows_status():
     r = client.get("/api/waitlist/unsubscribe?token=bogus")
     assert r.status_code == 200
     assert "no longer valid" in r.text.lower()
 
-
 # ---------------------------------------------------------------------------
 # Admin roster
 # ---------------------------------------------------------------------------
-
 
 def test_admin_waitlist_roster():
     _join("one@example.com")
@@ -137,10 +124,8 @@ def test_admin_waitlist_roster():
     emails = [e["email"] for e in body["entries"]]
     assert "one@example.com" in emails and "two@example.com" in emails
 
-
 def test_admin_waitlist_requires_auth():
     assert client.get("/admin/waitlist").status_code == 401
-
 
 def test_admin_waitlist_include_unsubscribed_uses_flag():
     _join("list@example.com")
@@ -153,11 +138,9 @@ def test_admin_waitlist_include_unsubscribed_uses_flag():
                       headers=ADMIN_HEADERS).json()
     assert subbed["subscribed"] == 0 and all_["total"] == 1
 
-
 # ---------------------------------------------------------------------------
 # Launch email dispatch (log mailer — nothing is sent)
 # ---------------------------------------------------------------------------
-
 
 def test_send_launch_reports_stats_and_stamps_notified():
     for i in range(3):
@@ -171,7 +154,6 @@ def test_send_launch_reports_stats_and_stamps_notified():
     assert stats["provider"] == "log"
     for rec in db.waitlist_list(subscribed_only=False):
         assert rec["notified_at"]
-
 
 def test_send_launch_honours_content_overrides():
     _join("custom@example.com")
@@ -189,7 +171,6 @@ def test_send_launch_honours_content_overrides():
     )
     assert r.status_code == 200 and r.json()["sent"] == 1
 
-
 def test_send_launch_requires_reconfirm():
     _join("locked@example.com")
     r = client.post("/admin/waitlist/send-launch",
@@ -199,7 +180,6 @@ def test_send_launch_requires_reconfirm():
     r = client.post("/admin/waitlist/send-launch",
                     json={"code": "test-admin-token"})
     assert r.status_code == 401
-
 
 def test_send_launch_reports_unexpected_errors(monkeypatch):
     def _boom(db, mailer, overrides=None, to_email=None):
@@ -215,7 +195,6 @@ def test_send_launch_reports_unexpected_errors(monkeypatch):
     assert stats["failed"] == 1
     assert "boom" in stats["failures"][0]["error"]
 
-
 def test_send_launch_can_target_one_address():
     _join("tom@example.com")
     _join("harry@example.com")
@@ -229,7 +208,6 @@ def test_send_launch_can_target_one_address():
     stamped = {rec["email"] for rec in db.waitlist_list(subscribed_only=False)
                if rec["notified_at"]}
     assert stamped == {"harry@example.com"}
-
 
 def test_launch_email_uses_detailed_asset_template():
     body = launch_email.render(

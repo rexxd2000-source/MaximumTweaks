@@ -270,7 +270,7 @@ class DownloadWorker(QThread):
     def run(self):
         from engine import updater
         try:
-            self._dest = updater.download(self._url, progress_cb=self._progress)
+            self._dest = updater.download(self._url, progress_cb=self._progress, checksum_url=getattr(self, "_checksum_url", ""))
         except updater.UpdaterError as exc:
             self._err = str(exc)
         except Exception as exc:  # noqa: BLE001
@@ -548,6 +548,42 @@ class UpdateDialog(QDialog):
         b.addLayout(self._chips)
         b.addSpacing(20)
 
+        # actions
+        act = QHBoxLayout()
+        act.setContentsMargins(0, 0, 0, 0)
+        act.setSpacing(12)
+        self._later = QToolButton()
+        self._later.setObjectName("SkipLink")
+        self._later.setText("Remind me later")
+        self._later.setFont(_sans(12))
+        self._later.setCursor(Qt.PointingHandCursor)
+        self._later.clicked.connect(self.reject)
+        act.addWidget(self._later)
+        act.addStretch()
+
+        grp = QHBoxLayout()
+        grp.setContentsMargins(0, 0, 0, 0)
+        grp.setSpacing(8)
+        self._btn_later = QToolButton()
+        self._btn_later.setObjectName("BtnLater")
+        self._btn_later.setText("Skip this version")
+        self._btn_later.setFont(_sans(12, QFont.Weight.DemiBold))
+        self._btn_later.setCursor(Qt.PointingHandCursor)
+        self._btn_later.setFixedHeight(36)
+        self._btn_later.clicked.connect(self._skip_version)
+        grp.addWidget(self._btn_later)
+        self._btn_update = QToolButton()
+        self._btn_update.setObjectName("BtnUpdate")
+        self._btn_update.setText("\u2b07  Update now")
+        self._btn_update.setFont(_sans(12, QFont.Weight.DemiBold))
+        self._btn_update.setCursor(Qt.PointingHandCursor)
+        self._btn_update.setFixedHeight(36)
+        self._btn_update.clicked.connect(self._on_update_clicked)
+        grp.addWidget(self._btn_update)
+        act.addLayout(grp)
+        b.addLayout(act)
+        b.addSpacing(14)
+
         # What's changed — wrapped in its own container so it fully collapses
         # (label + list + spacing) on the up-to-date/error states. The list
         # itself lives in a scroll area so a long changelog can never push the
@@ -605,42 +641,6 @@ class UpdateDialog(QDialog):
         self._progress_bar.setVisible(False)
         b.addWidget(self._progress_bar)
         b.addSpacing(8)
-
-        # actions
-        act = QHBoxLayout()
-        act.setContentsMargins(0, 0, 0, 0)
-        act.setSpacing(12)
-        self._later = QToolButton()
-        self._later.setObjectName("SkipLink")
-        self._later.setText("Remind me later")
-        self._later.setFont(_sans(12))
-        self._later.setCursor(Qt.PointingHandCursor)
-        self._later.clicked.connect(self.reject)
-        act.addWidget(self._later)
-        act.addStretch()
-
-        grp = QHBoxLayout()
-        grp.setContentsMargins(0, 0, 0, 0)
-        grp.setSpacing(8)
-        self._btn_later = QToolButton()
-        self._btn_later.setObjectName("BtnLater")
-        self._btn_later.setText("Skip this version")
-        self._btn_later.setFont(_sans(12, QFont.Weight.DemiBold))
-        self._btn_later.setCursor(Qt.PointingHandCursor)
-        self._btn_later.setFixedHeight(36)
-        self._btn_later.clicked.connect(self._skip_version)
-        grp.addWidget(self._btn_later)
-        self._btn_update = QToolButton()
-        self._btn_update.setObjectName("BtnUpdate")
-        self._btn_update.setText("\u2b07  Update now")
-        self._btn_update.setFont(_sans(12, QFont.Weight.DemiBold))
-        self._btn_update.setCursor(Qt.PointingHandCursor)
-        self._btn_update.setFixedHeight(36)
-        self._btn_update.clicked.connect(self._on_update_clicked)
-        grp.addWidget(self._btn_update)
-        act.addLayout(grp)
-        b.addLayout(act)
-        b.addSpacing(14)
 
         # footnote (only shown when an update is available)
         fn = QLabel("Maximum Tweaks will restart automatically")

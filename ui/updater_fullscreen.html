@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Maximum Tweaks — Updater</title>
+<style>
+  @font-face{
+    font-family:'Inter';
+    src:url("../../assets/fonts/Inter-Regular.ttf") format("truetype");
+    font-weight:400;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'Inter';
+    src:url("../../assets/fonts/Inter-Medium.ttf") format("truetype");
+    font-weight:500;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'Inter';
+    src:url("../../assets/fonts/Inter-SemiBold.ttf") format("truetype");
+    font-weight:600;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'Inter';
+    src:url("../../assets/fonts/Inter-Bold.ttf") format("truetype");
+    font-weight:700;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'JetBrains Mono';
+    src:url("../../assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+    font-weight:400;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'JetBrains Mono';
+    src:url("../../assets/fonts/JetBrainsMono-Medium.ttf") format("truetype");
+    font-weight:500;
+    font-style:normal;
+  }
+  @font-face{
+    font-family:'JetBrains Mono';
+    src:url("../../assets/fonts/JetBrainsMono-SemiBold.ttf") format("truetype");
+    font-weight:600;
+    font-style:normal;
+  }
+
+  :root{
+    --void:       #06050a;
+    --violet:     #9b7bff;
+    --violet-hi:  #c6b3ff;
+    --violet-deep:#5a3fc4;
+    --text-hi:    #f6f4fb;
+    --text-lo:    #948da8;
+
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; margin: 0; }
+
+  body{
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text-hi);
+    background: var(--void);
+    overflow: hidden;
+  }
+
+  /* ---------------- full-bleed backdrop ---------------- */
+
+  .field{
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(ellipse 900px 620px at 50% 6%, rgba(155,123,255,0.16) 0%, transparent 55%),
+      radial-gradient(ellipse 700px 520px at 92% 100%, rgba(90,63,196,0.12) 0%, transparent 55%),
+      var(--void);
+  }
+  /* static top glass reflection across the whole window */
+  .field::before{
+    content: "";
+    position: absolute;
+    top: -25%;
+    left: -10%;
+    width: 120%;
+    height: 46%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+    border-radius: 50%;
+    filter: blur(6px);
+    pointer-events: none;
+  }
+  /* fixed diagonal glint */
+  .field::after{
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.03) 50%, transparent 58%);
+    pointer-events: none;
+  }
+
+  /* ---------------- app shell — fills the whole window ---------------- */
+
+  .shell{
+    position: relative;
+    z-index: 1;
+    height: 100vh;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ---------------- titlebar ---------------- */
+
+  .titlebar{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    padding-top: calc(18px + env(safe-area-inset-top, 0px));
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+  }
+
+  .brand{
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .brand-mark{
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(155deg, var(--violet-hi), var(--violet) 55%, var(--violet-deep));
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.6), inset 0 -5px 9px rgba(0,0,0,0.25);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .brand-mark::after{
+    content: "";
+    position: absolute;
+    top: -30%; left: -10%;
+    width: 80%; height: 60%;
+    background: rgba(255,255,255,0.5);
+    border-radius: 50%;
+    filter: blur(3px);
+  }
+  .brand-mark .brand-logo{
+    width: 100%; height: 100%;
+    object-fit: cover;
+    position: relative;
+    z-index: 1;
+    display: block;
+  }
+
+  .brand-name{
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+
+  .win-controls{
+    display: flex;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+  }
+  .win-controls button{
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    border: none;
+    background: rgba(255,255,255,0.03);
+    color: var(--text-lo);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .win-controls button:hover{ background: rgba(255,255,255,0.08); color: var(--text-hi); }
+  .win-controls svg{ width: 11px; height: 11px; }
+
+  /* ---------------- step rail ---------------- */
+
+  .rail-wrap{
+    padding: 2px 28px 0;
+    flex-shrink: 0;
+  }
+  .rail{
+    display: flex;
+    gap: 8px;
+  }
+  .rail .seg{
+    flex: 1;
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .rail .seg.active::after{
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 55%;
+    background: linear-gradient(90deg, var(--violet), var(--violet-hi));
+    border-radius: 4px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .rail-caption{
+    margin-top: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--text-lo);
+    display: flex;
+    justify-content: space-between;
+  }
+  .rail-caption b{ color: var(--violet-hi); font-weight: 500; }
+
+  /* ---------------- stage ---------------- */
+
+  .stage{
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 28px;
+    text-align: center;
+    gap: 24px;
+    min-height: 0;
+  }
+
+  .ring{
+    position: relative;
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at 32% 28%, rgba(255,255,255,0.14), transparent 55%),
+      conic-gradient(var(--violet-hi) 0deg, var(--violet) var(--arc, 210deg), rgba(255,255,255,0.06) var(--arc, 210deg) 360deg);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.25), inset 0 -8px 14px rgba(0,0,0,0.3);
+    flex-shrink: 0;
+  }
+  .ring::before{
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border-radius: 50%;
+    background: linear-gradient(165deg, #1c1728, #100e17);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.06);
+  }
+  .ring .pct{
+    position: relative;
+    z-index: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  .copy h1{
+    margin: 0 0 8px;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .copy p{
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #c3bdd2;
+    max-width: 320px;
+  }
+
+  .version-chip{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-lo);
+    background: linear-gradient(165deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.10);
+    border-top-color: rgba(255,255,255,0.22);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+    padding: 8px 15px;
+    border-radius: 100px;
+  }
+  .version-chip b{ color: var(--violet-hi); font-weight: 500; }
+  .version-chip .arrow{ color: var(--text-lo); }
+
+  /* ---------------- footer ---------------- */
+
+  .footer{
+    flex-shrink: 0;
+    padding: 20px 28px calc(20px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .engine-tag{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-lo);
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .engine-tag .dot{
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #5ee6a8;
+    box-shadow: 0 0 6px #5ee6a8;
+  }
+
+  .skip{
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top-color: rgba(255,255,255,0.26);
+    background: linear-gradient(165deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+    color: var(--text-hi);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 100px;
+    cursor: pointer;
+  }
+  .skip:hover{ background: linear-gradient(165deg, rgba(255,255,255,0.13), rgba(255,255,255,0.03)); }
+  .skip:focus-visible{ outline: 2px solid var(--violet-hi); outline-offset: 2px; }
+
+  @media (max-width: 420px){
+    .titlebar, .rail-wrap, .stage, .footer{ padding-left: 18px; padding-right: 18px; }
+    .copy h1{ font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="field"></div>
+
+<div class="shell">
+
+  <div class="titlebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <img class="brand-logo" id="brand-logo" alt="" src="__MAX_LOGO_URI__">
+      </div>
+      <span class="brand-name">Maximum Tweaks</span>
+    </div>
+    <div class="win-controls">
+      <button id="btn-min" aria-label="Minimize"><svg viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg></button>
+      <button id="btn-close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M0 0 L10 10 M10 0 L0 10" stroke="currentColor" stroke-width="1"/></svg></button>
+    </div>
+  </div>
+
+  <div class="rail-wrap">
+    <div class="rail" aria-hidden="true">
+      <div class="seg active" id="seg-1"></div>
+      <div class="seg" id="seg-2"></div>
+      <div class="seg" id="seg-3"></div>
+      <div class="seg" id="seg-4"></div>
+    </div>
+    <div class="rail-caption">
+      <span id="rail-label">Setup</span>
+      <span><b id="rail-cur">Step 1</b> <span id="rail-of">of 4</span></span>
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <div class="ring" id="ring">
+      <span class="pct" id="pct">0%</span>
+    </div>
+
+    <div class="copy">
+      <h1 id="copy-h1">Checking for updates</h1>
+      <p id="copy-sub">Comparing your installed build against the latest release. This only takes a moment.</p>
+    </div>
+
+    <div class="version-chip">
+      Installed <b id="ver-mine">v…</b> <span class="arrow">→</span> Latest <b id="ver-latest">checking…</b>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <span class="engine-tag"><span class="dot" id="engine-dot"></span><span id="engine-tag-text">MAXIMUM ENGINE · v…</span></span>
+    <button class="skip" id="btn-skip">Skip</button>
+  </div>
+
+</div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+(function(){
+  if(window.qt&&window.qt.webChannelTransport&&window.QWebChannel){
+    new QWebChannel(window.qt.webChannelTransport,function(ch){
+      window.pywebview=window.pywebview||{};
+      window.pywebview.api=ch.objects.api;
+      wireButtons();
+    });
+  }
+  window.pywebview=window.pywebview||{};
+
+  function bridge(){
+    return (window.pywebview && window.pywebview.api) || null;
+  }
+
+  function wireButtons(){
+    var a=bridge(); if(!a) return;
+    var min=document.getElementById('btn-min');
+    var close=document.getElementById('btn-close');
+    var skip=document.getElementById('btn-skip');
+    if(min && a.minimize) min.addEventListener('click',function(){a.minimize();});
+    if(close && a.closeClicked) close.addEventListener('click',function(){a.closeClicked();});
+    if(skip && a.skip) skip.addEventListener('click',function(){a.skip();});
+  }
+
+  window.mx = {
+    /* Peeled straight out of the mockup's <script>: the pct number and the
+       "latest" version resolve must come from the live update check in
+       Python, never from setTimeout placeholders in the page. */
+    show: function(data){
+      data = data || {};
+      var mine = document.getElementById('ver-mine');
+      var latest = document.getElementById('ver-latest');
+      var tag = document.getElementById('engine-tag-text');
+      var railLabel = document.getElementById('rail-label');
+      var railCur = document.getElementById('rail-cur');
+      var railOf = document.getElementById('rail-of');
+      if(mine && data.installed) mine.textContent = data.installed;
+      if(latest && data.latest) latest.textContent = data.latest;
+      if(tag && data.engine) tag.textContent = data.engine;
+      if(railLabel && data.railLabel) railLabel.textContent = data.railLabel;
+      if(railCur && data.step) railCur.textContent = 'Step ' + data.step;
+      if(railOf && data.total) railOf.textContent = 'of ' + data.total;
+      if(data.pct !== undefined) setPct(data.pct);
+      wireButtons();
+    },
+    setProgress: function(p){
+      setPct(p);
+    },
+    setLatest: function(text){
+      var el = document.getElementById('ver-latest');
+      if(el) el.textContent = text;
+    },
+    setTitle: function(text){
+      var el = document.getElementById('copy-h1');
+      if(el) el.textContent = text;
+      if(document.title) document.title = (text || 'Updater') + ' \u2014 Maximum Tweaks';
+    },
+    setSub: function(text){
+      var el = document.getElementById('copy-sub');
+      if(el) el.textContent = text;
+    }
+  };
+
+  var _disp = 0;         // current eased progress (glides toward target)
+  var _target = 0;       // requested progress from Python
+  var _raf = null;       // one driving requestAnimationFrame loop
+  var _last = 0;
+
+  function setPct(p){
+    p = Number(p);
+    if(!isFinite(p)) return;
+    _target = Math.max(0, Math.min(100, p));
+    if(_raf === null){
+      _last = (performance.now && performance.now()) || Date.now();
+      _raf = requestAnimationFrame(_step);
+    }
+  }
+
+  function _step(now){
+    _raf = requestAnimationFrame(_step);
+    var dt = Math.max(1, Math.min(120, now - _last));
+    _last = now;
+    // Ease the bar toward the target: strong enough to visibly glide between
+    // the 150ms ticks, gentle enough the number doesn't rattle.
+    var diff = _target - _disp;
+    var step = diff * Math.min(1, dt / 90);
+    if(Math.abs(diff) < 0.06){
+      _disp = _target;
+      _apply(_disp);
+      cancelAnimationFrame(_raf);
+      _raf = null;
+      return;
+    }
+    _disp += step;
+    _apply(_disp);
+  }
+
+  function _apply(p){
+    var el = document.getElementById('pct');
+    if(el) el.textContent = Math.max(0, Math.min(100, Math.round(p))) + '%';
+    var ring = document.getElementById('ring');
+    if(ring){
+      var deg = Math.max(0, Math.min(100, p)) * 3.6;
+      ring.style.setProperty('--arc', deg + 'deg');
+    }
+  }
+
+  wireButtons();
+  window.mx.show({});
+})();
+</script>
+</body>
+</html>

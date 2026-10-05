@@ -1,0 +1,16 @@
+{
+  "order_id": "MT-68E169248CC84910",
+  "tier": "foundation",
+  "cycle": "monthly",
+  "months": 1,
+  "days": 30,
+  "amount": "0.00",
+  "amount_cents": 0,
+  "currency": "USD",
+  "product_name": "Foundation \u2014 monthly",
+  "created_at": 1790848040.7709017,
+  "provider": null,
+  "checkout_url": null,
+  "paid": false,
+  "entitlement_token": null
+}

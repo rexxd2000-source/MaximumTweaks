@@ -684,6 +684,33 @@ def set_gpu_selection(vendor: str | None) -> None:
     logger.info(f"state: gpu selection set to {vendor!r}")
 
 
+def get_cpu_selection() -> str | None:
+    """Persisted manual CPU family pick, e.g. 'amd_am4_x3d'.
+
+    This is a UI navigation choice, not a hardware probe: it decides which
+    cards are listed and never implies the machine is that CPU.
+    """
+    from ui.categories import CPU_FAMILY_KEYS
+
+    value = _load().get("cpu_selection")
+    # Drop values from an older/newer build that no longer maps to a family.
+    return value if value in CPU_FAMILY_KEYS else None
+
+
+def set_cpu_selection(family: str | None) -> None:
+    from ui.categories import CPU_FAMILY_KEYS
+
+    if family is not None and family not in CPU_FAMILY_KEYS:
+        raise ValueError(f"Unknown CPU family {family!r}")
+    state = _load()
+    if family is None:
+        state.pop("cpu_selection", None)
+    else:
+        state["cpu_selection"] = family
+    _save(state)
+    logger.info(f"state: cpu family selection set to {family!r}")
+
+
 # --- License session --------------------------------------------------------
 
 def license_session() -> dict | None:
@@ -699,3 +726,20 @@ def set_license_session(data: dict | None) -> None:
         state["license"] = data
     _save(state)
     logger.info("state: license session updated")
+
+
+# --- App metadata knobs (UI state that isn't tweak/backup records) -----------
+
+def get_meta(key: str, default=None):
+    return (_load().get("meta") or {}).get(key, default)
+
+
+def set_meta(key: str, value) -> None:
+    state = _load()
+    meta = dict(state.get("meta") or {})
+    if value is None:
+        meta.pop(key, None)
+    else:
+        meta[key] = value
+    state["meta"] = meta
+    _save(state)

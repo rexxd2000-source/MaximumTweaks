@@ -19,6 +19,7 @@ data can never drift from the code.
 """
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 
 from .validation_data import OVERRIDES, NOTES
@@ -37,6 +38,15 @@ BLOCKED_STATUSES = {"INVALID", "PLACEBO", "OUTDATED", "CONFLICTING"}
 # Conflicts are one-way flagged: when a conflicting tweak is applied, the
 # other party is downgraded so Apply-All does not silently fight itself.
 _CONFLICT_MARK = "CONFLICTING"
+
+# Pairs that fight over the same underlying Windows mechanism but express it
+# through *different* registry value names or paths, so the key-based live
+# detector above cannot see them.
+#
+# The former timer-resolution cluster (perf-001 / power-017 / fpsb-018 vs
+# cpu:timer_resolution) was merged into a single optional diagnostic
+# (perf-001 "Timer Resolution Diagnostic"), so no semantic pairs remain.
+SEMANTIC_CONFLICTS: dict = {}
 
 
 def _norm(v):
@@ -97,12 +107,20 @@ def _conflicts(tweaks) -> dict:
     Two tweaks conflict when they target the *same* mutable setting (registry
     value, service start mode, ini/game-config value, or power setting) but
     disagree on the target value — or when one writes it and the other deletes
-    it. Same-value writes are not a conflict (idempotent, e.g. two tweaks that
-    both disable the same service).
+    it. Every disagreeing pair is reported (not just the first writer), so a
+    later tweak that repeats an earlier author's value still reports against
+    the tweak that wrote a different value. Same-value writes are not a
+    conflict (idempotent, e.g. two tweaks that both disable the same service).
     """
-    owner: dict = {}       # target -> (tweak_id, target_value_normalized)
+    groups: defaultdict = defaultdict(lambda: defaultdict(list))  # target -> value -> [ids]
     deletes: defaultdict = defaultdict(list)  # target -> [tweak_id]
     result: defaultdict = defaultdict(list)
+
+    def _add_pair(a: str, b: str, target, reason: str) -> None:
+        if not any(x[0] == b for x in result[a]):
+            result[a].append((b, target, reason))
+        if not any(x[0] == a for x in result[b]):
+            result[b].append((a, target, reason))
 
     for t in tweaks:
         tid = t["id"]
@@ -113,33 +131,35 @@ def _conflicts(tweaks) -> dict:
             if value == "<delete>":
                 deletes[target].append(tid)
                 continue
-            if target in owner:
-                oid, ovalue = owner[target]
-                if ovalue != value and oid != tid:
-                    kind = _target_kind(target)
-                    reason = (f"same {kind} set to {value!r} by {tid} and "
-                              f"{ovalue!r} by {oid}")
-                    result[tid].append((oid, target, reason))
-                    result[oid].append((tid, target, reason))
-            else:
-                owner[target] = (tid, value)
+            g = groups[target]
+            for other_value, ids in g.items():
+                if other_value == value:
+                    continue
+                if ids[0] == tid:
+                    continue
+                kind = _target_kind(target)
+                reason = (f"same {kind} set to {value!r} by {tid} and "
+                          f"{other_value!r} by {ids[0]}")
+                for oid in ids:
+                    if oid != tid:
+                        _add_pair(tid, oid, target, reason)
+            g[value].append(tid)
 
     # A delete of a setting another tweak writes (or vice-versa) is a conflict.
     for target, deleters in deletes.items():
-        if target in owner:
-            owner_id, _ = owner[target]
+        writer_ids = [i for ids in groups[target].values() for i in ids]
+        if writer_ids:
             for d in deleters:
-                if d != owner_id:
-                    reason = "one tweak writes this setting, the other deletes it"
-                    result[d].append((owner_id, target, reason))
-                    result[owner_id].append((d, target, reason))
+                for w in writer_ids:
+                    if d != w:
+                        _add_pair(d, w, target,
+                                  "one tweak writes this setting, the other deletes it")
         elif len(deletes[target]) > 1:
-            for a in deletes[target]:
-                for b in deletes[target]:
-                    if a < b:
-                        reason = "two tweaks delete the same setting"
-                        result[a].append((b, target, reason))
-                        result[b].append((a, target, reason))
+            ids = list(deletes[target])
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    _add_pair(ids[i], ids[j], target,
+                              "two tweaks delete the same setting")
     return dict(result)
 
 
@@ -152,8 +172,49 @@ def _target_kind(target: tuple) -> str:
     }.get(target[0], "setting")
 
 
+def orphaned_overrides(tweaks: list[dict] | None = None) -> dict[str, dict]:
+    """Return validation overrides/notes whose tweak id no longer exists.
+
+    ``validation_data.py`` is generated, so an id can disappear from the tweak
+    modules (renamed, merged, or removed) while its generated record lingers.
+    Those records are inert -- :func:`apply` looks each id up per loaded tweak,
+    so an unknown id can never be read -- but they are also misleading, because
+    the file implies those tweaks are still classified when they are not.
+
+    Nothing is deleted here. This function only reports, so the decision of
+    whether an id was renamed or the tweak was retired stays reviewable.
+    """
+    if tweaks is None:
+        from . import BY_ID  # deferred to avoid import cycle at module scope
+        live = set(BY_ID)
+    else:
+        live = {t["id"] for t in tweaks}
+    orphan: dict[str, dict] = {}
+    for tid, rec in OVERRIDES.items():
+        if tid not in live:
+            orphan[tid] = dict(rec)
+    for tid, note in NOTES.items():
+        if tid not in live:
+            orphan.setdefault(tid, {})["note"] = note
+    return orphan
+
+
+def audit_override_drift(tweaks: list[dict] | None = None) -> int:
+    """Warn once about overrides that reference missing tweaks; return the count."""
+    orphan = orphaned_overrides(tweaks)
+    if orphan:
+        sample = ", ".join(sorted(orphan)[:5])
+        warnings.warn(
+            f"{len(orphan)} validation override(s) reference tweak ids that no "
+            f"longer exist (e.g. {sample}). These are inert but stale; see "
+            f"database.validation.orphaned_overrides().",
+            RuntimeWarning, stacklevel=2)
+    return len(orphan)
+
+
 def apply(tweaks: list[dict]) -> None:
     """Merge validation metadata into every loaded tweak dict (in place)."""
+    audit_override_drift(tweaks)
     conflicts = _conflicts(tweaks)
     for t in tweaks:
         tid = t["id"]
@@ -163,12 +224,16 @@ def apply(tweaks: list[dict]) -> None:
         t["target"] = str(rec.get("target") or t.get("target") or "WINDOWS")
         t["verdict"] = str(rec.get("verdict") or t.get("verdict") or "REVIEW")
         t["validation_note"] = rec.get("note") or NOTES.get(tid) or ""
-        if conflicts.get(tid):
+        declared = [{"with": wid, "target": target, "reason": reason}
+                    for wid, target, reason in SEMANTIC_CONFLICTS.get(tid, [])]
+        detected = [{"with": oid, "target": _fmt_target(target), "reason": reason}
+                    for oid, target, reason in conflicts.get(tid, [])]
+        merged = detected + [d for d in declared if d not in detected]
+        if merged:
             t["status"] = _CONFLICT_MARK
-            t["validation_note"] = ("Conflicts with: " +
-                                    ", ".join(oid for oid, _, _ in conflicts[tid]))
-        t["conflicts"] = [{"with": oid, "target": _fmt_target(target), "reason": reason}
-                          for oid, target, reason in conflicts.get(tid, [])]
+            other_ids = ", ".join(sorted({c["with"] for c in merged}))
+            t["validation_note"] = "Conflicts with: " + other_ids
+        t["conflicts"] = merged
 
 
 def _fmt_target(target: tuple) -> str:

@@ -1,33 +1,22 @@
-"""Main application window: premium sidebar navigation + stacked pages."""
+"""Main application window: bottom glass dock navigation + stacked pages."""
 from __future__ import annotations
 
 import ctypes
 import sys
 
-import math
-
 from PySide6.QtCore import (
-    QPoint,
-    QPointF,
-    QRectF,
+    QEasingCurve,
+    QPropertyAnimation,
+    QTimer,
     Qt,
 )
-from PySide6.QtGui import (
-    QColor,
-    QLinearGradient,
-    QPainter,
-    QPixmap,
-    QRadialGradient,
-)
 from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QScrollArea,
+    QGraphicsOpacityEffect,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from config.app_config import (
     APP_NAME,
@@ -35,25 +24,24 @@ from config.app_config import (
     GITHUB_REPO,
     UPDATE_MANIFEST_URL,
 )
+from database import TWEAKS
 from engine import activity
 from maxlog import logger
-from ui.categories import logo_path
+from ui.categories import compatible_tweaks
 from ui.context import AppContext
-from ui.monitor_widgets import AppLogo
+from ui.dock_nav import DockNav
 from ui.pages.dashboard import DashboardPage
 from ui.pages.detect import DetectPage, DetectWorker
 from ui.pages.logs import LogsPage
-from ui.widgets import NavDot, NavRow, nav_icon_pixmap
 from ui.pages.optimize import OptimizePage
 from ui.pages.chat import ChatPage
-from ui.premium_widgets import ComingSoonPage
 from ui.pages.route_coming_soon import RouteComingSoonPage
-from ui.pages.route_analyzer import RouteAnalyzerPage
 from ui.pages.delay_destroyer import DelayDestroyerPage
 from ui.pages.debloat import DebloatPage
+from ui.pages.app_optimizers import AppOptimizersPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
-from ui.pages.tweaks import ALL_KEY, TweaksPage
+from ui.pages.tweak_cards import TweakCardsPage
 from ui.space import SpaceBackground
 
 
@@ -75,66 +63,17 @@ def relaunch_as_admin() -> None:
             logger.warn(f"relaunch as admin failed: {exc}")
 
 
-class _SidebarBackdrop(QWidget):
-    """sidebar-background-fix.html layers: violet glow top-left, cyan glow
-    bottom-left, a 28px dot grid faded at both ends (kept a bit lighter than
-    the reference 0.5 opacity), and a hairline seam of light on the right
-    border."""
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setGeometry(parent.rect())
-        parent.installEventFilter(self)
-
-    def eventFilter(self, obj, event):
-        if obj is self.parent() and event.type() == event.Type.Resize:
-            self.setGeometry(obj.rect())
-        return False
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        w, h = self.width(), self.height()
-        # .sb-glow.top — compact rose glow tucked behind the brand mark so it
-        # stays a subtle highlight rather than a large off-center ring.
-        g1 = QRadialGradient(QPointF(32, 32), 72)
-        g1.setColorAt(0.0, QColor(139, 107, 255, 34))
-        g1.setColorAt(1.0, QColor(139, 107, 255, 0))
-        p.fillRect(self.rect(), g1)
-        # .sb-glow.bottom — 240px orb, center at (60, h-20), cyan .08
-        g2 = QRadialGradient(QPointF(60, h - 20), 168)
-        g2.setColorAt(0.0, QColor(75, 232, 216, 20))
-        g2.setColorAt(1.0, QColor(75, 232, 216, 0))
-        p.fillRect(self.rect(), g2)
-        # .sb-dots — 28px grid, vertical fade; a bit lighter than reference
-        y = 14.0
-        while y < h:
-            frac = y / max(1, h)
-            if frac < 0.18:
-                m = frac / 0.18
-            elif frac > 0.75:
-                m = max(0.0, (1.0 - frac) / 0.25)
-            else:
-                m = 1.0
-            a = int(28 * m)          # reference peaks ~45 — lighter per request
-            if a > 3:
-                p.setPen(QColor(200, 190, 240, a))
-                x = 14.0
-                while x < w:
-                    p.drawPoint(QPointF(x, y))
-                    x += 28.0
-            y += 28.0
-        # .sb-edge — right-border seam: rgba(150,130,235,.35) 30-70%
-        seam = QLinearGradient(0, 0, 0, h)
-        seam.setColorAt(0.0, QColor(150, 130, 235, 0))
-        seam.setColorAt(0.30, QColor(150, 130, 235, 89))
-        seam.setColorAt(0.70, QColor(150, 130, 235, 89))
-        seam.setColorAt(1.0, QColor(150, 130, 235, 0))
-        p.fillRect(QRectF(w - 1.0, 0, 1.0, h), seam)
-        p.end()
-
-
 class MainWindow(QWidget):
+    # Pages built shortly after the window appears. Without this, the first
+    # click on a page has to wait for its first load before the swap can happen
+    # (the stack is no longer hidden, so the wait is now invisible rather than
+    # a dark screen, but it is still a wait). Sequential and spaced out on
+    # purpose: every one of these is a QWebEngineView with its own renderer, so
+    # building them together spikes memory. Set the tuple empty to disable.
+    PREWARM_PAGES = ("tweaks", "tools", "profiles")
+    PREWARM_DELAY_MS = 1500
+    PREWARM_GAP_MS = 700
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
@@ -143,9 +82,13 @@ class MainWindow(QWidget):
 
         self.ctx = AppContext(self)
         self.pages = {}
-        self.nav_buttons = {}
+        # The dock starts with no popover or selection; the guard below stops a
+        # startup navigate() from fighting the dock before the app is up.
+        self._nav_ready = False
+        # The page currently on screen, so navigating to it again can be a no-op.
+        self._cur_key = None
 
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
@@ -154,13 +97,35 @@ class MainWindow(QWidget):
         self.space.setGeometry(self.rect())
         self.space.lower()
 
-        self.sidebar = self._build_sidebar()
-        root.addWidget(self.sidebar)
         self.stack = QStackedWidget()
+        # Clicks on page content and Escape both dismiss the dock popover;
+        # an event filter on the stack sees every event from every page,
+        # including the ones inside embedded QtWebEngine views.
+        self.stack.installEventFilter(self)
         root.addWidget(self.stack, 1)
 
+        # Floating glass dock: a raised, content-sized child of the window
+        # (not a layout row), so it never reserves space, never splits the
+        # window into pages + a dock strip, and just floats over the page.
+        self.dock = DockNav(self)
+        self.dock.requested.connect(self.navigate)
+        self.dock.raise_()
+        # The dock's plan badge reads the live entitlement, so it has to be
+        # repainted whenever that changes: activating a key, letting one expire,
+        # revoking it, or signing out. license_changed is the app's existing
+        # "the license under us just moved" signal - the dashboard, settings and
+        # sidebar card already hang off it.
+        if hasattr(self.ctx, "license_changed"):
+            self.ctx.license_changed.connect(self.dock.refresh_tier)
+
         self._register_pages()
+        # The dock's frosted glass is produced on the Qt side from this stack,
+        # so it needs a handle on it. Set after the pages exist.
+        self.dock.set_stack(self.stack)
+        # The app launches on the Dashboard, exactly like the original shell;
+        # the dock's own logo navigates back here from anywhere.
         self.navigate("dashboard")
+        self._nav_ready = True
 
         # Background system-state audit: reads live registry/power/service
         # state so every toggle reflects the real system, not just what this
@@ -182,10 +147,32 @@ class MainWindow(QWidget):
         self._update_worker = None
         self._check_for_update_background()
 
+        self._prewarm_pages()
+
+    def _prewarm_pages(self):
+        """Build the heavy pages off the critical path, one at a time."""
+        keys = list(self.PREWARM_PAGES)
+
+        def step(i=0):
+            if i >= len(keys):
+                return
+            key = keys[i]
+            try:
+                if key not in self.pages:
+                    self._ensure_page(key)
+                    logger.info(f"prewarm built {key}")
+            except Exception as e:  # noqa: BLE001 - a warm page is optional
+                logger.warn(f"prewarm {key} failed: {e}")
+            QTimer.singleShot(self.PREWARM_GAP_MS, lambda: step(i + 1))
+
+        if keys:
+            QTimer.singleShot(self.PREWARM_DELAY_MS, step)
+
     def _on_detected(self, profile):
         self.ctx.set_profile(profile)
-        ready = sum(1 for e in self.ctx.eval.values() if e["state"] == "ready")
-        activity.emit("scan", f"System scan completed \u2014 {ready} tweaks compatible")
+        ready = len(compatible_tweaks(TWEAKS, self.ctx.eval, self.ctx.profile))
+        activity.emit(
+            "scan", f"System scan completed \u2014 {ready} tweaks compatible with this PC")
 
     def _check_for_update_background(self):
         """Non-blocking update probe; shows a toast if a newer build exists."""
@@ -209,287 +196,319 @@ class MainWindow(QWidget):
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
 
-# ---------------- Sidebar ----------------
-
-    # Category accent colors (matching the color-coded sidebar reference).
-    CAT_INK = "#928AAD"
-    CAT_FPS = "#3FDC98"
-    CAT_SYSTEM = "#6C93FF"
-    CAT_INPUT = "#FF6F6F"
-    CAT_TOOLS = "#FFB454"
-    CAT_DIAG = "#4BE8D8"
-    CAT_PROFILES = "#E879C9"
-    CAT_META = "#9AA5D1"
-
-    def _cat_color(self, cat):
-        return {
-            "fps": self.CAT_FPS,
-            "system": self.CAT_SYSTEM,
-            "input": self.CAT_INPUT,
-            "tools": self.CAT_TOOLS,
-            "diag": self.CAT_DIAG,
-            "profiles": self.CAT_PROFILES,
-            "meta": self.CAT_META,
-        }[cat]
-
-    def _nav_row(self, label, color, icon_key=None, nav_key=None,
-                 target=None, badge=None, line_only=False):
-        """Create a NavRow. Icons are pre-colored glossy assets (PNG, bundled),
-        each already tinted to its category color; lucide renderer is only a
-        fallback in case an asset is missing. line_only=True forces the lucide
-        line icon (tinted to this row's category color) — used where the
-        glossy asset's baked color doesn't match the section (Diagnostics)."""
-        row = NavRow(label)
-        pm = QPixmap()
-        if icon_key is not None and not line_only:
-            path = logo_path(icon_key)
-            if path.is_file():
-                pm = QPixmap(str(path))
-        if pm.isNull() and icon_key is not None:
-            pm = nav_icon_pixmap(icon_key, color=color, size=16)
-        row.set_icon_pm(pm)
-        if badge:
-            row.add_badge(badge)
-        dest = nav_key if target is None else target
-        row.clicked.connect(lambda k=dest: self.navigate(k))
-        if nav_key is not None:
-            self.nav_buttons[nav_key] = row
-        return row
-
-    def _nav_line(self):
-        line = QFrame()
-        line.setObjectName("NavLine")
-        line.setFixedHeight(1)
-        return line
-
-    def _nav_header(self, title, cat):
-        header = QWidget()
-        hl = QHBoxLayout(header)
-        hl.setContentsMargins(10, 2, 10, 10)
-        hl.setSpacing(7)
-        dot = NavDot(self._cat_color(cat))
-        dot.setObjectName("NavDot")
-        hl.addWidget(dot)
-        lbl = QLabel(title)
-        lbl.setObjectName("NavSectionLabel")
-        hl.addWidget(lbl)
-        hl.addStretch()
-        header.setCursor(Qt.PointingHandCursor)
-        return header
-
-    def _add_nav_section(self, parent, title, cat, items, badges=None,
-                         line_only=False):
-        """Collapsible group: divider, header (colored dot + uppercase label),
-        then the item rows. *items* are (nav_key, label, icon_key)."""
-        badges = badges or {}
-        parent.addSpacing(12)
-        parent.addWidget(self._nav_line())
-        parent.addSpacing(18)
-
-        container = QWidget()
-        cl = QVBoxLayout(container)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(1)
-        for nav_key, label, icon_key in items:
-            row = self._nav_row(
-                label, self._cat_color(cat), icon_key=icon_key,
-                nav_key=nav_key, badge=badges.get(nav_key),
-                line_only=line_only)
-            cl.addWidget(row)
-
-        header = self._nav_header(title, cat)
-        header.mousePressEvent = (
-            lambda _e, t=title: self._toggle_section(t))
-        parent.addWidget(header)
-        parent.addWidget(container)
-        self._sections[title] = container
-        return container
-
-    def _build_sidebar(self):
-        side = QFrame()
-        side.setObjectName("Sidebar")
-        side.setFixedWidth(272)
-        lay = QVBoxLayout(side)
-        lay.setContentsMargins(16, 24, 16, 18)
-        lay.setSpacing(0)
-
-        # sidebar-background-fix.html layers: violet glow top + cyan glow
-        # bottom + dot grid (kept a touch lighter than the 0.5 reference
-        # opacity) + hairline edge seam on the right border.
-        self._sb_back = _SidebarBackdrop(side)
-        self._sb_back.lower()
-
-        # Scrollable navigation (prevents overflow at small window sizes).
-        scroll = QScrollArea()
-        self._nav_scroll = scroll
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }")
-        nav = QWidget()
-        nav.setMaximumWidth(240)
-        nav_lay = QVBoxLayout(nav)
-        nav_lay.setContentsMargins(0, 0, 0, 0)
-        nav_lay.setSpacing(1)
-
-        self._sections = {}   # title -> container widget
-
-        # ---- Branding ----
-        brand = QHBoxLayout()
-        brand.setSpacing(12)
-        brand.setContentsMargins(8, 6, 8, 22)
-        mark = AppLogo(size=38)
-        brand.addWidget(mark)
-        bbox = QVBoxLayout()
-        bbox.setSpacing(2)
-        btitle = QLabel(APP_NAME)
-        btitle.setObjectName("BrandTitle")
-        bbox.addWidget(btitle)
-        bsub = QLabel("Performance Suite")
-        bsub.setObjectName("BrandSub")
-        bbox.addWidget(bsub)
-        brand.addLayout(bbox)
-        brand.addStretch()
-        nav_lay.addLayout(brand)
-
-        # ---- Dashboard ----
-        nav_lay.addSpacing(16)
-        nav_lay.addWidget(self._nav_row(
-            "Dashboard", self.CAT_INK, icon_key="home",
-            nav_key="dashboard", target="dashboard"))
-
-        # ---- FPS (collapsible) ----
-        self._add_nav_section(nav_lay, "FPS", "fps", [
-            ("tweak:cpu", "CPU", "cpu"),
-            ("tweak:gpu", "GPU", "gpu"),
-            ("tweak:ram", "RAM", "ram"),
-            ("tweak:games", "Games", "games"),
-            ("tweak:fpsboost", "FPS boost", "fpsboost"),
-        ])
-
-        # ---- SYSTEM TWEAKS (collapsible) ----
-        self._add_nav_section(nav_lay, "System tweaks", "system", [
-            ("tweak:system", "Windows / system", "system"),
-            ("tweak:storage", "Storage", "storage"),
-            ("tweak:audio", "Audio", "audio"),
-            ("tweak:network", "Network", "network"),
-            ("qos", "Network QoS", "network"),
-        ])
-
-        # ---- INPUT DELAY (collapsible) ----
-        self._add_nav_section(nav_lay, "Input delay", "input", [
-            ("tweak:keyboard", "Keyboard", "keyboard"),
-            ("tweak:mouse", "Mouse", "mouse"),
-            ("tweak:input", "Input", "input"),
-        ])
-
-        # ---- TOOLS (collapsible) ----
-        self._add_nav_section(nav_lay, "Tools", "tools", [
-            ("tools", "Tools", "tools"),
-            ("controller", "Controller overclock", "controller"),
-            ("delay_destroyer", "Delay destroyer", "delay_destroyer"),
-            ("debloat", "Smart debloater", "debloat"),
-            ("route_analyzer", "Route analyzer", "route_analyzer"),
-        ], badges={"route_analyzer": "SOON"})
-
-        # ---- DIAGNOSTICS: one entry; every test/scan lives on the page ----
-        nav_lay.addSpacing(12)
-        nav_lay.addWidget(self._nav_line())
-        nav_lay.addSpacing(18)
-        nav_lay.addWidget(self._nav_row(
-            "Diagnostics", self.CAT_DIAG, icon_key="route_analyzer",
-            nav_key="diagnostics", target="diagnostics"))
-
-        # ---- PROFILES (collapsible) ----
-        self._add_nav_section(nav_lay, "Profiles", "profiles", [
-            ("profiles", "Game profiles", "profiles"),
-            ("tweak:fortnite", "Fortnite settings", "fortnite"),
-            ("chat", "AI assistant", "chat"),
-        ])
-
-        # ---- SYSTEM (collapsible) ----
-        self._add_nav_section(nav_lay, "System", "meta", [
-            ("settings", "Settings", "settings"),
-        ])
-
-        nav_lay.addStretch()
-
-        scroll.setWidget(nav)
-        lay.addWidget(scroll, 1)
-
-        # ---- Footer ----
-        lay.addSpacing(10)
-        lay.addWidget(self._nav_line())
-        foot = QHBoxLayout()
-        foot.setContentsMargins(12, 14, 12, 4)
-        foot.setSpacing(0)
-        ver = QLabel(f"v{APP_VERSION} \u00b7 Maximum Engine")
-        ver.setObjectName("Tag")
-        foot.addWidget(ver)
-        foot.addStretch()
-        plan = QLabel("PRO")
-        plan.setObjectName("PlanPill")
-        foot.addWidget(plan)
-        lay.addLayout(foot)
-
-        return side
-
-    # ---- Collapsible sidebar helpers ----
-
-    def _toggle_section(self, title):
-        container = self._sections.get(title)
-        if container is None:
-            return
-        container.setVisible(not container.isVisible())
-
     # ---------------- Pages ----------------
 
     def _register_pages(self):
-        self.pages["dashboard"] = DashboardPage(self.ctx, self.navigate)
-        self.pages["detect"] = DetectPage(self.ctx)
-        self.pages["tweaks"] = TweaksPage(self.ctx)
-        from ui.pages.profiles import ProfilesPage
-        self.pages["profiles"] = ProfilesPage(self.ctx)
-        self.pages["optimize"] = OptimizePage(self.ctx)
-        self.pages["tools"] = ToolsPage(self.ctx, self.navigate)
-        self.pages["chat"] = ChatPage(self.ctx)
-        self.pages["delay_destroyer"] = DelayDestroyerPage(self.ctx)
-        self.pages["debloat"] = DebloatPage(self.ctx)
-        from ui.pages.controller import ControllerPage
-        self.pages["controller"] = ControllerPage(self.ctx)
-        from ui.pages.qos import QosPage
-        self.pages["qos"] = QosPage(self.ctx)
-        from ui.pages.diagnostics import DiagnosticsPage
-        self.pages["diagnostics"] = DiagnosticsPage(self.ctx)
-        self.pages["route_analyzer"] = RouteComingSoonPage(self.ctx, self.navigate)
-        self.pages["settings"] = SettingsPage(self.ctx, self.navigate)
-        self.pages["logs"] = LogsPage()
-        for page in self.pages.values():
-            self.stack.addWidget(page)
+        """Build pages lazily: only the requested page is constructed.
+
+        Each page is built once on first navigation, so startup only pays for
+        the dashboard instead of all 14 pages ~0.8s of eager widget work. The
+        registry keeps the per-page constructor arguments so rebuilds are
+        impossible — ``self.pages[key]`` is populated once and stays cached,
+        preserving each page's live state across navigation.
+        """
+        self._page_builders = {
+            "dashboard": lambda: DashboardPage(self.ctx, self.navigate),
+            "detect": lambda: DetectPage(self.ctx),
+            "tweaks": lambda: TweakCardsPage(self.ctx, self.navigate),
+            "profiles": lambda: __import__(
+                "ui.pages.profiles", fromlist=["ProfilesPage"]).ProfilesPage(self.ctx),
+            "optimize": lambda: OptimizePage(self.ctx),
+            "tools": lambda: ToolsPage(self.ctx, self.navigate),
+            "chat": lambda: ChatPage(self.ctx),
+            "delay_destroyer": lambda: DelayDestroyerPage(self.ctx),
+            "debloat": lambda: DebloatPage(self.ctx),
+            "app_optimizers": lambda: AppOptimizersPage(self.ctx),
+            "controller": lambda: __import__(
+                "ui.pages.controller", fromlist=["ControllerPage"]).ControllerPage(self.ctx),
+            "qos": lambda: __import__(
+                "ui.pages.qos", fromlist=["QosPage"]).QosPage(self.ctx),
+            "diagnostics": lambda: __import__(
+                "ui.pages.diagnostics", fromlist=["DiagnosticsPage"]).DiagnosticsPage(self.ctx),
+            "route_analyzer": lambda: RouteComingSoonPage(self.ctx, self.navigate),
+            "pricing": lambda: __import__(
+                "ui.pages.pricing", fromlist=["PricingPage"]).PricingPage(self.ctx),
+            "settings": lambda: SettingsPage(self.ctx, self.navigate),
+            "logs": lambda: LogsPage(),
+        }
+
+    def _ensure_page(self, key):
+        """Build (once) and return the page for ``key``, registering it in
+        the stack. Missing keys return None."""
+        page = self.pages.get(key)
+        if page is not None:
+            return page
+        builder = self._page_builders.get(key)
+        if builder is None:
+            return None
+        self.pages[key] = builder()
+        self.stack.addWidget(self.pages[key])
+        return self.pages[key]
 
     def navigate(self, key):
+        # Already on this page: change nothing at all. Re-running the swap for
+        # the page that is already on screen buys nothing and costs a rebuild of
+        # the fade, a re-render and a visible flicker - most obviously when the
+        # dock logo is clicked while the Dashboard is up. The dock's own
+        # "am I already here?" check can then stay a pure UI shortcut.
+        if self._nav_ready and key == getattr(self, "_cur_key", None):
+            return
+        self._cur_key = key
+        self._nav_seq = getattr(self, "_nav_seq", 0) + 1
+        token = self._nav_seq
         page_key = key
-        if key == "tweaks":
-            self.pages["tweaks"].select(ALL_KEY)
-        elif key.startswith("tweak:"):
-            # Sidebar sub-category: show the Tweaks master view pre-filtered.
-            self.pages["tweaks"].select(key[len("tweak:"):])
+        # Whether this call is what builds the page. ``isLoading()`` cannot be
+        # trusted here: QWebEnginePage::load() is dispatched asynchronously, so
+        # a freshly built webview still reports "not loading" for a tick. A
+        # page this call created is known to need its first load.
+        created = page_key not in self.pages
+        if key.startswith("tweak:"):
+            # Dock tile: show the Tweaks master view pre-filtered.
+            created = "tweaks" not in self.pages
+            self._ensure_page("tweaks").select(key[len("tweak:"):])
             page_key = "tweaks"
         elif key.startswith("diagnostics:"):
-            # Sidebar test: open Diagnostics and pulse the matching card.
-            self.pages["diagnostics"].focus_card(key.split(":", 1)[1])
+            # Diagnostics test: open Diagnostics and pulse the matching card.
+            created = "diagnostics" not in self.pages
+            self._ensure_page("diagnostics").focus_card(key.split(":", 1)[1])
             page_key = "diagnostics"
-        if page_key not in self.pages:
+        page = self._ensure_page(page_key)
+        if page is None:
             return
-        self.stack.setCurrentWidget(self.pages[page_key])
+        self._reveal_page(page, token, needs_load=created)
         self._mark_active(key)
+
+    def _reveal_page(self, page, token=None, needs_load=False):
+        """Swap the stack without ever taking the page area offline.
+
+        The stack used to be hidden for the whole swap. That was wrong: hiding a
+        QStackedWidget leaves only SpaceBackground visible, so every navigation
+        to a page that was still loading painted the dark backdrop for as long
+        as the load took (up to the 2.5s safety net) - the dark scrim. It was
+        also what made the old page's last Chromium frame reappear on re-show.
+
+        Instead the outgoing page stays on screen until the incoming one is
+        genuinely ready, and the swap happens in one step. Readiness is
+        loadFinished for a web page (isLoading() cannot be trusted: QWebEngine
+        dispatches load() asynchronously, so a freshly built view reports "not
+        loading" for a tick, hence the explicit needs_load flag), or immediately
+        for a plain Qt page.
+        """
+        web = getattr(page, "_web", None)
+        loading = web is not None and (needs_load or self._web_loading(web))
+        state = {"done": False, "connected": False}
+
+        def reveal():
+            logger.info(f"reveal {type(page).__name__} loading={loading} "
+                        f"token={token} nav={getattr(self, '_nav_seq', 0)}")
+            if state["done"]:
+                return
+            state["done"] = True
+            if state["connected"]:
+                try:
+                    web.loadFinished.disconnect(reveal)
+                except Exception:  # noqa: BLE001 - already gone
+                    pass
+            # A newer click already claimed the stack: do not steal it back.
+            if token is not None and token != getattr(self, "_nav_seq", 0):
+                return
+            self._clear_widget_fade()
+            self._swap_to(page)
+
+        if loading:
+            state["connected"] = True
+            web.loadFinished.connect(reveal)
+            QTimer.singleShot(2500, reveal)  # safety net only
+        else:
+            reveal()
+
+    def _swap_to(self, page):
+        """Fade the incoming page up from nothing, without a full-opacity frame.
+
+        _fade_page_in() injects its animation AFTER the page is already visible,
+        so the page used to paint at full opacity for a frame, drop to opacity 0
+        and fade back up - a visible flash on every navigation. Priming the new
+        page to opacity 0 while it is still off screen means the swap itself
+        happens at zero opacity, and the fade only ever runs forwards from there.
+        """
+        web = getattr(page, "_web", None)
+
+        def do_swap(_=None):
+            logger.info(f"swap -> {type(page).__name__} "
+                        f"(from {type(self.stack.currentWidget()).__name__})")
+            if self.stack.currentWidget() is not page:
+                self.stack.setCurrentWidget(page)
+            page._mx_revealed = True
+            self._fade_page_in(page)
+
+        if web is None:
+            do_swap()
+            return
+        web.page().runJavaScript(
+            "(function(){try{"
+            "var s=document.getElementById('__mxPrime');"
+            "if(!s){s=document.createElement('style');s.id='__mxPrime';"
+            "(document.head||document.documentElement).appendChild(s);}"
+            "s.textContent='body>*{opacity:0}';"
+            "}catch(e){}})()",
+            do_swap)
+
+    def _fade_widget_page_in(self, page, ms=320):
+        """Fade a plain Qt page in, so it matches the web pages.
+
+        Plain Qt pages have no document to animate. ``_fade_page_in`` used to
+        return immediately for them, so the page hard-cut into the stack while
+        the dock panel was still animating closed over it. Coming out of a web
+        page that eases in over 320ms, that cut is what read as a glitch - the
+        transition was not slow, it was inconsistent, and it had no easing at
+        all to sit next to the dock's own animation.
+
+        A QGraphicsOpacityEffect still cannot be used when the page embeds a
+        native QWebEngineView: Qt draws the effect into a texture that the
+        native child never joins, so the page renders empty and the window
+        backdrop shows through for the whole animation. Those pages keep the
+        instant swap. Pages that do not embed one (the tweak card grids) fade
+        normally.
+        """
+        if page.findChild(QWebEngineView) is not None:
+            return
+        # A second navigation landing mid-fade: drop the stale effect first so
+        # the new page is not left stuck at a partial opacity.
+        self._clear_widget_fade()
+        try:
+            eff = QGraphicsOpacityEffect(page)
+            eff.setOpacity(0.0)
+            page.setGraphicsEffect(eff)
+        except Exception:  # noqa: BLE001 - never block a navigation on styling
+            return
+        anim = QPropertyAnimation(eff, b"opacity", self)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        # Keep a reference: a QPropertyAnimation with no owner is collected and
+        # the fade dies halfway, leaving the page at partial opacity.
+        self._widget_fade = anim
+        self._widget_fade_page = page
+
+        def _done():
+            if getattr(self, "_widget_fade", None) is anim:
+                self._widget_fade = None
+                self._widget_fade_page = None
+            # Clear the effect once done. Left in place it keeps the whole
+            # subtree in an offscreen buffer, which is expensive for a card grid
+            # and breaks the page's own painting after the animation ends.
+            try:
+                page.setGraphicsEffect(None)
+            except Exception:  # noqa: BLE001
+                pass
+
+        anim.finished.connect(_done)
+        anim.start()
+
+    def _clear_widget_fade(self):
+        """Drop any in-flight widget fade, leaving the page fully opaque.
+
+        Stopping the animation is not enough on its own: the page keeps the
+        QGraphicsOpacityEffect it was given, frozen part-way through. That left
+        hidden pages holding a stale effect at a partial opacity and an
+        offscreen buffer for their whole subtree, so the page came back dimmed
+        the next time it was shown.
+        """
+        anim = getattr(self, "_widget_fade", None)
+        page = getattr(self, "_widget_fade_page", None)
+        if anim is not None:
+            try:
+                anim.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        self._widget_fade = None
+        self._widget_fade_page = None
+        if page is not None:
+            try:
+                page.setGraphicsEffect(None)
+            except Exception:  # noqa: BLE001
+                pass
+
+    @staticmethod
+    def _web_loading(web):
+        try:
+            return bool(web.page().isLoading())
+        except Exception:  # noqa: BLE001 - treat unknown as "loaded"
+            return False
+
+    def _fade_page_in(self, page):
+        """Ease the page in *inside its own document*.
+
+        A QGraphicsOpacityEffect on the page widget cannot be used: the page
+        hosts a native QWebEngineView, and Qt draws an effect into a texture
+        that the native child never joins, so the page renders empty and the
+        dark SpaceBackground shows through for the whole animation. Animating
+        the document's own children keeps the page painted instead, and nothing
+        outside the page is ever dimmed.
+
+        These pages leave ``html``/``body`` transparent and paint the backdrop
+        on a child, so fading that child would expose the dark window behind the
+        page. The backdrop is therefore promoted onto ``html`` (copied from the
+        element that already paints it) before the children fade. If no child
+        paints a backdrop, the fade is skipped rather than risk a dark frame.
+        Plain Qt pages have no document and simply appear.
+        """
+        web = getattr(page, "_web", None)
+        if web is None:
+            self._fade_widget_page_in(page)
+            return
+        web.page().runJavaScript(
+            "(function(){try{"
+            "var k='mxPageIn';"
+            # Drop the off-screen prime first, on every path. It is what holds
+            # the page at opacity 0 until this moment, so it has to go before
+            # anything can return early - a page with no backdrop child used to
+            # hit the 'skip' return and would otherwise stay invisible. The
+            # mxPageIn animation starts from opacity 0, so handing over here
+            # never shows a full-opacity frame.
+            "var pr=document.getElementById('__mxPrime');if(pr)pr.remove();"
+            "var kids=document.body?Array.prototype.slice.call("
+            "document.body.children):[];"
+            "var src=null;"
+            "for(var i=0;i<kids.length;i++){var c=getComputedStyle(kids[i]);"
+            "if(c.backgroundColor!=='rgba(0, 0, 0, 0)'||"
+            "(c.backgroundImage&&c.backgroundImage!=='none')){src=kids[i];break;}}"
+            "if(!src||!kids.length)return 'skip';"
+            "var s=document.getElementById('__mxPageInStyle');"
+            "if(!s){s=document.createElement('style');s.id='__mxPageInStyle';"
+            "document.head.appendChild(s);}"
+            "var sc=getComputedStyle(src);"
+            "s.textContent='html{background-color:'+sc.backgroundColor+';"
+            "background-image:'+sc.backgroundImage+';}'"
+            "+'body>*.'+k+'{animation:mxPageIn .32s "
+            "cubic-bezier(.22,1,.36,1) both}'"
+            "+'@keyframes mxPageIn{from{opacity:0}}';"
+            "for(var j=0;j<kids.length;j++){var e=kids[j];"
+            "e.classList.remove(k);void e.offsetWidth;e.classList.add(k);}"
+            "setTimeout(function(){for(var m=0;m<kids.length;m++)"
+            "{kids[m].classList.remove(k);}},800);"
+            "return 'ok:'+kids.length;}catch(e){return 'err:'+e;}})()")
+
+    def eventFilter(self, obj, event):
+        """Dismiss the dock popover on anything outside it.
+
+        The popover is a glass overlay, so it has to be able to close when the
+        user clicks the page behind it. Filtering on the stack catches clicks
+        and key presses from every page, including the ones rendered inside
+        embedded QtWebEngine views, which otherwise consume both."""
+        if obj is self.stack:
+            if event.type() == event.Type.MouseButtonPress:
+                self.dock.close_panel()
+            elif (event.type() == event.Type.KeyPress
+                    and event.key() == Qt.Key_Escape):
+                self.dock.close_panel()
+        return super().eventFilter(obj, event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.space.setGeometry(self.rect())
+        self.dock.raise_()
 
     def closeEvent(self, event):
         dashboard = self.pages.get("dashboard")
@@ -508,16 +527,7 @@ class MainWindow(QWidget):
         super().closeEvent(event)
 
     def _mark_active(self, key):
-        active = None
-        for k, row in self.nav_buttons.items():
-            on = (k == key)
-            row.set_active(on)
-            if on:
-                active = row
-        # keep the clicked row visible in the scrollable nav
-        if active is not None:
-            sb = self._nav_scroll.verticalScrollBar()
-            y = active.mapTo(self._nav_scroll.widget(), QPoint(0, 0)).y()
-            vh = self._nav_scroll.viewport().height()
-            if y < sb.value() or y + active.height() > sb.value() + vh:
-                sb.setValue(max(0, y - vh // 2))
+        """Point the dock's active tile at the page that is now showing, so a
+        navigation raised from inside a page still lights up the dock."""
+        if self._nav_ready:
+            self.dock.sync(key)

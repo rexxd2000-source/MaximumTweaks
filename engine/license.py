@@ -118,8 +118,17 @@ def _license_expired(sess: dict) -> bool:
         return False
 
 
-_OFFLINE_GRACE_HOURS = 24 * 30  # 30 days — trust local session if last server
-                                 # confirmation was within this window
+# Offline grace: how long the client keeps trusting a cached session after the
+# last successful server confirmation.
+#
+# This was 24 * 30 (30 days), which contradicted the backend's documented
+# behaviour (auth_backend/README.md: a 24-hour server-side grace). The client
+# window is the one that actually decides whether the app keeps running, so
+# the permissive value was the effective policy - a revoked or re-sold key
+# stayed unlocked for a month. Both sides now use 24 hours, so a refund, a
+# chargeback or a manual revoke takes effect within a day even if the machine
+# never comes back online to hear about it.
+_OFFLINE_GRACE_HOURS = 24
 
 
 def _last_validation_age_hours(sess: dict) -> float | None:
@@ -253,7 +262,8 @@ def _friendly(code: str, server_message: str = "") -> str:
                               "operator. It resumes automatically."),
         "device_mismatch": ("This license is already activated on another PC. "
                             "Changed computers? Contact support to unlock it."),
-        "rate_limited": "Too many attempts — please wait a few minutes.",
+        "rate_limited": ("Too many activation attempts for this key. "
+                         "Please wait up to an hour and try again."),
         "invalid_token": "Your session is no longer valid. Please activate again.",
         "invalid_device": "This device could not be identified.",
         "server_error": ("The license server is not available right now. "
@@ -266,7 +276,8 @@ def _friendly(code: str, server_message: str = "") -> str:
         "ALREADY_ACTIVATED": ("This license key is already activated on "
                               "another PC. Changed computers? Contact support "
                               "to unlock it."),
-        "RATE_LIMITED": "Too many attempts — please wait a few minutes.",
+        "RATE_LIMITED": ("Too many activation attempts for this key. "
+                         "Please wait up to an hour and try again."),
         "INVALID_TOKEN": "Your session is no longer valid. Please activate again.",
         "DEVICE_MISMATCH": "This license is bound to a different PC.",
         "INVALID_DEVICE": "This device could not be identified.",
@@ -370,13 +381,19 @@ def _session_from_response(data: dict) -> dict:
                     or inner.get("license") or ""),
         "owner": (inner.get("owner") or inner.get("customer")
                   or "Maximum Tweaks License"),
+        # `plan` is the billing/licence DURATION (lifetime/monthly/yearly/
+        # custom). `tier` is the subscription level and is deliberately a
+        # separate field - a yearly Maximum licence and a yearly Foundation
+        # licence differ only in tier.
         "plan": inner.get("plan") or "lifetime",
+        "tier": inner.get("tier"),
         "customer": inner.get("customer") or "",
         "activated_at": inner.get("activated_at"),
         "expires_at": inner.get("expires_at"),
         "last_validation": inner.get("last_validation")
                            or inner.get("last_validated"),
         "device_id": inner.get("device_id"),
+        "status": inner.get("status") or "",
     }
     sess["token"] = data.get("session_token") or data.get("token") or ""
     sess["token_exp"] = data.get("token_exp") or 0
@@ -411,7 +428,7 @@ def last_refusal() -> dict | None:
     return _LAST_REFUSAL
 
 
-def _remember_refusal(data: dict, code: str) -> dict:
+def _remember_refusal(data: dict, code: str, key: str = "") -> dict:
     """Capture the server envelope for the gate's status screens."""
     global _LAST_REFUSAL
     _LAST_REFUSAL = {
@@ -422,6 +439,7 @@ def _remember_refusal(data: dict, code: str) -> dict:
         "revoked_reason": data.get("revoked_reason") or "",
         "suspended_until": data.get("suspended_until"),
         "reason": data.get("reason"),
+        "license": key or "",
     }
     return _LAST_REFUSAL
 
@@ -447,7 +465,7 @@ def activate(key: str) -> dict:
         logger.info(f"license: activated key {_mask_key(sess.get('license'))}")
         return sess
     code = data.get("error") or data.get("code") or ""
-    _remember_refusal(data, code)
+    _remember_refusal(data, code, key)
     raise LicenseError(_friendly(code, data.get("message", "")), code)
 
 
@@ -550,7 +568,7 @@ def checkin() -> tuple[str, str]:
                 "device_mismatch",
                 "INVALID_KEY", "REVOKED", "EXPIRED",
                 "DEVICE_MISMATCH"):
-        _remember_refusal(data, code)
+        _remember_refusal(data, code, sess.get("license", ""))
         logger.warn(f"license: heartbeat refused ({code})")
         return "refused", message
     return "offline", message

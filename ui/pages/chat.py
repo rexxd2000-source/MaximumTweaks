@@ -9,7 +9,9 @@ Typography stays on native system faces (Segoe UI / JetBrains Mono).
 """
 from __future__ import annotations
 
+import html as _html
 import math
+import re
 import time
 
 from PySide6.QtCore import (
@@ -59,6 +61,29 @@ _DISPLAY = '"Segoe UI", sans-serif'
 _MONO = '"JetBrains Mono", monospace'
 
 MIN_TYPING = 0.85
+
+# Light markdown -> Qt RichText (bold/italic/backtick code/headings). Keeps
+# LLM answers from showing literal "**" while staying safe: the user text is
+# HTML-escaped first, so model output can never inject markup/hrefs.
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_MD_BOLD_UNDER_RE = re.compile(r"__(.+?)__")
+_MD_ITALIC_RE = re.compile(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)")
+_MD_CODE_RE = re.compile(r"`([^`\n]+)`")
+_MD_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+(.+)$")
+
+
+def _md_to_html(text: str) -> str:
+    """Escape + light markdown -> HTML for a QLabel (RichText)."""
+    out = _html.escape(text)
+    out = _MD_CODE_RE.sub(lambda m: f"<span style='font-family:monospace;'>"
+                                   f"{m.group(1)}</span>", out)
+    out = _MD_BOLD_RE.sub(r"<b>\1</b>", out)
+    out = _MD_BOLD_UNDER_RE.sub(r"<b>\1</b>", out)
+    out = _MD_ITALIC_RE.sub(r"<i>\1</i>", out)
+    out = _MD_HEADING_RE.sub(r"<b>\1</b>", out)
+    out = _MD_BOLD_RE.sub(r"<b>\1</b>", out)          # nested inside headings
+    out = re.sub(r"\*\*+", "", out)                   # drop any unmatched **
+    return out.replace("\n", "<br>")
 
 PROMPTS = [
     ("Show my specs", "Pull a full hardware summary"),
@@ -325,7 +350,7 @@ class _ContextPanel(QFrame):
         head.addWidget(_ref_svg("eye", _PINK, 13), 0, Qt.AlignVCenter)
         ht = QLabel("What I can see")
         ht.setStyleSheet(
-            f"font-family:{_MONO}; font-size:10.5px; color:{_TEXT_4};"
+            f"font-family:{_MONO}; font-size:11px; color:{_TEXT_4};"
             f" background:transparent;")
         hf = ht.font()
         hf.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
@@ -377,7 +402,7 @@ class _ContextPanel(QFrame):
         nl = QLabel("TWEAKS APPLIED")
         nl.setAlignment(Qt.AlignCenter)
         nl.setStyleSheet(
-            f"font-size:10.5px; color:{_TEXT_6}; background:transparent;")
+            f"font-size:11px; color:{_TEXT_6}; background:transparent;")
         stl.addWidget(self.n_lbl)
         stl.addWidget(nl)
         v.addWidget(stat)
@@ -393,7 +418,7 @@ class _ContextPanel(QFrame):
             "back online.</span>")
         nb.setWordWrap(True)
         nb.setTextFormat(Qt.RichText)
-        nb.setStyleSheet("font-size:11.5px; background:transparent;")
+        nb.setStyleSheet("font-size:12px; background:transparent;")
         nl2.addWidget(nb)
         v.addWidget(note)
         v.addSpacing(14)
@@ -405,7 +430,7 @@ class _ContextPanel(QFrame):
                       "Shares links"):
             tag = QLabel(label)
             tag.setStyleSheet(
-                f"font-size:10.5px; color:{_TEXT_4};"
+                f"font-size:11px; color:{_TEXT_4};"
                 f" border:1px solid rgba(255,255,255,0.06);"
                 " border-radius:6px; padding:4px 9px;"
                 " background:transparent;")
@@ -416,7 +441,7 @@ class _ContextPanel(QFrame):
         self.clear_btn = QPushButton("Clear chat")
         self.clear_btn.setCursor(Qt.PointingHandCursor)
         self.clear_btn.setStyleSheet(
-            "QPushButton{font-size:12.5px; font-weight:600;"
+            "QPushButton{font-size:13px; font-weight:600;"
             f" color:{_TEXT_4}; background:rgba(255,255,255,0.03);"
             " border:1px solid rgba(255,255,255,0.09); border-radius:10px;"
             " padding:10px;}"
@@ -512,7 +537,7 @@ class ChatPage(QWidget):
         name.addWidget(dot, 0, Qt.AlignVCenter)
         nm = QLabel("AI Assistant")
         nm.setStyleSheet(
-            f"font-family:{_DISPLAY}; font-size:14.5px; font-weight:600;"
+            f"font-family:{_DISPLAY}; font-size:15px; font-weight:600;"
             f" color:{_TEXT_1}; background:transparent;")
         name.addWidget(nm)
         bl.addLayout(name)
@@ -580,7 +605,7 @@ class ChatPage(QWidget):
         self._hero_sub = sub
         sub.setFixedWidth(720)
         sub.setStyleSheet(
-            f"font-size:14.5px; color:{_TEXT_4}; background:transparent;")
+            f"font-size:15px; color:{_TEXT_4}; background:transparent;")
         subrow = QHBoxLayout()
         subrow.setContentsMargins(0, 0, 0, 0)
         subrow.addStretch(1)
@@ -688,7 +713,7 @@ class ChatPage(QWidget):
         self.send_btn.setCursor(Qt.PointingHandCursor)
         self.send_btn.setStyleSheet(
             "QPushButton{color:#fff;border:none;border-radius:13px;"
-            " font-size:13.5px; font-weight:600;"
+            " font-size:14px; font-weight:600;"
             " background:qlineargradient(x1:0,y1:0,x2:1,y2:0.35,"
             " stop:0 #8B6BFF, stop:1 #6D4FE0);}"
             "QPushButton:hover:enabled{background:qlineargradient("
@@ -733,22 +758,18 @@ class ChatPage(QWidget):
             self.engine_lbl.setText(
                 f"<span style='color:{_GREEN};'>\u25cf</span>"
                 f"<span style='color:{_GREEN};font-family:{_MONO};"
-                "font-size:10.5px;'> Online</span>")
+                "font-size:11px;'> Online</span>")
         else:
             self.engine_lbl.setText(
                 f"<span style='color:{_AMBER};'>\u25cf</span>"
                 f"<span style='color:{_AMBER};font-family:{_MONO};"
-                "font-size:10.5px;'> Offline mode</span>")
+                "font-size:11px;'> Offline mode</span>")
 
     # ---- messages -------------------------------------------------------
     def _add_message(self, role: str, text: str):
         self.hero.setVisible(False)
         self.msg_host.setVisible(True)
-        if "<" not in text:  # plain model/user text: keep line breaks
-            import html as _html
-            shown = _html.escape(text).replace("\n", "<br>")
-        else:
-            shown = text
+        shown = _md_to_html(text)
         bubble = QFrame()
         own = role == "user"
         bubble.setObjectName("BubbleU" if own else "BubbleA")
@@ -776,13 +797,12 @@ class ChatPage(QWidget):
         # letting Qt collapse a wordWrap label to minimum width.
         import re as _re
         from PySide6.QtGui import QFont, QFontMetrics
-        plain = _re.sub(r"<[^>]+>", " ", text)
-        plain = " ".join(plain.split("\n"))
+        measure = _re.sub(r"<[^>]+>", " ", shown)
         f = QFont(body.font())
         f.setPixelSize(13)
         fm = QFontMetrics(f)
         longest = max((fm.horizontalAdvance(line) for line in
-                       _re.sub(r"<[^>]+>", " ", text).split("\n")),
+                       measure.split("\n")),
                       default=200)
         cap = 820 if not own else 700
         target = int(max(260, min(cap, longest + 44)))

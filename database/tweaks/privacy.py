@@ -87,12 +87,4 @@ TWEAKS = validate_module("privacy", [
       changes="Denies call history access.",
       risk="safe", impact="very low", recommended="optional", admin=True,
       tags=["calls", "history", "privacy"]),
-    T("priv-012", "Disable App Sync",
-      "Turns off app and settings sync.",
-      actions=[("reg", "HKLM", r"SOFTWARE\Policies\Microsoft\Windows\SettingSync", "DisableSettingSync", 2, "DWORD")],
-      revert=[("reg", "HKLM", r"SOFTWARE\Policies\Microsoft\Windows\SettingSync", "DisableSettingSync", 0, "DWORD")],
-      why="Stops settings/app sync backgrounding.",
-      changes="Disables setting sync.",
-      risk="safe", impact="very low", recommended="optional", admin=True,
-      tags=["sync", "settings", "cloud"]),
 ])

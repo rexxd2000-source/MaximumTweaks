@@ -18,9 +18,34 @@ from maxlog import logger
 
 from . import activity, state as state_mgr
 from . import state_checker
+from .probe import invalidate_cache as invalidate_probe_cache
 from .safety import preflight
 
 ProgressCb = Callable[[int, int, str, bool, str], None]  # done,total,id,ok,summary
+
+
+# Preflight denial code -> the status a client renders. Kept as data so the
+# mapping can be asserted in tests rather than inferred from the UI strings.
+#
+#   locked          subscription does not include the tweak      -> LOCKED
+#   not_compatible  hardware/Windows simply cannot run it         -> FAIL - NOT COMPATIBLE
+#   blocked         valid plan, but this specific attempt is unsafe to run as-is
+#
+# A compatibility refusal must never surface as "locked" (the plan would be
+# blamed for the hardware) nor as a generic failure (which reads as "the app
+# tried something dangerous and broke"). These three are mutually exclusive.
+STATUS_FOR_CODE: dict[str, str] = {
+    "tier_required": "locked",
+    "not_supported": "not_compatible",
+    "incompatible": "not_compatible",
+    "no_profile": "not_compatible",
+    "win_version": "not_compatible",
+}
+
+
+def blocked_status_for(code: str | None) -> str:
+    """Map a preflight denial code to the status a client should render."""
+    return STATUS_FOR_CODE.get(code or "", "blocked")
 
 
 def run(ids: list[str], mode: str = "apply",
@@ -73,7 +98,8 @@ def run(ids: list[str], mode: str = "apply",
             if mode == "apply":
                 pf = preflight(tweak, profile=profile, mode="apply", force=force)
                 if not pf["allowed"]:
-                    results[tid] = {"ok": False, "status": "blocked",
+                    blocked_status = blocked_status_for(pf["code"])
+                    results[tid] = {"ok": False, "status": blocked_status,
                                     "detail": pf["reason"], "verified": None,
                                     "live": None, "code": pf["code"],
                                     "actions": []}
@@ -119,6 +145,7 @@ def run(ids: list[str], mode: str = "apply",
             # checker's process-global cache with PRE-apply reads, so drop it
             # before the verify or every reg/power/svc value just written is stale.
             state_checker.invalidate_cache()
+            invalidate_probe_cache()
             verified = None
             live = None
             if ok:
@@ -191,7 +218,9 @@ def run(ids: list[str], mode: str = "apply",
             elif ok and verified is False:
                 # Executed but the live system does not match the target: the
                 # change did not take effect (or was immediately reverted by the OS).
-                # Never record it as applied.
+                # Never record it as applied, and never count it as a success in
+                # the batch summary either.
+                results[tid]["ok"] = False
                 results[tid]["status"] = "unverified"
                 results[tid]["verified"] = False
                 results[tid]["live"] = live
@@ -215,7 +244,10 @@ def run(ids: list[str], mode: str = "apply",
                 f"status={results[tid]['status']} live={live} {summary}")
 
             if progress:
-                progress(idx, total, tid, bool(ok), summary)
+                # Report the RECORDED outcome, not raw execution success: an
+                # unverified apply (executed but did not stick) must show as
+                # a failure so the dialog and per-card state stay truthful.
+                progress(idx, total, tid, bool(results[tid]["ok"]), summary)
     return {"applied": applied, "results": results}
 
 

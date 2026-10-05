@@ -9,6 +9,12 @@ Every answer is grounded in the real system through the tool registry below:
     list_tweaks        -> all tweaks in a category
     check_tweak        -> live state of one tweak (active/inactive/unknown)
     recent_activity    -> the in-app activity feed
+    web_search         -> keyless web lookup (DDG + Wikipedia)
+    diagnose_issue     -> ranked list of tweaks most likely causing a
+                          reported problem (fps drop, ping, crash, boot,
+                          audio, usb...), with revert steps and live
+                          registry awareness
+    applied_risk_report -> triage of applied tweaks by risk/conflicts
 
 The tool definitions are written in the OpenAI function-calling schema so the
 same registry can be handed to a real LLM: the model calls ``name(args)`` and
@@ -40,7 +46,7 @@ from config.app_config import (
 )
 from database import BY_ID, TWEAKS
 from engine import activity, state as state_mgr
-from engine import state_checker
+from engine import state_checker, troubleshooter
 from maxlog import logger
 
 
@@ -137,6 +143,16 @@ def tool_recent_activity() -> str:
     if not rows:
         return "No activity yet this session."
     return "\n".join(f"{r['time']}  {r['kind'].upper()}  {r['text']}" for r in rows)
+
+
+def tool_diagnose_issue(description: str) -> str:
+    """Ranked, revert-first troubleshooting for a described problem."""
+    return troubleshooter.diagnose(description)
+
+
+def tool_applied_risk_report() -> str:
+    """Triage whatever is applied right now, ranked by risk/conflicts."""
+    return troubleshooter.applied_risk_report()
 
 
 _SEARCH_UA = "MaximumTweaks/2.0 (Windows; PC assistant)"
@@ -306,6 +322,27 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "diagnose_issue",
+            "description": "When the user reports a problem on their PC (fps drops/stutter, high ping/lag, crashes or BSODs, slow boot, audio crackling, USB devices dropping, thermal issues), call this with their description. Returns a ranked list of the tweaks most likely responsible on THIS machine, with why + a revert step for each, based on what is applied and what is live in the registry.",
+            "parameters": {
+                "type": "object",
+                "properties": {"description": {"type": "string",
+                                               "description": "The user's own description of the problem, quoted as closely as possible."}},
+                "required": ["description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "applied_risk_report",
+            "description": "Return every tweak applied to this system ranked by risk, including any of them that conflict with each other right now. Use when asked to audit what is applied or whether tweaks are fighting each other.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 _HANDLERS = {
@@ -316,6 +353,8 @@ _HANDLERS = {
     "check_tweak": tool_check_tweak,
     "recent_activity": tool_recent_activity,
     "web_search": tool_web_search,
+    "diagnose_issue": tool_diagnose_issue,
+    "applied_risk_report": tool_applied_risk_report,
 }
 
 
@@ -357,6 +396,21 @@ def build_system_prompt(profile: dict) -> str:
         "- Read this machine with the tools when the question is about "
         "specs, tweaks, ping, fps, or hardware \u2014 weave the facts into "
         "natural sentences, never dump raw lists.\n"
+        "- WHENEVER the user reports a problem OR asks whether a tweak could "
+        "be causing one (fps drops, stutter, high ping, crashes, freezes, "
+        "slow boot, audio crackling, USB disconnects, overheating, anything "
+        "\u201cacting up\u201d), call diagnose_issue with their words FIRST. "
+        "It reads their registry and what's applied, and returns the "
+        "specific tweaks most likely responsible. Lead your answer with the "
+        "exact revert step for the top suspect. If it says nothing is "
+        "applied and nothing is live, say the problem looks driver/Windows "
+        "side, don't blame tweaks. Never claim a tweak that isn't applied "
+        "or live is the cause.\n"
+        "- If they ask you to audit what's applied or whether tweaks are "
+        "fighting each other, call applied_risk_report.\n"
+        "- Format: plain chat text. **bold** is fine (it renders \u2014 use "
+        "it for key labels like the revert step), but NO markdown headers, "
+        "tables, or code fences in your reply; keep it a text message.\n"
         "- Keep answers short. One or two lines is often enough. Add detail "
         "only if the user asks.\n"
         "- Be yourself: laid-back, sharp, a little witty. Never robotic.\n\n"
@@ -593,7 +647,12 @@ def _route(question: str) -> list[str]:
         tools.append("get_specs")
     elif any(k in q for k in ("applied", "what tweaks", "applied tweaks",
                               "what have", "installed", "changed")):
-        tools.append("get_applied")
+        if any(k in q for k in ("audit", "conflict", "risk", "fighting",
+                                "risky", "safe")):
+            tools.append("applied_risk_report")
+            tools.append("get_applied")
+        else:
+            tools.append("get_applied")
     elif any(k in q for k in ("recent", "activity", "what happened",
                               "did it", "log")):
         tools.append("recent_activity")
@@ -605,6 +664,16 @@ def _route(question: str) -> list[str]:
                 break
         if not tools:
             tools.append("list_tweaks")
+    elif not any(k in q for k in ("search", "google", "look up", "find me",
+                                  "wiki", "what is ", "what are ", "who is",
+                                  "who was")):
+        if any(k in q for k in ("diagnos", "troubleshoot", "audit applied",
+                                "anything wrong", "suspect")):
+            tools.append("diagnose_issue")
+            if "audit" in q or "conflict" in q or "risk" in q:
+                tools.append("applied_risk_report")
+        elif troubleshooter.looks_like_problem(q):
+            tools.append("diagnose_issue")
     elif any(k in q for k in ("search", "google", "who is", "who was",
                               "what is ", "what are ", "when was", "where is",
                               "web", "online", "news", "latest", "price",
@@ -680,7 +749,16 @@ def _demo_respond(q: str, profile: dict | None = None) -> str:
             cat = next((c for c in sorted({t["category"] for t in TWEAKS})
                         if c.lower() in q.lower()), "all")
             kwargs["category"] = cat
+        if name == "diagnose_issue":
+            kwargs["description"] = q
+        if name == "web_search":
+            kwargs["query"] = q
         results[name] = call_tool(name, profile=profile, **kwargs)
+    # diagnose_issue / applied_risk_report already return a complete answer.
+    complete = [n for n in tools
+                if n in ("diagnose_issue", "applied_risk_report")]
+    if complete:
+        return "\n\n".join(results[n] for n in tools)
     body = "\n\n".join(
         _INTROS.get(n, f"Tool '{n}':") + "\n" + results[n]
         for n in tools)

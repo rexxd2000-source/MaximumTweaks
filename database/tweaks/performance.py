@@ -11,9 +11,16 @@ T = make_T("Performance", win_default="10,11")
 CATEGORY = "Performance"
 
 TWEAKS = validate_module("performance", [
-    # ── Timer Resolution ───────────────────────────────────────────
-    T("perf-001", "Optimize System Timer Resolution",
-      "Configure Windows timer resolution behavior for lower input latency.",
+    # ── Timer Resolution (single optional diagnostic) ──────────────
+    # Merged from perf-001 / power-017 / fpsb-018 (all three wrote the same
+    # GlobalTimerResolutionRequests=1 flag) and cpu:timer_resolution (which
+    # forced GlobalTimerResolution=1 + TimerResolution=5000). None of them
+    # reliably "reduced input latency", so this is now one honest optional
+    # card that says what the flag actually does.
+    T("perf-001", "Timer Resolution Diagnostic",
+      "One optional timer card. Permits applications to request a higher "
+      "timer resolution; it does not force 0.5 ms. Games already request "
+      "the resolution they need, so this rarely changes anything.",
       actions=[
           ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\kernel",
            "GlobalTimerResolutionRequests", 1, "DWORD"),
@@ -22,13 +29,18 @@ TWEAKS = validate_module("performance", [
           ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\kernel",
            "GlobalTimerResolutionRequests", 0, "DWORD"),
       ],
-      why="A higher timer resolution allows the system to poll input devices "
-          "more frequently, reducing input latency in games.",
-      changes="Enables global timer resolution requests for lower latency.",
-      risk="advanced", impact="moderate", recommended="advanced",
+      why="Merged four overlapping timer tweaks into this single diagnostic. "
+          "The flag merely lets applications obtain finer timers on request; "
+          "it never forces 0.5 ms resolution and carries no guaranteed "
+          "latency benefit. Keep it optional and benchmark before/after.",
+      changes="Sets GlobalTimerResolutionRequests=1 (permits high-resolution "
+              "timer requests; it does not force one).",
+      risk="low", impact="low", recommended="optional",
       admin=True,
-      warn="Behavior varies by CPU and Windows build — benchmark before/after.",
-      tags=["timer", "latency", "input"]),
+      warn="Does not force a faster timer - behavior varies by CPU and "
+           "Windows build, benchmark before/after.",
+      tags=["timer", "resolution", "latency", "diagnostic"],
+      updated="2026-09-27"),
 
     # ── Game Mode ──────────────────────────────────────────────────
     T("perf-002", "Enable Game Mode",
@@ -97,41 +109,6 @@ TWEAKS = validate_module("performance", [
       tags=["superfetch", "sysmain", "memory"]),
 
     # ── Page Combining ─────────────────────────────────────────────
-    T("perf-006", "Disable Page Combining",
-      "Disable Windows page combining which can increase memory management "
-      "overhead.",
-      actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management",
-           "DisablePageCombining", 1, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management",
-           "DisablePageCombining"),
-      ],
-      why="Page Combining scans memory for duplicate pages and merges them. "
-          "This adds CPU overhead with minimal benefit on modern systems.",
-      changes="Disables Windows page combining.",
-      risk="safe", impact="low", recommended="optional",
-      admin=True,
-      tags=["memory", "page", "combining"]),
-
-    # ── Fast Startup ───────────────────────────────────────────────
-    T("perf-007", "Disable Fast Startup",
-      "Disable Windows Fast Startup for cleaner boots.",
-      actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
-           "HiberbootEnabled", 0, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
-           "HiberbootEnabled", 1, "DWORD"),
-      ],
-      why="Fast Startup saves a hibernation file at shutdown. Disabling it "
-          "gives cleaner boots and avoids potential driver state issues.",
-      changes="Disables Windows Fast Startup.",
-      risk="safe", impact="low", recommended="optional",
-      admin=True,
-      tags=["startup", "boot", "power"]),
 
     # ── Hibernation ────────────────────────────────────────────────
     T("perf-008", "Disable Hibernation",
@@ -172,23 +149,6 @@ TWEAKS = validate_module("performance", [
       tags=["update", "network", "background"]),
 
     # ── Visual Effects ─────────────────────────────────────────────
-    T("perf-010", "Disable Unnecessary Visual Effects",
-      "Reduce Windows visual effects for better performance.",
-      actions=[
-          ("reg", "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-           "VisualFXSetting", 2, "DWORD"),
-      ],
-      revert=[
-          ("reg", "HKCU", r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-           "VisualFXSetting", 0, "DWORD"),
-      ],
-      why="Visual effects like animations and transparency consume GPU/CPU "
-          "resources. Disabling them improves UI responsiveness.",
-      changes="Disables unnecessary visual effects.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["visual", "effects", "ui"]),
-
-
 
     # ── Notifications ──────────────────────────────────────────────
     T("perf-012", "Disable Toast Notifications",
@@ -207,22 +167,33 @@ TWEAKS = validate_module("performance", [
       risk="safe", impact="low", recommended="optional",
       tags=["notifications", "toast", "ui"]),
 
-    # ── Interrupt Moderation ───────────────────────────────────────
-    T("perf-013", "Disable Interrupt Moderation",
-      "Disable network interrupt moderation for lower latency.",
+    # ── Interrupt Moderation (adapter-specific, experimental) ──────
+    # Replaces the old netsh autotune/chimney pair (which never touched
+    # interrupt moderation at all) and the blanket regall write: the netadp
+    # engine op only touches active physical adapters that actually expose the
+    # Interrupt Moderation property, using driver-valid values only.
+    T("perf-013", "Disable NIC Interrupt Moderation",
+      "Disables Interrupt Moderation on each active physical network "
+      "adapter that exposes the setting (detect-first, revert-safe).",
       actions=[
-          ("cmd", "netsh int tcp set global autotuninglevel=normal"),
-          ("cmd", "netsh int tcp set global chimney=disabled"),
+          ("netadp", "interrupt_moderation"),
       ],
       revert=[
-          ("cmd", "netsh int tcp set global autotuninglevel=normal"),
-          ("cmd", "netsh int tcp set global chimney=default"),
+          ("netadp", "interrupt_moderation_revert"),
       ],
-      why="Interrupt moderation batches network interrupts to reduce CPU usage "
-          "but adds latency. Disabling it improves network responsiveness.",
-      changes="Disables network interrupt moderation.",
-      risk="safe", impact="moderate", recommended="recommended",
-tags=["network", "interrupt", "latency"]),
+      why="Interrupt moderation batches interrupts to save CPU, adding a "
+          "little latency per packet. On Realtek adapters under heavy "
+          "packet load that can show as input/network jitter, but results "
+          "are hardware-specific - so this is experimental and you should "
+          "benchmark before/after.",
+      changes="Disables Interrupt Moderation only where the adapter exposes "
+              "it, with driver-valid values (global netsh tuning untouched).",
+      risk="low", impact="low", recommended="experimental",
+      admin=True,
+      warn="Adapter-specific and experimentally beneficial - some drivers "
+           "raise CPU use with moderation off; benchmark before/after.",
+      tags=["network", "interrupt", "moderation", "latency", "experimental", "adapter"],
+      updated="2026-09-27"),
 
     # ── Interrupt Affinity ─────────────────────────────────────────
     T("perf-019", "Optimize Interrupt Affinity",
@@ -243,47 +214,14 @@ tags=["network", "interrupt", "latency"]),
       tags=["interrupt", "irq", "latency"]),
 
     # ── MSI Mode ───────────────────────────────────────────────────
-    T("perf-020", "Enable MSI Mode for GPU",
-      "Enable Message Signaled Interrupts for GPU if supported.",
-      actions=[
-          ("guidance", "MSI mode can reduce GPU latency by allowing the GPU to "
-           "use message-signaled interrupts instead of line-based interrupts. "
-           "Enable this through Device Manager > Display adapter > Properties > "
-           "Advanced > Interrupt Mode if available."),
-      ],
-      revert=[
-          ("guidance", "Disable MSI mode through Device Manager if it causes issues."),
-      ],
-      why="MSI mode allows the GPU to communicate via memory writes instead of "
-          "dedicated interrupt lines, reducing latency and improving performance.",
-      changes="Provides guidance on enabling MSI mode for GPU.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["msi", "gpu", "interrupts"]),
 
     # ── Turbo Boost ────────────────────────────────────────────────
-    #  NEW TWEAKS — perf-026 through perf-055
+    #  perf-026 / perf-032 / perf-044 / perf-045 removed as exact duplicates
+    #  (power-021 / adv-006 / net-009 / pre-006 ship as the canonical cards);
+    #  perf-030-031 / perf-033-043 / perf-046-055 remain below.
     # ═══════════════════════════════════════════════════════════════
 
     # ── Power Throttling ──────────────────────────────────────────
-    T("perf-026", "Disable Power Throttling",
-      "Disable Windows Power Throttling to prevent the OS from throttling "
-      "CPU performance for background-classified threads.",
-      actions=[
-          ("reg", "HKLM",
-           r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
-           "PowerThrottlingOff", 1, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM",
-           r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
-           "PowerThrottlingOff"),
-      ],
-      why="Power Throttling can reduce CPU frequency for background processes, "
-          "but may cause frame drops when the system misclassifies game threads.",
-      changes="Disables Windows Power Throttling globally.",
-      risk="safe", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["power", "throttling", "cpu"]),
 
     # ── Timer Coalescing ──── REMOVED (duplicate of perf-001) ──
     # ── Timer Resolution & Multimedia ──── REMOVED (duplicate of perf-001) ──
@@ -332,25 +270,6 @@ tags=["network", "interrupt", "latency"]),
     # ── HPET Enable ─────────────────────────────────────────────
 
     # ── Win32PrioritySeparation ──────────────────────────────────
-    T("perf-032", "Set Win32PrioritySeparation",
-      "Configure CPU thread priority separation for foreground-optimized "
-      "scheduling.",
-      actions=[
-          ("reg", "HKLM",
-           r"SYSTEM\CurrentControlSet\Control\PriorityControl",
-           "Win32PrioritySeparation", 26, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM",
-           r"SYSTEM\CurrentControlSet\Control\PriorityControl",
-           "Win32PrioritySeparation"),
-      ],
-      why="Win32PrioritySeparation controls how the scheduler divides CPU time. "
-          "Value 26 provides short quanta with a foreground boost for gaming.",
-      changes="Sets Win32PrioritySeparation to 26 for foreground-optimized scheduling.",
-      risk="low", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["priority", "scheduler", "foreground"]),
 
     # ── Performance Decrease Policy ──────────────────────────────
     T("perf-034", "Set Processor Performance Decrease Policy",
@@ -388,22 +307,6 @@ tags=["network", "interrupt", "latency"]),
       risk="safe", impact="low", recommended="optional",
       admin=True,
       tags=["usb", "selective", "suspend", "input"]),
-
-    # ── NTFS Last Access ─────────────────────────────────────────
-    T("perf-036", "Optimize NTFS Last Access",
-      "Disable NTFS last access timestamp updates to reduce disk I/O.",
-      actions=[
-          ("cmd", "fsutil behavior set disablelastaccess 1"),
-      ],
-      revert=[
-          ("cmd", "fsutil behavior set disablelastaccess 0"),
-      ],
-      why="NTFS updates the last access timestamp for every file read, adding "
-          "disk I/O overhead. Disabling this reduces unnecessary disk writes.",
-      changes="Disables NTFS last access timestamp updates.",
-      risk="low", impact="low", recommended="optional",
-      admin=True,
-      tags=["ntfs", "disk", "io", "timestamp"]),
 
     # ── TRIM ─────────────────────────────────────────────────────
     T("perf-037", "Force TRIM",
@@ -485,45 +388,8 @@ tags=["network", "interrupt", "latency"]),
       tags=["memory", "page", "combining"]),
 
     # ── MMCSS Network Throttling ─────────────────────────────────
-    T("perf-044", "Disable MMCSS Network Throttling",
-      "Disable MMCSS network throttling for maximum network throughput.",
-      actions=[
-          ("reg", "HKLM",
-           r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-           "NetworkThrottlingIndex", 0xFFFFFFFF, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM",
-           r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-           "NetworkThrottlingIndex"),
-      ],
-      why="MMCSS network throttling limits network packet processing during "
-          "multimedia playback. Disabling it ensures full network speed for gaming.",
-      changes="Disables MMCSS network throttling (sets index to 0xFFFFFFFF).",
-      risk="safe", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["mmcss", "network", "throttling"]),
 
     # ── MMCSS SystemResponsiveness ───────────────────────────────
-    T("perf-045", "Optimize MMCSS SystemResponsiveness",
-      "Set MMCSS system responsiveness to minimum for gaming workloads.",
-      actions=[
-          ("reg", "HKLM",
-           r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-           "SystemResponsiveness", 10, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM",
-           r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
-           "SystemResponsiveness"),
-      ],
-      why="SystemResponsiveness controls how much CPU is reserved for "
-          "background tasks. Setting it to 10 reserves a small amount for "
-          "system services while giving most CPU to foreground games.",
-      changes="Sets MMCSS SystemResponsiveness to 10 for gaming performance.",
-      risk="safe", impact="moderate", recommended="recommended",
-      admin=True,
-      tags=["mmcss", "responsiveness", "cpu"]),
 
     # ── Background Maintenance ───────────────────────────────────
     T("perf-046", "Disable Background Maintenance",
@@ -570,29 +436,9 @@ tags=["network", "interrupt", "latency"]),
       admin=True,
       tags=["irp", "network", "lan", "smb"]),
 
-    # ── Network Throttling ──── REMOVED (was setting default value=10) ──
+# ── Network Throttling ──── REMOVED (was setting default value=10) ──
 
-    # ── Fullscreen Exclusive (DirectX) ───────────────────────────
-    T("perf-051", "Enable FSE (Fullscreen Exclusive)",
-      "Enable DirectX fullscreen exclusive mode for better gaming "
-      "performance and lower latency.",
-      actions=[
-          ("reg", "HKCU",
-           r"SOFTWARE\Microsoft\DirectX\UserGpuPreferences",
-           "DirectXUserGlobalSettings",
-           "DisableFullscreenOptimizations=1", "STRING"),
-      ],
-      revert=[
-          ("regdel", "HKCU",
-           r"SOFTWARE\Microsoft\DirectX\UserGpuPreferences",
-           "DirectXUserGlobalSettings"),
-      ],
-      why="Fullscreen Exclusive mode bypasses the Desktop Window Manager, "
-          "reducing input latency and giving the game direct control over "
-          "the display output.",
-      changes="Enables DirectX fullscreen exclusive mode.",
-      risk="safe", impact="moderate", recommended="recommended",
-      tags=["fse", "fullscreen", "directx", "display"]),
+    # ── Fullscreen Exclusive (DirectX) ──── MERGED INTO wgr-013 ──
 
     # ── DPC Latency Logging ──── REMOVED (undocumented registry hack) ──
 

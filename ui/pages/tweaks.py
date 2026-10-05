@@ -48,6 +48,7 @@ from ui.widgets import (
     IconTile,
     TweakCard,
     clear_layout,
+    nav_icon_pixmap,
     qss_rgba,
     toast,
 )
@@ -100,26 +101,19 @@ HEADER_TITLES = {
     "power": "Power Tweaks",
 }
 
-HEADER_ICONS = {
-    "cpu": "\u2b22",
-    "gpu": "\u25c6",
-    "ram": "\u2588",
-    "input": "\u2694",
-    "mouse": "\u21a8",
-    "keyboard": "\u2328",
-    "network": "\u2637",
-    "storage": "\u25b6",
-    "system": "\u2699",
-    "performance": "\u26a1",
-    "fortnite": "\u25c9",
-    "games": "\u2605",
-    "laptop": "\u25c8",
-    "power": "\u26a1",
-}
-
 
 class TweaksPage(QWidget):
-    """All tweaks in one place — sidebar-driven, searchable, sortable."""
+    """All tweaks in one place — sidebar-driven, searchable, sortable.
+
+    DEAD CODE — not reachable from the running app. ``ui.main_window`` maps
+    the "tweaks" route to :class:`ui.pages.tweak_cards.TweakCardsPage`
+    (a QWebEngineView over tweak_cards.html); this class is never imported
+    or instantiated anywhere in the project. Its CPU category picker is a
+    second, divergent implementation of a flow that now lives in
+    tweak_cards.py/_html — do not extend it, and do not use it to reason
+    about what the app actually renders. Kept only in case the native page
+    is ever revived; delete it rather than maintain both.
+    """
 
     MIN_CARD_W = 240
     MAX_COLS = 4
@@ -141,6 +135,10 @@ class TweaksPage(QWidget):
         self._batch_ids: list[str] = []
         self._batch_mode = "apply"
         self._gpu_selected_vendor: str | None = None
+        # CPU page is a two-step flow: the category picker is always shown
+        # first, and the tweak list only after a category has been chosen.
+        self._cpu_view = "select"
+        self._cpu_selected_family: str | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -185,6 +183,7 @@ class TweaksPage(QWidget):
             root.addWidget(self.header)
             root.addSpacing(14)
             toolbar = self._build_toolbar()
+            self.toolbar = toolbar
             toolbar.setObjectName("search-bar-container")
             root.addWidget(toolbar)
             root.addSpacing(12)
@@ -195,6 +194,10 @@ class TweaksPage(QWidget):
             root.addWidget(self.ram_selector)
             self.gpu_selector = self._build_gpu_selector()
             root.addWidget(self.gpu_selector)
+            self.cpu_selector = self._build_cpu_selector()
+            root.addWidget(self.cpu_selector)
+            self.cpu_tweak_bar = self._build_cpu_tweak_bar()
+            root.addWidget(self.cpu_tweak_bar)
 
         # ---- Card grid (expands to fill the viewport so no raw page
         # background ever shows around the cards; the last row stretches)
@@ -249,7 +252,7 @@ class TweaksPage(QWidget):
             "Toggle the optimizations you want \u2014 tweaks are pre-checked for "
             "your hardware, and each flips instantly.")
         self.blurb_lbl.setStyleSheet(
-            f"font-size: 13.5px; color: {T['text_dim']}; background: transparent;")
+            f"font-size: 14px; color: {T['text_dim']}; background: transparent;")
         self.blurb_lbl.setWordWrap(True)
         box.addWidget(self.title_lbl)
         box.addWidget(self.blurb_lbl)
@@ -262,7 +265,7 @@ class TweaksPage(QWidget):
         ppl = QHBoxLayout(pill)
         ppl.setContentsMargins(16, 9, 16, 9)
         ppl.setSpacing(14)
-        mono = ("font-family: 'JetBrains Mono', monospace; font-size: 11.5px;"
+        mono = ("font-family: 'JetBrains Mono', monospace; font-size: 12px;"
                 " background: transparent;")
         self.stat_rec = QLabel()
         self.stat_rec.setStyleSheet(mono)
@@ -289,8 +292,19 @@ class TweaksPage(QWidget):
     def _header_for(self, key) -> tuple[str, str]:
         if key == ALL_KEY:
             return ("Optimize Your PC",
-                    "Toggle the optimizations you want \u2014 tweaks are pre-checked "
+                    "Toggle the optimizations you want — tweaks are pre-checked "
                     "for your hardware, and each flips instantly.")
+
+        if key == "cpu" and getattr(self, "_cpu_view", "select") == "tweaks":
+            # In the tweak view the header names the chosen category, so the
+            # active selection is always visible above its own cards.
+            from ui.categories import CPU_FAMILIES
+            fams = {f["key"]: f for f in CPU_FAMILIES}
+            fam = fams.get(getattr(self, "_cpu_selected_family", None))
+            if fam:
+                return (f"{fam['label']} CPU Tweaks",
+                        f"Only the tweaks that apply to {fam['label']} are "
+                        f"listed here. Change the category at any time.")
 
         meta = CATEGORY_GROUPS.get(key)
         if meta:
@@ -339,8 +353,10 @@ class TweaksPage(QWidget):
         sl = QHBoxLayout(search_box)
         sl.setContentsMargins(10, 0, 6, 0)
         sl.setSpacing(6)
-        icon = QLabel("\u2315")
+        icon = QLabel()
         icon.setObjectName("SearchIcon")
+        icon.setPixmap(nav_icon_pixmap("search", "#8f93a6", 15))
+        icon.setFixedSize(15, 15)
         sl.addWidget(icon)
         sl.addWidget(self.search, 1)
         lay.addWidget(search_box, 1)
@@ -468,7 +484,7 @@ class TweaksPage(QWidget):
             bl.setSpacing(2)
             cap = QLabel(label)
             cap.setStyleSheet(
-                "font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px; "
+                "font-size: 10px; font-weight: 700; letter-spacing: 1.2px; "
                 "color: #575C6B; background: transparent;")
             bl.addWidget(cap)
             val = QLabel("\u2014")
@@ -685,6 +701,237 @@ class TweaksPage(QWidget):
         self.page = 1
         self.refresh()
 
+    def _build_cpu_selector(self):
+        from config.app_config import THEME as T
+        from ui.categories import CPU_FAMILIES
+        host = QWidget()
+        host.setObjectName("cpu-selector-bar")
+        lay = QVBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(12)
+
+        prompt = QLabel("Select your CPU")
+        prompt.setStyleSheet(
+            "font-size: 18px; font-weight: 700; color: #F6F4FC;"
+            " background: transparent;")
+        prompt.setAlignment(Qt.AlignCenter)
+        lay.addWidget(prompt)
+
+        sub = QLabel("Choose your CPU category to see only the optimizations "
+                     "that apply to your hardware.")
+        sub.setObjectName("PageSub")
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+        # Say plainly that this is a manual choice. Presenting the pick as
+        # "your CPU" would imply verified hardware detection, which V1 does not
+        # do - a wrong pick applies the wrong cards.
+        note = QLabel("This is a manual selection and is not verified against "
+                      "your hardware. You can change it at any time.")
+        note.setObjectName("PageSub")
+        note.setAlignment(Qt.AlignCenter)
+        note.setWordWrap(True)
+        note.setStyleSheet(
+            f"color: {T['text_dim']}; font-size: 12px; background: transparent;")
+        lay.addWidget(note)
+        lay.addSpacing(4)
+
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        for col in range(4):
+            grid.setColumnStretch(col, 1)
+        self._cpu_cards = {}
+        for i, fam in enumerate(CPU_FAMILIES):
+            key, label, sublabel = fam["key"], fam["label"], fam["sub"]
+            features, color = fam["features"], fam["color"]
+            card = QFrame()
+            card.setObjectName("CpuFamilyCard")
+            card.setCursor(Qt.PointingHandCursor)
+            # Taller than the GPU cards (100px): the CPU category names are
+            # longer, so the title wraps to two lines rather than being
+            # clipped. Same border, radius, fill and hover behaviour.
+            card.setFixedHeight(116)
+            # Four columns must be able to shrink on a normal window; without an
+            # expanding horizontal policy the un-wrapped feature text forces a
+            # minimum width per card and the whole grid overflows the page.
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            card.setMinimumWidth(0)
+            card.setStyleSheet(
+                f"QFrame#CpuFamilyCard {{ border: 2px solid {T['border']}; "
+                f"border-radius: 14px; background: {T['card']}; padding: 4px; }}"
+                f"QFrame#CpuFamilyCard:hover {{ border: 2px solid {color}; }}")
+            card_lay = QVBoxLayout(card)
+            card_lay.setContentsMargins(18, 14, 18, 14)
+            card_lay.setSpacing(4)
+            top = QHBoxLayout()
+            lbl = QLabel(label)
+            lbl.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {color};")
+            # Word wrap + Preferred, NOT Ignored: an Ignored policy discards the
+            # size hint, and in an HBox with a stretch that hands the title zero
+            # width - which left all seven category names invisible. Preferred
+            # lets it take the space it needs and wrap the rest.
+            lbl.setWordWrap(True)
+            lbl.setMinimumWidth(0)
+            lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+            top.addWidget(lbl, 1)
+            top.addStretch()
+            card_lay.addLayout(top)
+            sub_lbl = QLabel(sublabel)
+            sub_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 12px; font-weight: 600;")
+            sub_lbl.setWordWrap(True)
+            sub_lbl.setMinimumWidth(0)
+            sub_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            card_lay.addWidget(sub_lbl)
+            feat_lbl = QLabel(features)
+            feat_lbl.setStyleSheet(f"color: {T['text']}; font-size: 11px;")
+            feat_lbl.setWordWrap(True)
+            feat_lbl.setMinimumWidth(0)
+            feat_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            card_lay.addWidget(feat_lbl)
+            card.mousePressEvent = lambda _, k=key: self._on_cpu_family_clicked(k)
+            # Four per row: 7 families wrap to two rows without an orphan.
+            grid.addWidget(card, i // 4, i % 4)
+            self._cpu_cards[key] = card
+        lay.addLayout(grid)
+
+        self._cpu_status = QLabel()
+        self._cpu_status.setObjectName("PageSub")
+        self._cpu_status.setAlignment(Qt.AlignCenter)
+        self._cpu_status.setWordWrap(True)
+        self._cpu_status.setText("Click a CPU family above to filter optimizations")
+        self._cpu_status.setStyleSheet(
+            f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
+        lay.addWidget(self._cpu_status)
+
+        self._cpu_selected_family = state_mgr.get_cpu_selection()
+        host.setVisible(False)
+        return host
+
+    def _build_cpu_tweak_bar(self):
+        """Header shown above the CPU tweak list: selected category + Back.
+
+        Sits in the same visual language as the GPU vendor cards (same border,
+        radius and card fill) so the two gated flows read as one pattern.
+        """
+        from config.app_config import THEME as T
+        host = QWidget()
+        host.setObjectName("cpu-tweak-bar")
+        lay = QHBoxLayout(host)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(12)
+
+        text_box = QVBoxLayout()
+        text_box.setSpacing(2)
+        self._cpu_view_title = QLabel()
+        self._cpu_view_title.setStyleSheet(
+            f"font-size: 15px; font-weight: 700; color: {T['text']};"
+            " background: transparent;")
+        self._cpu_view_sub = QLabel()
+        self._cpu_view_sub.setObjectName("PageSub")
+        self._cpu_view_sub.setWordWrap(True)
+        self._cpu_view_sub.setStyleSheet(
+            f"font-size: 12px; color: {T['text_dim']}; background: transparent;")
+        text_box.addWidget(self._cpu_view_title)
+        text_box.addWidget(self._cpu_view_sub)
+        lay.addLayout(text_box, 1)
+
+        self._cpu_back = QPushButton("←  Change CPU")
+        self._cpu_back.setCursor(Qt.PointingHandCursor)
+        self._cpu_back.setFixedHeight(34)
+        self._cpu_back.setStyleSheet(
+            f"QPushButton {{ background: {T['card']}; color: {T['text']};"
+            f" border: 2px solid {T['border']}; border-radius: 10px;"
+            " font-size: 13px; font-weight: 700; padding: 0 16px; }}"
+            f"QPushButton:hover {{ border: 2px solid {T['accent']}; }}")
+        self._cpu_back.clicked.connect(self._cpu_show_select)
+        lay.addWidget(self._cpu_back, 0, Qt.AlignVCenter)
+        host.setVisible(False)
+        return host
+
+    def _list_hidden(self) -> bool:
+        """True while the CPU category picker owns the page.
+
+        The tweak list is suppressed entirely on the picker screen, so every
+        code path that shows list furniture (pager rebuild, relayout) defers
+        to this rather than deciding for itself.
+        """
+        return (getattr(self, "key", None) == "cpu"
+                and getattr(self, "_cpu_view", "select") == "select"
+                and not self.fixed_group)
+
+    def _cpu_set_view(self, view):
+        """Switch the CPU page between the picker and the tweak list.
+
+        'select' - only the seven category cards are shown. Entering CPU
+                   Optimization always lands here, so the flat list is never
+                   presented before a category has been chosen.
+        'tweaks'  - only the selected category's cards, under a header naming
+                   the category with a visible Back / Change CPU button.
+        """
+        if self.fixed_group or not hasattr(self, "cpu_selector"):
+            return
+        from config.app_config import THEME as T
+        from ui.categories import CPU_FAMILIES
+        self._cpu_view = view
+        selecting = view == "select"
+        picked = self._cpu_selected_family
+        fams = {f["key"]: f for f in CPU_FAMILIES}
+        on_cpu = self.key == "cpu"
+
+        self.cpu_selector.setVisible(on_cpu and selecting)
+        self.cpu_tweak_bar.setVisible(on_cpu and not selecting)
+        # Hide everything that belongs to the tweak list so the picker is a
+        # screen of its own, not a bar above a flat list.
+        for w in (self.header, getattr(self, "toolbar", None),
+                  getattr(self, "opt_host", None), self.grid_host):
+            if w is not None:
+                w.setVisible(not (on_cpu and selecting))
+        self.pager.setVisible(not (on_cpu and selecting) and self._pages > 1)
+
+        if on_cpu and not selecting and picked in fams:
+            fam = fams[picked]
+            self._cpu_view_title.setText(f"{fam['label']} CPU optimizations")
+            self._cpu_view_sub.setText(
+                f"Showing only tweaks for {fam['label']} — "
+                f"{fam.get('features', '')}. Your manual selection is "
+                "remembered, not hardware-verified, and you can change it "
+                "at any time.")
+        if on_cpu and selecting:
+            labels = {f["key"]: f["label"] for f in CPU_FAMILIES}
+            if picked:
+                self._cpu_status.setText(
+                    f"✓  Currently selected: {labels.get(picked, picked)}"
+                    f"  —  click a category to continue or change it")
+                self._cpu_status.setStyleSheet(
+                    f"color: #10B981; font-size: 13px; font-weight: 700;")
+            else:
+                self._cpu_status.setText(
+                    "↑  Select your CPU category to continue  ↑")
+                self._cpu_status.setStyleSheet(
+                    f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
+
+    def _cpu_show_select(self):
+        """Back / Change CPU - always available, per the entry flow."""
+        self._cpu_set_view("select")
+
+    def _on_cpu_family_clicked(self, family):
+        from config.app_config import THEME as T
+        from ui.categories import CPU_FAMILIES
+        self._cpu_selected_family = family
+        state_mgr.set_cpu_selection(family)
+        for k, card in self._cpu_cards.items():
+            if k == family:
+                card.setStyleSheet(
+                    f"QFrame#CpuFamilyCard {{ border: 2px solid {T['accent']}; "
+                    f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+            else:
+                card.setStyleSheet(
+                    f"QFrame#CpuFamilyCard {{ border: 2px solid {T['border']}; "
+                    f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+        self.page = 1
+        self._cpu_set_view("tweaks")
+        self.refresh()
+
     def _update_optimizer_bar(self):
         if self.fixed_group or not hasattr(self, "opt_host"):
             return
@@ -815,6 +1062,30 @@ class TweaksPage(QWidget):
                         "\u2191 Click a GPU vendor above to filter optimizations \u2191")
                     self._gpu_status.setStyleSheet(
                         f"color: {T['accent']}; font-size: 13px; font-weight: 700;")
+        if hasattr(self, "cpu_selector"):
+            is_cpu = key == "cpu"
+            self.cpu_selector.setVisible(is_cpu)
+            if is_cpu:
+                from config.app_config import THEME as T
+                from ui.categories import CPU_FAMILIES
+                labels = {f["key"]: f["label"] for f in CPU_FAMILIES}
+                for k, card in self._cpu_cards.items():
+                    border = T["accent"] if k == self._cpu_selected_family else T["border"]
+                    card.setStyleSheet(
+                        f"QFrame#CpuFamilyCard {{ border: 2px solid {border}; "
+                        f"border-radius: 14px; background: {T['card']}; padding: 4px; }}")
+                if self._cpu_selected_family:
+                    self._cpu_status.setText(
+                        f"✓  Showing {labels.get(self._cpu_selected_family, self._cpu_selected_family)} CPU optimizations")
+                else:
+                    self._cpu_status.setText(
+                        "↑ Click a CPU family above to filter optimizations ↑")
+                self._cpu_status.setStyleSheet(
+                    f"color: {T['accent'] if not self._cpu_selected_family else '#10B981'}; "
+                    f"font-size: 13px; font-weight: 700;")
+                # Re-entering CPU Optimization always lands on the picker, so
+                # the flat list is never shown before a category is chosen.
+                self._cpu_set_view("select")
         self.refresh()
 
     def refresh(self, audit=True):
@@ -1006,6 +1277,14 @@ class TweaksPage(QWidget):
         # applying one tweak never flips a chain of shared-setting tweaks on.
         self._built_sig = None
         self.refresh(audit=False)
+        # Cards denied by a missing-hardware probe render as INCOMPATIBLE so a
+        # "not supported" outcome never reads as a silent no-op.
+        for tid, card in self._cards.items():
+            r = results.get(tid) or {}
+            if r.get("code") == "not_supported":
+                card._apply_state(
+                    "incompatible",
+                    reasons=[r.get("detail") or "Not supported on this PC"])
 
     def _on_batch_done(self, result):
         self._busy = False
@@ -1019,8 +1298,12 @@ class TweaksPage(QWidget):
         verb = ("Reverted" if self._batch_mode == "revert"
                 else "Applied" if total else "Done")
         if failed:
+            unsupported = [tid for tid, r in results.items()
+                           if r.get("code") == "not_supported"]
+            tail = (f" ({len(unsupported)} not supported on this PC)"
+                    if unsupported else "")
             msg = (f"{len(ok_ids)} of {total} tweaks "
-                   f"\u2014 {failed} failed or blocked.")
+                   f"\u2014 {failed} failed or blocked{tail}.")
             toast(msg.strip(), "warning", self)
         else:
             toast(f"{verb} {total} tweak{'s' if total != 1 else ''} "
@@ -1055,6 +1338,7 @@ class TweaksPage(QWidget):
                 "cpu",
                 cpu_vendor=profile.get("cpu_vendor"),
                 is_laptop=profile.get("laptop"),
+                cpu_family=self._cpu_selected_family,
             )
         return group_tweaks(self.key)
 
@@ -1202,7 +1486,7 @@ class TweaksPage(QWidget):
 
     def _rebuild_pager(self):
         clear_layout(self.pager_lay)
-        if self._pages <= 1:
+        if self._pages <= 1 or self._list_hidden():
             self.pager.setVisible(False)
             return
         self.pager.setVisible(True)

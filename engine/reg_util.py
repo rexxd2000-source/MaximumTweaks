@@ -109,14 +109,22 @@ def _format_data(value, rtype: int) -> str:
 
 
 def _write_type(vtype) -> int | None:
-    return _WRITE_TYPES.get(str(vtype).upper())
+    """Short action token *or* reg.exe-style token -> winreg type constant.
+
+    Accepts both forms on purpose. ``read_value``/``reg_snapshot`` hand back
+    reg.exe-style names (``REG_DWORD``), and those flow straight back into
+    ``write_value`` when a snapshot is restored. Only the short form used to be
+    recognised, so every restore of a value that *had* a previous value failed
+    with an unknown type and silently left the optimized value in place.
+    """
+    return _WRITE_TYPES.get(_canon_token(vtype)) or None
 
 
 def _convert_value(value, vtype: str):
     """Convert an action-tuple value into the winreg-native Python type."""
     if isinstance(value, bool):
         value = int(value)
-    token = str(vtype).upper()
+    token = _canon_token(vtype)
     if token in ("DWORD", "QWORD"):
         if isinstance(value, str):
             return int(value, 16) if value.lower().startswith("0x") else int(value)
@@ -149,6 +157,67 @@ def read_value(hive: str, path: str, name: str) -> tuple[bool, str | None, str |
     except OSError:
         return False, None, None
     return True, _token(rtype), _format_data(value, rtype)
+
+
+# reg.exe type name / short action token -> the one key used in _WRITE_TYPES.
+# Needed because the two vocabularies disagree on more than the REG_ prefix:
+# reg.exe says REG_SZ / REG_EXPAND_SZ / REG_MULTI_SZ where the action layer says
+# STRING / EXPAND_STRING / MULTI_STRING. A snapshot records the reg.exe name and
+# is written straight back on restore, so without this table every STRING, EXPAND
+# STRING and MULTI STRING restore failed on an "unknown type".
+_TOKEN_ALIASES = {
+    "DWORD": "DWORD",
+    "QWORD": "QWORD",
+    "SZ": "STRING",
+    "STRING": "STRING",
+    "EXPAND_SZ": "EXPAND_STRING",
+    "EXPAND_STRING": "EXPAND_STRING",
+    "BINARY": "BINARY",
+    "MULTI_SZ": "MULTI_STRING",
+    "MULTI_STRING": "MULTI_STRING",
+}
+
+
+def _canon_token(token) -> str:
+    """Normalize any value-type spelling to its _WRITE_TYPES key.
+
+    Returns "" for a type this module cannot write (REG_LINK, REG_NONE, ...), so
+    callers fail loudly on those instead of writing the wrong type.
+    """
+    t = str(token or "").strip().upper()
+    if t.startswith("REG_"):
+        t = t[4:]
+    return _TOKEN_ALIASES.get(t, "")
+
+
+def value_equals(data, rtype: str | None, value, vtype: str) -> bool:
+    """True when an already-stored value equals the value we intend to write.
+
+    Needed because ``read_value`` returns *formatted* data -- DWORD as ``0x0``,
+    BINARY as space-separated hex pairs -- so a naive ``data == value`` compare
+    is never true and every "is this already correct?" check silently fails,
+    making each write look like a change and putting a pointless entry in the
+    ledger. The candidate is put through the same convert+format pipeline that
+    produced ``data``, so the comparison lives in one place and stays correct if
+    the formatting changes.
+
+    A stored type that differs from ``vtype`` counts as "not equal": that is a
+    real change (we are replacing one type with another), not a no-op.
+    """
+    if rtype is None or data is None:
+        return False
+    token = _canon_token(vtype)
+    if _canon_token(rtype) != token:
+        return False
+    native = _WRITE_TYPES.get(token)
+    if native is None:
+        return False
+    try:
+        want = _format_data(_convert_value(value, vtype), native)
+    except Exception:  # noqa: BLE001
+        return False
+    return str(data).strip().upper() == str(want).strip().upper()
+
 
 
 def map_values(hive: str, path: str) -> dict[str, tuple[str, str]]:
@@ -186,10 +255,17 @@ def write_value(hive: str, path: str, name: str, value, vtype: str) -> tuple[boo
     rtype = _write_type(vtype)
     if rtype is None:
         return False, f"unknown value type {vtype!r}"
+    # Convert before touching the key: a value that cannot be coerced (a string
+    # aimed at a DWORD, malformed hex for BINARY) must not create the key and
+    # then blow up, and this function's contract is (ok, message), never raise.
+    try:
+        data = _convert_value(value, vtype)
+    except Exception as exc:  # noqa: BLE001
+        return False, (f"cannot write {name!r}={value!r} as {_canon_token(vtype)}"
+                       f": {exc}")
     try:
         with winreg.CreateKeyEx(root, str(path), 0, winreg.KEY_WRITE) as key:
-            winreg.SetValueEx(key, _value_name(name), 0, rtype,
-                              _convert_value(value, vtype))
+            winreg.SetValueEx(key, _value_name(name), 0, rtype, data)
         return True, f"wrote {hive}\\{path} [{name}]"
     except OSError as exc:
         return False, str(exc)

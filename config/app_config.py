@@ -182,6 +182,10 @@ THEME = {
     "card_hover": "#171428",
     "border": "#1D1B28",
     "border_soft": "#141120",
+    "border_hover": "#2A313C",
+    "toast_bg": "#151B24",
+    "glass_fill": "rgba(255,255,255,0.03)",
+    "glass_border": "rgba(255,255,255,0.09)",
     "text": "#F6F4FC",
     "text_dim": "#928AAD",
     "text_faint": "#514A70",
@@ -231,7 +235,7 @@ ADMIN_NOTE = (
 )
 
 # Official community invite link (enables the Join button / sidebar).
-DISCORD_INVITE_URL = "https://discord.gg/maximum-optimizations"
+DISCORD_INVITE_URL = "https://discord.gg/UbdaqjWhwe"
 
 # Ban appeal policy hosted on the Maximum Optimizations website. The banned
 # page's "Read appeal policy" button opens this page in the user's browser.
@@ -242,6 +246,10 @@ APPEAL_POLICY_URL = "https://max-opti.co.za/appeal"
 # the license backend; sessions persist across reboots and updates.
 LICENSE_API_URL = "https://maximumtweaks.onrender.com"
 
+# Ultra Mode waitlist. The same license backend hosts /api/waitlist/*; kept a
+# separate constant so the waitlist host can be pointed somewhere else later
+# without touching the license client.
+WAITLIST_API_URL = "https://maximumtweaks.onrender.com"
 
 
 
@@ -261,3 +269,11 @@ LICENSE_API_URL = "https://maximumtweaks.onrender.com"
 
 
 
+
+
+
+# Discord/Auth API base
+try:
+    AUTH_API_URL = os.getenv("AUTH_API_URL", LICENSE_API_URL)
+except Exception:
+    AUTH_API_URL = LICENSE_API_URL

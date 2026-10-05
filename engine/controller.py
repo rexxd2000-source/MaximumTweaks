@@ -328,12 +328,13 @@ def test_controller(pad: dict, seconds: float = 2.2, stop=None) -> dict:
         avg = sum(srt) / len(srt)
         spread = max(core) - min(core)
         cons = max(0.0, min(100.0, 100.0 * (1.0 - spread / (avg * 2 + 1e-9))))
-    return {"ok": True, "path": res.get("path", "HID"),
-            "hz": round(hz), "packets": res["packets"],
-            "avg_ms": round(sum(iv) / len(iv), 2) if iv else None,
-            "consistency": round(cons, 1) if cons is not None else None,
-            "axes": res.get("axes", 0), "triggers": res.get("triggers", 0),
-            "buttons": res.get("buttons", 0)}
+        return {"ok": True, "path": res.get("path", "HID"),
+                "hz": round(hz), "packets": res["packets"],
+                "avg_ms": round(sum(iv) / len(iv), 2) if iv else None,
+                "consistency": round(cons, 1) if cons is not None else None,
+                "intervals": [round(x, 3) for x in iv[-200:]],
+                "axes": res.get("axes", 0), "triggers": res.get("triggers", 0),
+                "buttons": res.get("buttons", 0)}
 
 
 def _test_hid(pad: dict, seconds: float, stop=None) -> dict | None:
@@ -576,18 +577,28 @@ def lpm_set(never_suspend: bool) -> bool:
     never: the USB link keeps full power, so no LPM exit latency on reports).
     False deletes the override (Windows default ~375 ms). Needs reboot."""
     if never_suspend:
-        cmd = ["reg", "add", _LPM_KEY, "/v", "LpmTimeoutMs", "/t",
-               "REG_DWORD", "/d", "65535", "/f"]
-    else:
+        return lpm_set_raw(65535)
+    return lpm_set_raw(None)
+
+
+def lpm_set_raw(value: int | None) -> bool:
+    """Write LpmTimeoutMs to an exact value, or None to delete the override.
+
+    Used for revert: if the user's previous value was something other than the
+    two states lpm_set() toggles between, it is restored verbatim.
+    """
+    if value is None:
         cmd = ["reg", "delete", _LPM_KEY, "/v", "LpmTimeoutMs", "/f"]
+    else:
+        cmd = ["reg", "add", _LPM_KEY, "/v", "LpmTimeoutMs", "/t",
+               "REG_DWORD", "/d", str(int(value)), "/f"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
                            errors="ignore", creationflags=CREATE_NO_WINDOW)
         if r.returncode != 0:
             return False
-        return (lpm_get() == 65535) if never_suspend else (
-            lpm_get() is None)
-    except Exception:
+        return lpm_get() == (None if value is None else int(value))
+    except Exception:  # noqa: BLE001
         return False
 
 
@@ -603,3 +614,602 @@ def pad_chain_pm_disable(pad: dict) -> int:
         return 0
     ok = device_pm_set(insts, False)
     return len(insts) if ok else -1
+
+
+# ---------------------------------------------------------------------------
+#  Game Bar (guide-button overlay stealing focus mid-game)
+# ---------------------------------------------------------------------------
+
+_GAMEBAR_KEY = r"HKCU\Software\Microsoft\GameBar"
+_GAMEBAR_VALUE = "UseNexusForGameBarEnabled"
+
+
+def gamebar_get() -> int | None:
+    """Raw UseNexusForGameBarEnabled, or None if absent/unreadable.
+
+    This is a real per-user value (it exists on a stock install), which is why
+    it is safe to read before writing: the previous value is snapshotted and put
+    back exactly on revert rather than assumed.
+    """
+    return _reg_read_dword(_GAMEBAR_KEY, _GAMEBAR_VALUE)
+
+
+def gamebar_set(value: int) -> bool:
+    """Write UseNexusForGameBarEnabled and read it back to confirm."""
+    cmd = ["reg", "add", _GAMEBAR_KEY, "/v", _GAMEBAR_VALUE, "/t",
+           "REG_DWORD", "/d", str(int(value)), "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
+        return r.returncode == 0 and gamebar_get() == int(value)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def gamebar_delete() -> bool:
+    """Remove the override entirely, returning to the Windows default."""
+    cmd = ["reg", "delete", _GAMEBAR_KEY, "/v", _GAMEBAR_VALUE, "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
+        return r.returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  Foreground input scheduling quantum (Win32PrioritySeparation)
+# ---------------------------------------------------------------------------
+
+_PRIORITY_KEY = r"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl"
+_PRIORITY_VALUE = "Win32PrioritySeparation"
+# 0x26: short foreground quantum + no foreground boost quantum-reset. The
+# stock value is 0x2. Needs admin (HKLM).
+PRIORITY_SEPARATION_GAMING = 0x26
+
+
+def win32_prio_get() -> int | None:
+    """Raw Win32PrioritySeparation, or None when absent."""
+    return _reg_read_dword(_PRIORITY_KEY, _PRIORITY_VALUE)
+
+
+def win32_prio_set(value: int) -> bool:
+    """Set Win32PrioritySeparation and read it back. Needs admin for HKLM."""
+    cmd = ["reg", "add", _PRIORITY_KEY, "/v", _PRIORITY_VALUE, "/t",
+           "REG_DWORD", "/d", str(int(value)), "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
+        return r.returncode == 0 and win32_prio_get() == int(value)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def win32_prio_delete() -> bool:
+    """Remove the Win32PrioritySeparation override entirely."""
+    cmd = ["reg", "delete", _PRIORITY_KEY, "/v", _PRIORITY_VALUE, "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
+        return r.returncode == 0 and win32_prio_get() is None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  Bluetooth radio power saving
+# ---------------------------------------------------------------------------
+
+def bt_radio_instances() -> list[str]:
+    """Power-manageable instance ids of the machine's Bluetooth radio/adapter.
+
+    Two passes, because the radio shows up differently depending on the stack:
+    first the BTH\\* entries the power cache already knows about, then a PnP
+    query for the adapter itself. Returns [] when the machine has no Bluetooth
+    radio, so the caller can grey the row out instead of claiming a change.
+    """
+    found = [k for k in _PM_CACHE if k.lower().startswith("bth\\")]
+    if found:
+        return sorted(found)
+    out = _ps("Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | "
+              "Where-Object { $_.FriendlyName -match 'Adapter|Radio' } | "
+              "ForEach-Object { $_.InstanceId }")
+    if not out:
+        return []
+    hits = []
+    for line in out.splitlines():
+        inst = line.strip().lower()
+        if not inst or inst not in _PM_CACHE:
+            continue
+        hits.append(inst)
+    return sorted(hits)
+
+
+def driver_version(instance_id: str) -> str | None:
+    """Installed driver version for a PnP instance, or None if unavailable."""
+    if not instance_id:
+        return None
+    quoted = instance_id.replace("'", "''")
+    out = _ps("(Get-PnpDeviceProperty -InstanceId '%s' "
+              "-KeyName 'DEVPKEY_Device_DriverVersion' "
+              "-ErrorAction SilentlyContinue).Data" % quoted)
+    out = (out or "").strip()
+    return out or None
+
+
+# ---------------------------------------------------------------------------
+#  Game DVR / background recording (HKCU)
+# ---------------------------------------------------------------------------
+
+_DVR_KEY = r"HKCU\System\GameConfigStore"
+
+
+def game_dvr_get() -> bool | None:
+    """True = Game DVR recording is enabled (Windows default), False =
+    disabled, None on error. Key absent counts as enabled."""
+    try:
+        out = subprocess.run(
+            ["reg", "query", _DVR_KEY, "/v", "GameDVR_Enabled"],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(r"GameDVR_Enabled\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out)
+    if not m:
+        return True
+    return int(m.group(1), 16) != 0
+
+
+def game_dvr_set(enabled: bool) -> bool:
+    """Disable DVR (enabled=False) by zeroing GameDVR_Enabled; re-enable by
+    deleting the override so Windows uses its default."""
+    if enabled:
+        cmd = ["reg", "delete", _DVR_KEY, "/v", "GameDVR_Enabled", "/f"]
+    else:
+        cmd = ["reg", "add", _DVR_KEY, "/v", "GameDVR_Enabled",
+               "/t", "REG_DWORD", "/d", "0", "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="ignore", creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            return False
+        return game_dvr_get() == enabled
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  Multimedia scheduler reservation (HKLM) — the classic input-latency knob
+# ---------------------------------------------------------------------------
+
+_MMCSS_KEY = (r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+              r"\Multimedia\SystemProfile")
+_MMCSS_DEFAULTS = {"SystemResponsiveness": "10",
+                   "NetworkThrottlingIndex": "0x0a"}
+
+
+def mmcss_get() -> bool | None:
+    """True = low-latency mode active (responsiveness 0%, throttle unlocked)."""
+    try:
+        out = subprocess.run(
+            ["reg", "query", _MMCSS_KEY, "/v", "SystemResponsiveness"],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(r"SystemResponsiveness\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out)
+    return (int(m.group(1), 16) == 0) if m else False
+
+
+def mmcss_set(off: bool) -> bool:
+    """off=True: reserve 0% of CPU for the multimedia scheduler.
+    off=False: restore Windows default."""
+    vals = ([("SystemResponsiveness", "0")] if off
+            else [("SystemResponsiveness", "10")])
+    ok = True
+    for name, val in vals:
+        r = subprocess.run(
+            ["reg", "add", _MMCSS_KEY, "/v", name, "/t", "REG_DWORD",
+             "/d", val, "/f"],
+            capture_output=True, creationflags=CREATE_NO_WINDOW)
+        ok = ok and r.returncode == 0
+    return ok
+
+
+# ---------------------------------------------------------------------------
+#  Game DVR group policy (HKLM) — layer 2 of the DVR off knob
+# ---------------------------------------------------------------------------
+
+_GPU_POLICY_KEY = r"HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR"
+
+
+def game_dvr_policy_get() -> bool | None:
+    """True = AllowGameDVR policy forbids DVR (0). None when unset/err."""
+    try:
+        out = subprocess.run(
+            ["reg", "query", _GPU_POLICY_KEY, "/v", "AllowGameDVR"],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(r"AllowGameDVR\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out)
+    return (int(m.group(1), 16) == 0) if m else None
+
+
+def game_dvr_policy_set(off: bool) -> bool:
+    """off=True: forbid Game DVR via Group Policy. off=False: delete."""
+    if off:
+        cmd = ["reg", "add", _GPU_POLICY_KEY, "/v", "AllowGameDVR",
+               "/t", "REG_DWORD", "/d", "0", "/f"]
+    else:
+        cmd = ["reg", "delete", _GPU_POLICY_KEY, "/v", "AllowGameDVR", "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="ignore", creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            return False
+        return (game_dvr_policy_get() is True) if off \
+            else (game_dvr_policy_get() is None)
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  Game DVR legacy app capture (HKCU)
+# ---------------------------------------------------------------------------
+
+_APP_CAPTURE_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR"
+
+
+def app_capture_get() -> bool | None:
+    """True = app capture enabled (default). False = off. None = err."""
+    try:
+        out = subprocess.run(
+            ["reg", "query", _APP_CAPTURE_KEY, "/v", "AppCaptureEnabled"],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(r"AppCaptureEnabled\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out)
+    return None if not m else bool(int(m.group(1), 16))
+
+
+def app_capture_set(enabled: bool) -> bool:
+    """enabled=False kills Game DVR app capture; True deletes the override."""
+    if enabled:
+        cmd = ["reg", "delete", _APP_CAPTURE_KEY, "/v", "AppCaptureEnabled",
+               "/f"]
+    else:
+        cmd = ["reg", "add", _APP_CAPTURE_KEY, "/v", "AppCaptureEnabled",
+               "/t", "REG_DWORD", "/d", "0", "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="ignore", creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            return False
+        return app_capture_get() == enabled
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  MMCSS "Games" task priority profile (HKLM)
+# ---------------------------------------------------------------------------
+
+_GAMES_KEY = (r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+              r"\Multimedia\SystemProfile\Tasks\Games")
+
+_GAMES_HIGH = {"Priority": ("REG_DWORD", "2"),
+               "Scheduling Category": ("REG_SZ", "High"),
+               "SFIO Priority": ("REG_SZ", "High"),
+               "GPU Priority": ("REG_DWORD", "8")}
+
+
+def _reg_read_dword(key: str, name: str) -> int | None:
+    try:
+        out = subprocess.run(
+            ["reg", "query", key, "/v", name],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(name + r"\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out)
+    return int(m.group(1), 16) if m else None
+
+
+# ---------------------------------------------------------------------------
+#  Per-device "Device Parameters" power values
+#
+#  These sit on the device's own Enum key, one level below where
+#  MSPower_DeviceEnable / AllowIdleIrpInD3 lives, and are the two switches
+#  Windows actually consults for idle power on a USB/HID endpoint:
+#
+#    EnhancedPowerManagementEnabled  the "Enhanced Power Management" checkbox
+#                                    in Device Manager's Power Management tab
+#    SelectiveSuspendEnabled         the D0 idle -> suspended policy
+#
+#  Both are genuine Windows values, not invented. A value of 0 means "off",
+#  which is what the card turns on; 1/absent means Windows may power the node
+#  down. Revert deletes the value when it was absent before, so nothing is
+#  invented on disk.
+# ---------------------------------------------------------------------------
+
+_ENUM_ROOT = r"HKLM\SYSTEM\CurrentControlSet\Enum"
+
+_ENHANCED_PM = "EnhancedPowerManagementEnabled"
+_DEVICE_SUSPEND = "SelectiveSuspendEnabled"
+
+
+def devparam_get(instances: list[str], name: str) -> dict:
+    """{instance: raw DWORD or None}. None = the value is not present."""
+    out: dict = {}
+    for inst in instances or []:
+        out[inst] = _reg_read_dword(_ENUM_ROOT + "\\" + inst
+                                    + "\\Device Parameters", name)
+    return out
+
+
+def devparam_set(instances: list[str], name: str, value: int | None) -> bool:
+    """Write one DWORD to each instance, or delete it when value is None.
+
+    Returns True only if every call succeeded AND every read-back agrees, so
+    a silent permission failure cannot look like a successful apply.
+    """
+    instances = list(instances or [])
+    if not instances:
+        return False
+    for inst in instances:
+        key = _ENUM_ROOT + "\\" + inst + "\\Device Parameters"
+        cmd = (["reg", "add", key, "/v", name, "/t", "REG_DWORD",
+                "/d", str(int(value)), "/f"] if value is not None
+               else ["reg", "delete", key, "/v", name, "/f"])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               errors="ignore",
+                               creationflags=CREATE_NO_WINDOW)
+        except Exception:
+            return False
+        if value is None:
+            # Deleting a value that was never there is still a success.
+            if r.returncode != 0 and "cannot find" not in (r.stderr or "").lower():
+                return False
+        elif r.returncode != 0:
+            return False
+    check = devparam_get(instances, name)
+    for inst in instances:
+        if value is None:
+            if check.get(inst) is not None:
+                return False
+        elif check.get(inst) != int(value):
+            return False
+    return True
+
+
+def epm_get(instances: list[str]) -> dict:
+    """Enhanced power management raw values (see module note)."""
+    return devparam_get(instances, _ENHANCED_PM)
+
+
+def epm_set(instances: list[str], off: bool) -> bool:
+    """off=True writes 0 (no enhanced power management), off=False writes 1."""
+    return devparam_set(instances, _ENHANCED_PM, 0 if off else 1)
+
+
+def dss_get(instances: list[str]) -> dict:
+    """Per-device selective suspend raw values (see module note)."""
+    return devparam_get(instances, _DEVICE_SUSPEND)
+
+
+def dss_set(instances: list[str], off: bool) -> bool:
+    """off=True writes 0 (never idle-suspend), off=False writes 1."""
+    return devparam_set(instances, _DEVICE_SUSPEND, 0 if off else 1)
+
+
+def _reg_read_sz(key: str, name: str) -> str | None:
+    try:
+        out = subprocess.run(
+            ["reg", "query", key, "/v", name],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW).stdout
+    except Exception:
+        return None
+    m = re.search(name + r"\s+REG_SZ\s+(\S+)", out)
+    return m.group(1) if m else None
+
+
+def mmcss_games_get() -> bool | None:
+    """True = Games MMCSS profile is forced to High scheduling."""
+    cat = _reg_read_sz(_GAMES_KEY, "Scheduling Category")
+    if cat is None:
+        return False
+    return cat.lower() == "high"
+
+
+def mmcss_games_set(high: bool) -> bool:
+    ok = True
+    if high:
+        for name, (vtype, val) in _GAMES_HIGH.items():
+            r = subprocess.run(
+                ["reg", "add", _GAMES_KEY, "/v", name, "/t", vtype,
+                 "/d", val, "/f"],
+                capture_output=True, creationflags=CREATE_NO_WINDOW)
+            ok = ok and r.returncode == 0
+    else:
+        for name in _GAMES_HIGH:
+            r = subprocess.run(
+                ["reg", "delete", _GAMES_KEY, "/v", name, "/f"],
+                capture_output=True, creationflags=CREATE_NO_WINDOW)
+            ok = ok and r.returncode == 0
+    return ok and (mmcss_games_get() == high)
+
+
+# ---------------------------------------------------------------------------
+#  Power throttling off (HKLM)
+# ---------------------------------------------------------------------------
+
+_PWT_KEY = r"HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"
+
+
+def power_throttle_get() -> bool | None:
+    """True = power throttling disabled (PowerThrottlingOff == 1)."""
+    v = _reg_read_dword(_PWT_KEY, "PowerThrottlingOff")
+    return (v == 1) if v is not None else None
+
+
+def power_throttle_set(off: bool) -> bool:
+    if off:
+        cmd = ["reg", "add", _PWT_KEY, "/v", "PowerThrottlingOff",
+               "/t", "REG_DWORD", "/d", "1", "/f"]
+    else:
+        cmd = ["reg", "delete", _PWT_KEY, "/v", "PowerThrottlingOff", "/f"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="ignore", creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            return False
+        return (power_throttle_get() is True) if off \
+            else (power_throttle_get() is None)
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  PCIe Express Link State Power Management (powercfg)
+# ---------------------------------------------------------------------------
+
+_SUB_PCIE = "ee12f906-d277-404b-b6da-e5fa1a576df5"
+_SET_ASPM = "501a4d13-42af-4429-9fd1-a8218c268e20"
+
+
+def pcie_aspm_get() -> int | None:
+    out = subprocess.run(
+        ["powercfg", "/query", "SCHEME_CURRENT", _SUB_PCIE, _SET_ASPM],
+        capture_output=True, text=True, errors="ignore",
+        creationflags=CREATE_NO_WINDOW).stdout
+    m = re.search(r"Current AC Power Setting Index:\s*0x0*([0-9a-fA-F]+)", out)
+    return int(m.group(1), 16) if m else None
+
+
+def pcie_aspm_set(off: bool) -> bool:
+    """off=True turns off PCIe link state power management (0), False restores
+    the default 'moderate' value (2)."""
+    val = "0" if off else "2"
+    ok = True
+    for which in ("/setacvalueindex", "/setdcvalueindex"):
+        r = subprocess.run(
+            ["powercfg", which, "SCHEME_CURRENT", _SUB_PCIE, _SET_ASPM, val],
+            capture_output=True, creationflags=CREATE_NO_WINDOW)
+        ok = ok and r.returncode == 0
+    subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"],
+                   capture_output=True, creationflags=CREATE_NO_WINDOW)
+    return ok
+
+
+# ---------------------------------------------------------------------------
+#  Network throttling index (unlock DWM budget)
+# ---------------------------------------------------------------------------
+
+_NTI_KEY = _MMCSS_KEY
+
+
+def nti_get() -> bool | None:
+    """True = network throttle unlocked (0xffffffff)."""
+    v = _reg_read_dword(_NTI_KEY, "NetworkThrottlingIndex")
+    if v is None:
+        return False
+    return v >= 0xffff0000
+
+
+def nti_set(off: bool) -> bool:
+    """off=True unlocks the network throttle (0xffffffff); False restores
+    the Windows default (10)."""
+    val = "0xffffffff" if off else "0x0a"
+    r = subprocess.run(
+        ["reg", "add", _NTI_KEY, "/v", "NetworkThrottlingIndex",
+         "/t", "REG_DWORD", "/d", val, "/f"],
+        capture_output=True, creationflags=CREATE_NO_WINDOW)
+    return r.returncode == 0 and nti_get() == off
+
+
+# ---------------------------------------------------------------------------
+#  MSI interrupts on the pad's xHCI controller (HKLM\Enum)
+# ---------------------------------------------------------------------------
+
+_MSI_SUB = r"Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"
+
+
+def _xhci_instance(pad: dict) -> str | None:
+    """First PCI ancestor in the pad chain = the xHCI controller instance."""
+    for c in (pad.get("chain") or []):
+        if c and c.upper().startswith("PCI\\"):
+            return c
+    return None
+
+
+def msi_get(pad: dict) -> bool | None:
+    """True = MSI enabled (MSISupported == 1). False = disabled/default.
+    None = the pad has no PCI (xHCI) ancestor in its chain."""
+    inst = _xhci_instance(pad)
+    if not inst:
+        return None
+    key = _ENUM_ROOT + "\\" + inst + "\\" + _MSI_SUB
+    v = _reg_read_dword(key, "MSISupported")
+    return (v == 1) if v is not None else False
+
+
+def msi_set(pad: dict, on: bool) -> bool:
+    return msi_set_raw(pad, 1 if on else None)
+
+
+def msi_raw(pad: dict) -> int | None:
+    """Raw MSISupported DWORD, or None when the pad has no xHCI ancestor or
+    the value is absent. Used so revert can restore the exact original."""
+    inst = _xhci_instance(pad)
+    if not inst:
+        return None
+    return _reg_read_dword(_ENUM_ROOT + "\\" + inst + "\\" + _MSI_SUB,
+                           "MSISupported")
+
+
+def msi_set_raw(pad: dict, value: int | None) -> bool:
+    """Write MSISupported, or delete it when value is None."""
+    inst = _xhci_instance(pad)
+    if not inst:
+        return False
+    base = _ENUM_ROOT + "\\" + inst + "\\" + _MSI_SUB
+    cmd = (["reg", "add", base, "/v", "MSISupported", "/t", "REG_DWORD",
+            "/d", str(int(value)), "/f"] if value is not None
+           else ["reg", "delete", base, "/v", "MSISupported", "/f"])
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="ignore", creationflags=CREATE_NO_WINDOW)
+    except Exception:
+        return False
+    if r.returncode != 0:
+        if value is None and "cannot find" in (r.stderr or "").lower():
+            return True
+        return False
+    return msi_raw(pad) == value
+
+
+# ---------------------------------------------------------------------------
+#  Hibernation (powercfg /h)
+# ---------------------------------------------------------------------------
+
+_POWER_KEY = r"HKLM\SYSTEM\CurrentControlSet\Control\Power"
+
+
+def hibernate_get() -> bool | None:
+    """True = hibernation enabled. None when the flag is absent."""
+    v = _reg_read_dword(_POWER_KEY, "HibernateEnabled")
+    return (v == 1) if v is not None else None
+
+
+def hibernate_set(enabled: bool) -> bool:
+    """powercfg /h off / on — requires admin."""
+    try:
+        r = subprocess.run(
+            ["powercfg", "/h", "on" if enabled else "off"],
+            capture_output=True, text=True, errors="ignore",
+            creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            return False
+        return hibernate_get() == enabled
+    except Exception:
+        return False

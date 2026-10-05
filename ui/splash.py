@@ -131,7 +131,7 @@ _FLOW_QSS = """
     border-radius: 11px;
     padding: 12px 26px;
     font-family: "Inter";
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
 }
 #FlowGhost:hover { background: rgba(255, 255, 255, 0.07); }
@@ -146,7 +146,7 @@ _FLOW_QSS = """
     border-radius: 11px;
     padding: 12px 26px;
     font-family: "Inter";
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
 }
 #FlowPrimary:hover { background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
@@ -162,7 +162,7 @@ _FLOW_QSS = """
     border-radius: 11px;
     padding: 12px 26px;
     font-family: "Inter";
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
 }
 #FlowGreen:hover { background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 1,
@@ -375,7 +375,9 @@ class CinematicSplash(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.FramelessWindowHint
-                         | Qt.WindowStaysOnTopHint)
+                         | Qt.WindowMinimizeButtonHint
+                         | Qt.WindowSystemMenuHint)
+        self._drag_offset: tuple[int, int] | None = None
         self._t0: float | None = None
         self._dur_ms = _dur
         self._done_emitted = False
@@ -438,6 +440,7 @@ class CinematicSplash(QWidget):
         # (which can take 30s+ on Render's free tier) can never leave the boot
         # without action buttons.
         self._build_update_chrome()
+        self._build_min_btn()
         self._bg: QPixmap | None = None
         self._load_db()
 
@@ -474,6 +477,62 @@ class CinematicSplash(QWidget):
         self._btn_restart.clicked.connect(self.restart_clicked)
         self._btn_primary.raise_()
         self._btn_restart.raise_()
+
+    # ---------------- window chrome (drag + minimize) ----------------
+
+    _MIN_QL = """
+    #SplashMinBtn {
+        background: rgba(255, 255, 255, 0.05);
+        color: #9FA8BC;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        font-family: "Segoe UI";
+        font-size: 13px;
+    }
+    #SplashMinBtn:hover { background: rgba(255, 255, 255, 0.13); color: #F6F4FC; }
+    #SplashMinBtn:pressed { background: rgba(255, 255, 255, 0.20); }
+    """
+
+    def _build_min_btn(self):
+        if getattr(self, "_min_btn", None) is not None:
+            return
+        btn = QPushButton("\u2014", self)
+        btn.setObjectName("SplashMinBtn")
+        btn.setStyleSheet(self._MIN_QL)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip("Minimize")
+        btn.clicked.connect(self.showMinimized)
+        btn.raise_()
+        self._min_btn = btn
+
+    def _layout_min_btn(self):
+        if getattr(self, "_min_btn", None) is None:
+            return
+        size = 34
+        self._min_btn.setGeometry(self.width() - size - 22, 24, size, size)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_offset = (event.globalPosition().toPoint().x()
+                                 - self.x(),
+                                 event.globalPosition().toPoint().y()
+                                 - self.y())
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_offset is not None and (event.buttons() & Qt.LeftButton):
+            gp = event.globalPosition().toPoint()
+            self.move(gp.x() - self._drag_offset[0],
+                      gp.y() - self._drag_offset[1])
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
 
     def hide_server_status(self):
         """Turn off the visible server-status line + retry chip on the splash.
@@ -902,6 +961,9 @@ class CinematicSplash(QWidget):
         self._bg = None
         self._layout_actions()
         self._layout_server_retry()
+        self._layout_min_btn()
+        if getattr(self, "_min_btn", None) is not None:
+            self._min_btn.raise_()
         if getattr(self, "_spinner", None) is not None:
             self.update()
 
@@ -1124,14 +1186,14 @@ class CinematicSplash(QWidget):
         _step = {"checking": 1, "available": 1, "downloading": 2,
                  "installing": 3, "ready": 4}.get(self._update_state, 0)
         if _step:
-            fc = QFont("JetBrains Mono", 10.5)
+            fc = QFont("JetBrains Mono", 11)
             fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
             p.setFont(fc)
             s1, s2 = "Step ", " of 4"
             sn = str(_step)
             w1 = p.fontMetrics().horizontalAdvance(s1)
             wn = p.fontMetrics().horizontalAdvance(sn)
-            x = w - 40 - (w1 + wn + p.fontMetrics().horizontalAdvance(s2))
+            x = w - 84 - (w1 + wn + p.fontMetrics().horizontalAdvance(s2))
             p.setPen(QColor("#514A70"))
             p.drawText(QRectF(x, 28, w1 + wn, 30),
                        Qt.AlignVCenter | Qt.AlignLeft, s1)
@@ -1147,7 +1209,7 @@ class CinematicSplash(QWidget):
             fc.setLetterSpacing(QFont.AbsoluteSpacing, 0.5)
             p.setFont(fc)
             p.setPen(QColor("#514A70"))
-            p.drawText(QRectF(w - 240, 28, 200, 30),
+            p.drawText(QRectF(w - 264, 28, 200, 30),
                        Qt.AlignVCenter | Qt.AlignRight,
                        "%02d:%02d:%02d" % (secs // 3600, (secs // 60) % 60,
                                             secs % 60))

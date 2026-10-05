@@ -177,23 +177,6 @@ TWEAKS = validate_module("laptop", [
       tags=["boost", "turbo", "battery"]),
 
     # ── Modern Standby ─────────────────────────────────────────────
-    T("lap-015", "Disable Modern Standby",
-      "Switch from Modern Standby to S3 sleep for better battery life.",
-      actions=[
-          ("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power",
-           "PlatformAoAcOverride", 0, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKLM", r"SYSTEM\CurrentControlSet\Control\Power",
-           "PlatformAoAcOverride"),
-      ],
-      why="Modern Standby (S0 low power idle) keeps the CPU partially "
-          "active during sleep, draining battery.  Forcing S3 deep sleep "
-          "reduces standby power draw significantly.",
-      changes="Disables Modern Standby, falls back to S3 sleep.",
-      risk="low", impact="high", recommended="recommended",
-      admin=True,
-      tags=["modern_standby", "sleep", "battery"]),
 
     T("lap-016", "Enable Network Connectivity in Standby",
       "Allow the network adapter to stay connected during Modern Standby.",
@@ -303,23 +286,6 @@ TWEAKS = validate_module("laptop", [
       tags=["usb", "power", "peripheral"]),
 
     # ── Battery Charge Threshold ───────────────────────────────────
-    T("lap-028", "Battery Charge Limit Guidance",
-      "Guidance on setting charge thresholds to preserve battery health.",
-      actions=[
-          ("guidance", "Most laptop vendors provide battery charge limit "
-           "settings in BIOS or vendor software (Lenovo Vantage, ASUS "
-           "MyASUS, Dell Power Manager).  Setting an 80% charge limit "
-           "extends battery lifespan by reducing cell stress.  Check "
-           "your manufacturer's app for this option."),
-      ],
-      revert=[
-          ("guidance", "Remove the charge limit to allow full 100% charging."),
-      ],
-      why="Lithium-ion batteries degrade faster at high charge states. "
-          "A charge limit of 80% can double the battery's useful lifespan.",
-      changes="Shows battery charge threshold guidance.",
-      risk="safe", impact="very low", recommended="optional",
-      tags=["battery", "health", "guidance"]),
 
     # ── Fan / Thermal ──────────────────────────────────────────────
     T("lap-029", "Aggressive Fan Policy (AC)",
@@ -357,22 +323,6 @@ TWEAKS = validate_module("laptop", [
       tags=["thermal", "fan", "battery"]),
 
     # ── Docking / External Display ─────────────────────────────────
-    T("lap-031", "Prevent Display Sleep on Dock",
-      "Keep the display on when a docking station is detected.",
-      actions=[
-          ("reg", "HKCU", r"Control Panel\Desktop",
-           "ForegroundLockTimeout", 0, "DWORD"),
-      ],
-      revert=[
-          ("regdel", "HKCU", r"Control Panel\Desktop",
-           "ForegroundLockTimeout"),
-      ],
-      why="When docked with an external monitor, the laptop display "
-          "should not timeout independently.  This setting prevents "
-          "focus-lock timeout issues in docked scenarios.",
-      changes="Prevents display sleep timeout when docked.",
-      risk="safe", impact="low", recommended="optional",
-      tags=["display", "dock", "power"]),
 
     # ── Power Plan for Battery Gaming ──────────────────────────────
     T("lap-032", "Use Balanced Plan on Battery",

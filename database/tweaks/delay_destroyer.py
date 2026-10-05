@@ -182,21 +182,26 @@ TWEAKS = validate_module("delay_destroyer", [
       sub_category="Network"),
 
     T("dd-015", "Optimize Network Interrupt Moderation",
-      "Disables interrupt moderation on network adapters for lower latency.",
+      "Disables Interrupt Moderation on each active physical network "
+      "adapter that exposes the setting (detect-first, revert-safe).",
       actions=[
-          ("regall", "HKLM", r"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}",
-           "InterruptModeration", 0, "DWORD"),
+          ("netadp", "interrupt_moderation"),
       ],
       revert=[
-          ("regdelall", "HKLM", r"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}",
-           "InterruptModeration"),
+          ("netadp", "interrupt_moderation_revert"),
       ],
-      why="Interrupt moderation batches network interrupts to reduce CPU overhead, but "
-          "adds latency to each packet. Disabling it processes packets immediately.",
-      changes="Disables interrupt moderation on all network adapters.",
-      risk="safe", impact="moderate", recommended="recommended", admin=True,
-      tags=["network", "interrupt", "moderation", "latency"],
-      sub_category="Network"),
+      why="Interrupt moderation batches interrupts to save CPU, adding a "
+          "little latency per packet. On Realtek adapters this experimental "
+          "tweak can help under heavy packet load, but results are "
+          "hardware-specific - benchmark before/after.",
+      changes="Disables interrupt moderation only where the adapter exposes "
+              "it, with driver-valid values (blanket regall write removed).",
+      risk="low", impact="low", recommended="experimental", admin=True,
+      warn="Adapter-specific and experimental - some drivers raise CPU use "
+           "with moderation off; benchmark before/after.",
+      tags=["network", "interrupt", "moderation", "latency", "experimental", "adapter"],
+      sub_category="Network",
+      updated="2026-09-27"),
 
     T("dd-016", "Optimize DNS Cache Timeout",
       "Reduces DNS cache timeout to refresh DNS entries more frequently.",

@@ -23,7 +23,7 @@ REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, 
 
 
 def run_gui():
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
@@ -38,6 +38,12 @@ def run_gui():
     except Exception:  # noqa: BLE001
         pass
 
+    # Let Qt scale text at the true fractional display scale (e.g. 125% / 150%)
+    # instead of snapping to whole units and then bitmap-stretching, which
+    # renders every glyph slightly blurry/pixelated.
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+
     # Single instance: a second launch would double every scanner/auditor and
     # flood the machine with child command processes. Exit quietly instead.
     import ctypes as _ct
@@ -45,7 +51,9 @@ def run_gui():
                                           "Local\\MaximumTweaks.SingleInstance")
     if _ct.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         try:
-            hwnd = _ct.windll.user32.FindWindowW(None, "Maximum Tweaks v2.2.0")
+            from config.app_config import APP_NAME, APP_VERSION
+            hwnd = _ct.windll.user32.FindWindowW(
+                None, f"{APP_NAME} v{APP_VERSION}")
             if hwnd:
                 _ct.windll.user32.ShowWindow(hwnd, 9)   # SW_RESTORE
                 _ct.windll.user32.SetForegroundWindow(hwnd)
@@ -56,7 +64,6 @@ def run_gui():
     from config.app_config import APP_VERSION, LICENSE_API_URL
     from engine import license as license_mgr
     from ui import license as license_ui
-    from ui.splash import CinematicSplash
     from ui.styles import build_qss
     from ui.fonts import register_fonts
 
@@ -127,39 +134,33 @@ def run_gui():
     screen = app.primaryScreen().availableGeometry()
 
     # Boot/autostart: --minimized (set by the HKCU Run entry) used to skip
-    # the splash and land straight in the taskbar. We still show the splash
-    # every time (so the loading screen is always visible), but flag the
+    # the boot screen and land straight in the taskbar. We still show the
+    # boot screen every time (so the updater is always visible), but flag the
     # autostart case so the window parks minimized in the taskbar afterwards
     # instead of maximizing into the foreground.
     autostart = any(a.lower() in ("--minimized", "--autostart", "/min")
                     for a in sys.argv[1:])
 
-    splash = CinematicSplash()
-    # Fullscreen boot (CSS .screen is 100vh): cover the whole primary monitor.
-    # Pin the window onto the primary screen's geometry BEFORE showFullScreen,
-    # otherwise Qt resolves the fullscreen target from the window's default
-    # position, which lands on the wrong monitor in multi-monitor setups.
-    _prim = app.primaryScreen().geometry()
-    splash.setGeometry(_prim)
-    splash.move(_prim.topLeft())
-    splash.showFullScreen()
-    splash.start()
+    # ---- The boot screen: full-bleed Updater (Step 1 of the wizard) --------
+    # The ONLY boot screen now (the old splash is gone). It shows immediately:
+    # titlebar flush to the top, footer flush to the bottom,
+    # frameless, fills the screen. Runs the real update check live-bound — the
+    # % counter and the "Latest" version chip resolve from the engine, never
+    # placeholders — holds ~5s, then hands off to the license gate or the main
+    # window. Autostart still uses the flag so the window parks minimized in
+    # the taskbar afterwards instead of stealing foreground focus.
+    from ui.updater_screen import UpdaterWindow
+    updater_win = UpdaterWindow()
+    updater_win.setGeometry(screen)
+    updater_win.show()
+    updater_win.start()
 
-    # Server connection status on the splash (requirement 6): the boot screen
-    # shows "Connecting to server… / Connected / Can't reach server" with the
-    # build's server host and a Retry button, so a cold Render start (up to a
-    # minute) is visible instead of a silent hang.  The probe only calls GET
-    # /health — never the key or the local session.
-    splash.begin_server_check(LICENSE_API_URL)
-    # Owner preference: keep the "Connecting to Maximum Tweaks on render" line
-    # and its Retry chip off the splash. The probe itself keeps running in the
-    # background (it keeps last_seen fresh, so the admin "Online now" column
-    # stays accurate) — only the rendering is suppressed.
-    splash.hide_server_status()
     # The moment the connection is verified the heartbeat must fire right away
     # (not just on the 5-minute timer), so a freshly-started PC shows as
-    # "online now" in the admin panel immediately.
-    splash.server_connected.connect(
+    # "online now" in the admin panel immediately. The probe only calls GET
+    # /health — never the key or the local session.
+    updater_win.begin_server_check(LICENSE_API_URL)
+    updater_win.server_connected.connect(
         lambda _host: license_ui.pulse_heartbeat())
 
     # Refresh the persisted license token in the background so a valid license
@@ -167,79 +168,6 @@ def run_gui():
     license_ui.validate_startup()
 
     holder: dict = {"window": None}
-
-    # Update check as a background boot step (no popup at launch): the splash
-    # plays its normal loading sequence first and the check view only appears
-    # mid-way through; if a newer build exists the user decides on the splash
-    # before the main app launches.
-    _update: dict = {}
-
-    def _release_into_app():
-        _update.clear()
-        splash.update_ok()
-
-    def _start_update_check():
-        from ui.updater_dialog import FetchWorker
-        splash.arm_update_check()
-        worker = FetchWorker(splash)
-        worker.done.connect(_on_update_checked)
-        _update["worker"] = worker  # keep a strong ref until finished
-        worker.start()
-
-    def _on_update_checked(payload):
-        info = payload.get("info")
-        error = payload.get("error")
-        if holder.get("window") is not None:
-            splash.update_ok()
-            return
-        # The splash parks this until its mid-boot milestone unless the check
-        # view is already on screen.
-        if info is not None:
-            _update["info"] = info
-        splash.update_check_result(info, error)
-
-    def _start_update_download():
-        from ui.updater_dialog import DownloadWorker
-        info = _update.get("info")
-        if not info:
-            return
-        worker = DownloadWorker(info["url"], splash)
-        worker.bytes.connect(splash.on_download_bytes)
-        worker.bytes_total.connect(splash.set_download_bytes)
-        worker.progress.connect(splash.update_progress)
-        worker.done.connect(_on_update_downloaded)
-        _update["dl"] = worker  # keep a strong ref until finished
-        worker.start()
-
-    def _on_update_downloaded(new_exe, error):
-        if error or new_exe is None:
-            splash.update_error(error or "Download failed.")
-            return
-        _update["new_exe"] = new_exe
-        splash.update_downloaded()
-
-    def _apply_update():
-        new_exe = _update.get("new_exe")
-        if not new_exe:
-            return
-        from engine import updater
-        try:
-            updater.install_and_restart(new_exe)
-        except updater.UpdaterError as exc:
-            splash.update_error(str(exc))
-            return
-        # The old build terminates here; the stub swaps in the new exe and
-        # relaunches it. The restarted app runs the same check, finds no newer
-        # version, and proceeds straight into the main window — no loop.
-        import time as _time
-        _time.sleep(1)
-        os._exit(0)
-
-    splash.install_clicked.connect(_start_update_download)
-    splash.skip_clicked.connect(_release_into_app)
-    splash.retry_clicked.connect(_start_update_check)
-    splash.restart_clicked.connect(_apply_update)
-    _start_update_check()
 
     def build_window():
         if holder["window"] is None:
@@ -252,7 +180,7 @@ def run_gui():
         # Same multi-monitor pin: place on the primary screen before showing.
         win.setGeometry(app.primaryScreen().availableGeometry())
         if autostart:
-            # Boot/autostart: splash has already played, so park the app in
+            # Boot/autostart: boot screen has already played, so park the app in
             # the taskbar instead of stealing foreground focus.
             win.showMinimized()
         else:
@@ -263,19 +191,18 @@ def run_gui():
         return win
 
     def on_finished():
-        # Fade the splash first, then hand off on the next event-loop pass.
-        # Revealing synchronously here freezes the loading screen whenever the
-        # main window takes a moment to build — the boot screen must always
-        # clear itself within the ~7s sequence.
-        splash.fade_out(700)
+        # Fade the boot screen first, then hand off on the next event-loop
+        # pass. Revealing synchronously would freeze the screen whenever the
+        # main window takes a moment to build.
+        updater_win.fade_out(700)
 
         def handoff():
             if license_mgr.is_authorized():
                 reveal_window()
                 return
-            from ui.gate import GateWindow
+            from ui.gate import GateWindow, default_gate_geometry
             gate = GateWindow(payload=license_mgr.last_refusal())
-            gate.setGeometry(screen)
+            gate.setGeometry(default_gate_geometry())
             gate.show()
 
             def unlock(_session):
@@ -285,7 +212,7 @@ def run_gui():
 
         QTimer.singleShot(0, handoff)
 
-    splash.finished.connect(on_finished)
+    updater_win.finished.connect(on_finished)
 
     # License heartbeat: check in with the server every minute so bans,
     # revocations, and timeouts are caught in near-real-time and the admin
@@ -295,7 +222,7 @@ def run_gui():
     def _heartbeat_refused(payload=None):
         win = holder.get("window")
         if win is None:
-            return  # still on the splash — handoff will open the gate instead
+            return  # still on the boot screen — handoff will open the gate instead
         ctx = getattr(win, "ctx", None)
         if ctx is not None:
             ctx.license_changed.emit()
@@ -571,6 +498,48 @@ def cmd_monitor(seconds: float) -> int:
     return 0
 
 
+def cmd_debloat_remove(job_path: str) -> int:
+    """Headless Smart Debloater removal step (run elevated by the GUI).
+
+    Reads a job JSON next to the given path::
+
+        {"ids": ["appx:Microsoft.Clipchamp", "win32:mcafee-trial"]}
+
+    runs ``engine.debloat.smart.remove`` (which rescans the system, re-checks
+    protection, creates a restore point and logs everything) and writes the
+    per-app result list back to ``<job>.result.json`` so the GUI can poll it.
+    Never trusts the ids — protection is re-evaluated against the live system.
+    """
+    import json
+    import sys as _sys
+
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    from pathlib import Path as _Path
+    from engine.debloat import smart
+
+    job = _Path(job_path)
+    try:
+        payload = json.loads(job.read_text(encoding="utf-8-sig"))
+        ids = payload.get("ids") or []
+    except Exception as exc:  # noqa: BLE001
+        print(f"DEBLOAT_REMOVE could not read {job}: {exc}")
+        return 1
+
+    try:
+        out: object = smart.remove(ids)
+    except Exception as exc:  # noqa: BLE001
+        out = {"error": str(exc)}
+
+    try:
+        job.with_suffix(".result.json").write_text(
+            json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"DEBLOAT_REMOVE could not write result: {exc}")
+        return 2
+    return 0
+
+
 def cmd_heartbeat(minutes: float) -> int:
     """Headless license heartbeat: keep this PC 'Online now' in the admin
     panel while the machine stays on, even when the GUI window is closed.
@@ -701,6 +670,34 @@ def cmd_verify(target: str) -> int:
     return 0
 
 
+def cmd_ao_triage(engaged: str = "") -> int:
+    """Headless App Optimizer triage pass.
+
+    Launched by the "MaximumTweaks AppOptimizer Triage" scheduled task on
+    logon and on a short repeating timer. Priority class, CPU affinity, EcoQoS
+    and helper-process suppression are all properties of a *running* process,
+    so without a re-application pass they silently decay back to normal the
+    moment the user restarts the app. This is what makes the optimization
+    stick.
+
+    Takes the engaged app keys as a comma separated argument so the task is
+    inert once every app has been reset. Prints a one-line summary for the log.
+    """
+    keys = [k.strip() for k in (engaged or "").split(",") if k.strip()]
+    try:
+        from engine.app_optimizer import triage
+        result = triage(keys or None)
+    except Exception as exc:  # noqa: BLE001
+        print(f"TRIAGE error: {exc}")
+        return 1
+    if not result:
+        print("TRIAGE nothing engaged")
+        return 0
+    for key, touched in sorted(result.items()):
+        print(f"TRIAGE {key}: {touched}")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="maximum-tweaks", description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="preview actions without executing")
@@ -737,6 +734,15 @@ def main(argv=None):
                                        "(run from the HKCU Run startup entry; "
                                        "no GUI or single-instance mutex)")
     p_hr.add_argument("--minutes", type=float, default=5.0)
+    p_dr = sub.add_parser("debloat-remove", help="headless Smart Debloater "
+                          "removal step (normally launched elevated by the "
+                          "GUI; writes <job>.result.json)")
+    p_dr.add_argument("job", help="path to the job JSON")
+    p_ao = sub.add_parser("ao-triage", help="headless App Optimizer triage: "
+                          "re-apply priority/affinity/efficiency-mode to the "
+                          "engaged apps (run by the triage scheduled task)")
+    p_ao.add_argument("engaged", nargs="?", default="",
+                      help="comma separated engaged app keys")
 
     # Unknown top-level flags (e.g. --minimized/--autostart set by the HKCU Run
     # entry) must never fail the launch — they're consumed inside run_gui().
@@ -772,6 +778,10 @@ def main(argv=None):
         raise SystemExit(cmd_monitor(args.seconds))
     elif args.command == "heartbeat":
         raise SystemExit(cmd_heartbeat(args.minutes))
+    elif args.command == "debloat-remove":
+        raise SystemExit(cmd_debloat_remove(args.job))
+    elif args.command == "ao-triage":
+        raise SystemExit(cmd_ao_triage(args.engaged))
     else:
         parser.print_help()
 

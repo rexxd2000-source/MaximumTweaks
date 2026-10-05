@@ -15,6 +15,25 @@ from config.app_config import DIRS
 def logo_path(key: str) -> Path:
     return DIRS["assets"] / "icons" / f"{key}.png"
 
+
+def logo_data_uri(key: str) -> str:
+    """Base64 data URI for a category logo, or '' if the PNG is missing.
+
+    Used by the HTML pages (dashboard + tweak cards) so the real category
+    logos render with no filesystem-path dependence in either dev or the
+    frozen (PyInstaller extraction-dir) builds.
+    """
+    p = logo_path(key)
+    if not p.is_file():
+        return ""
+    import base64
+
+    try:
+        raw = p.read_bytes()
+    except OSError:
+        return ""
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
 # Raw DB category -> "what it affects" label.
 DB_AFFECTS = {
     "CPU": "CPU",
@@ -132,7 +151,6 @@ CATEGORY_GROUPS = {
     "cpu": {
         "key": "cpu",
         "title": "CPU Tweaks",
-        "icon": "\u2b22",
         "logo": "cpu",
         "color": "#3FDC98",
         "blurb": "Processor scheduling, power management and Windows CPU optimizations.",
@@ -141,7 +159,6 @@ CATEGORY_GROUPS = {
     "gpu": {
         "key": "gpu",
         "title": "GPU Tweaks",
-        "icon": "\u25c6",
         "logo": "gpu",
         "color": "#3FDC98",
         "blurb": "NVIDIA/AMD/Intel GPU optimizations, scheduling, and vendor-specific driver settings.",
@@ -150,7 +167,6 @@ CATEGORY_GROUPS = {
     "ram": {
         "key": "ram",
         "title": "RAM Tweaks",
-        "icon": "\u2588",
         "logo": "ram",
         "color": "#3FDC98",
         "blurb": "Memory management, virtual memory and background memory behavior.",
@@ -159,7 +175,6 @@ CATEGORY_GROUPS = {
     "mouse": {
         "key": "mouse",
         "title": "Mouse Tweaks",
-        "icon": "\u21a8",
         "logo": "mouse",
         "color": "#FF6F6F",
         "blurb": "Pointer precision, acceleration and polling for sharper response.",
@@ -168,7 +183,6 @@ CATEGORY_GROUPS = {
     "keyboard": {
         "key": "keyboard",
         "title": "Keyboard Tweaks",
-        "icon": "\u2328",
         "logo": "keyboard",
         "color": "#FF6F6F",
         "blurb": "Repeat delay, filter keys and keyboard input responsiveness.",
@@ -177,7 +191,6 @@ CATEGORY_GROUPS = {
     "input": {
         "key": "input",
         "title": "Pointer & Input",
-        "icon": "\u2694",
         "logo": "input",
         "color": "#FF6F6F",
         "blurb": "Input-latency reductions so your clicks, keystrokes and pointer inputs register faster.",
@@ -186,7 +199,6 @@ CATEGORY_GROUPS = {
     "network": {
         "key": "network",
         "title": "Network Tweaks",
-        "icon": "\u2637",
         "logo": "network",
         "color": "#6C93FF",
         "blurb": "TCP/IP stack, Ethernet and Wi-Fi tuning for lower ping and stable connections.",
@@ -195,7 +207,6 @@ CATEGORY_GROUPS = {
     "storage": {
         "key": "storage",
         "title": "Storage / SSD",
-        "icon": "\u25b6",
         "logo": "storage",
         "color": "#6C93FF",
         "blurb": "NTFS, SSD trimming, filesystem and disk behavior optimizations.",
@@ -204,7 +215,6 @@ CATEGORY_GROUPS = {
     "audio": {
         "key": "audio",
         "title": "Audio Tweaks",
-        "icon": "\U0001f50a",
         "logo": "audio",
         "color": "#6C93FF",
         "blurb": "Deep Windows audio engine, WASAPI, MMCSS scheduling, USB/Bluetooth audio, microphones, and gaming audio optimizations.",
@@ -213,7 +223,6 @@ CATEGORY_GROUPS = {
     "system": {
         "key": "system",
         "title": "Windows / System",
-        "icon": "\u2699",
         "logo": "system",
         "color": "#6C93FF",
         "blurb": "Windows shell, services, privacy, telemetry, DirectX, graphics stack and more.",
@@ -228,7 +237,6 @@ CATEGORY_GROUPS = {
     "power": {
         "key": "power",
         "title": "Power Tweaks",
-        "icon": "\u26a1",
         "logo": "power",
         "color": "#3FDC98",
         "blurb": "Power plans, CPU power states, sleep/hibernate and energy settings. Includes the Maximum Power Plan.",
@@ -237,7 +245,6 @@ CATEGORY_GROUPS = {
     "performance": {
         "key": "performance",
         "title": "Performance Tweaks",
-        "icon": "\u26a1",
         "logo": "performance",
         "color": "#3FDC98",
         "blurb": "FPS boosting and frame-pacing optimizations for smoother, more consistent gameplay.",
@@ -246,7 +253,6 @@ CATEGORY_GROUPS = {
     "fortnite": {
         "key": "fortnite",
         "title": "Fortnite",
-        "icon": "\u25c9",
         "logo": "fortnite",
         "color": "#E879C9",
         "blurb": "Fortnite-only optimizations for FPS, input latency, graphics and network.",
@@ -255,7 +261,6 @@ CATEGORY_GROUPS = {
     "games": {
         "key": "games",
         "title": "Game Tweaks",
-        "icon": "\u2605",
         "logo": "games",
         "color": "#3FDC98",
         "blurb": "Game Mode, DVR, Game Bar and general gaming performance settings.",
@@ -264,7 +269,6 @@ CATEGORY_GROUPS = {
     "profiles": {
         "key": "profiles",
         "title": "Game Profiles",
-        "icon": "\u2654",
         "logo": "profiles",
         "color": "#E879C9",
         "blurb": "One-click per-game performance profiles for popular esports titles.",
@@ -273,7 +277,6 @@ CATEGORY_GROUPS = {
     "tools": {
         "key": "tools",
         "title": "System Tools",
-        "icon": "\u26cf",
         "logo": "tools",
         "color": "#FFB454",
         "blurb": "Diagnostics, repair and quick-access tools for your system.",
@@ -282,7 +285,6 @@ CATEGORY_GROUPS = {
     "laptop": {
         "key": "laptop",
         "title": "Laptop Tweaks",
-        "icon": "\u25c8",
         "logo": "laptop",
         "color": "#6C93FF",
         "blurb": "Battery, lid, hybrid-graphics and dedicated-GPU settings "
@@ -292,7 +294,6 @@ CATEGORY_GROUPS = {
     "fpsboost": {
         "key": "fpsboost",
         "title": "FPS Boost",
-        "icon": "\u26a1",
         "logo": "fpsboost",
         "color": "#3FDC98",
         "blurb": "Proven system-level tweaks to maximize FPS — VBS, ReBAR, "
@@ -302,7 +303,6 @@ CATEGORY_GROUPS = {
     "delay_destroyer": {
         "key": "delay_destroyer",
         "title": "Delay Destroyer",
-        "icon": "\u26a1",
         "logo": "performance",
         "color": "#FFB454",
         "blurb": "Input latency, system responsiveness, frame pacing, network and USB tweaks — one card per optimization.",
@@ -419,6 +419,34 @@ def group_key_for_category(category: str, tweak: dict | None = None) -> str:
         return "tools"
     return GROUP_BY_CAT.get(category, "system")
 
+
+def compatible_tweaks(tweaks, eval_states, profile=None):
+    """Tweaks that belong on THIS machine (dashboard hero + scan count).
+
+    Matches the filter the rest of the UI uses: no guidance rows, nothing the
+    evaluator marked incompatible, and no form-factor mismatch (the whole
+    Laptop category is laptop-only hardware/OS behaviour even though those DB
+    rows carry no gates).
+    """
+    is_laptop = bool((profile or {}).get("laptop"))
+    out = []
+    for t in tweaks:
+        if t.get("guidance"):
+            continue
+        state = (eval_states or {}).get(t["id"], {}).get("state", "ready")
+        if state == "incompatible":
+            continue
+        when = t.get("when") or {}
+        if when.get("laptop") is True and not is_laptop:
+            continue
+        if when.get("laptop") is False and is_laptop:
+            continue
+        if group_key_for_category(t.get("category") or "") == "laptop" \
+                and not is_laptop:
+            continue
+        out.append(t)
+    return out
+
 # Fortnite tweaks grouped into subsections (id lists, verified against DB).
 FORTNITE_SECTIONS = {
     "Performance": ["fn-001"],
@@ -517,27 +545,95 @@ def gpu_filter_tweaks(key: str, gpu_vendor: str) -> list[dict]:
 # are ALWAYS shown; vendor/form-factor tagged tweaks are only shown when
 # they match the detected hardware.
 
-def cpu_filter_tweaks(key: str, cpu_vendor: str | None = None,
-                      is_laptop: bool | None = None) -> list[dict]:
-    """Return tweaks for the CPU category filtered by vendor and form factor.
+# The seven CPU categories offered by the CPU page picker.  This is a manual
+# navigation choice, NOT hardware detection: picking "Intel Hybrid" filters the
+# card list but does not claim the machine is a hybrid CPU, and does not
+# authorise applying a card the machine does not support.
+CPU_FAMILIES: list[dict] = [
+    {
+        "key": "amd_am4",
+        "label": "AMD AM4 (non-X3D)",
+        "sub": "Ryzen 1000-5000",
+        "features": "Boost, power policy, unparking",
+        "color": "#ED1C24",
+    },
+    {
+        "key": "amd_am4_x3d",
+        "label": "AMD AM4 X3D",
+        "sub": "Ryzen 5000 X3D",
+        "features": "Boost limits, unparking, 3D V-Cache aware",
+        "color": "#ED1C24",
+    },
+    {
+        "key": "amd_am5",
+        "label": "AMD AM5 (non-X3D)",
+        "sub": "Ryzen 7000+",
+        "features": "Boost, power policy, unparking",
+        "color": "#ED1C24",
+    },
+    {
+        "key": "amd_am5_x3d",
+        "label": "AMD AM5 X3D",
+        "sub": "Ryzen 7000+ X3D / X",
+        "features": "Boost limits, unparking, V-Cache aware",
+        "color": "#ED1C24",
+    },
+    {
+        "key": "intel_legacy",
+        "label": "Intel Legacy / Non-Hybrid",
+        "sub": "Core i7/i9, no P-cores+E-cores",
+        "features": "Boost, power policy, turbo",
+        "color": "#0071C5",
+    },
+    {
+        "key": "intel_hybrid",
+        "label": "Intel Hybrid",
+        "sub": "Alder Lake+ 12th gen+ (P-cores + E-cores)",
+        "features": "P-core / E-core scheduling preserved",
+        "color": "#0071C5",
+    },
+    {
+        "key": "intel_core_ultra",
+        "label": "Intel Core Ultra",
+        "sub": "Meteor Lake+",
+        "features": "Tile / E-core aware scheduling",
+        "color": "#0071C5",
+    },
+]
 
-    Universal tweaks (no ``when.cpu_vendor`` / ``when.laptop``) are always
-    shown.  Vendor-tagged tweaks only appear when the detected CPU matches.
-    Form-factor tweaks only appear when the detected laptop state matches.
+CPU_FAMILY_KEYS = [f["key"] for f in CPU_FAMILIES]
+
+
+def cpu_filter_tweaks(key: str, cpu_vendor: str | None = None,
+                      is_laptop: bool | None = None,
+                      cpu_family: str | None = None) -> list[dict]:
+    """Return tweaks for the CPU category filtered by vendor, form factor and family.
+
+    Universal tweaks (no ``when.cpu_vendor`` / ``when.laptop`` /
+    ``when.cpu_family``) are always shown.  Tagged tweaks only appear when the
+    matching selection matches.
+
+    ``cpu_family`` is the manual CPU-page pick, not a hardware probe: a card is
+    shown because the user asked for that category, and the executor still
+    verifies the underlying setting exists before writing.  A family-tagged
+    card is hidden while no family is selected, so an AMD-only control is never
+    shown on the undifferentiated list.
     """
     all_tweaks = group_tweaks(key)
-    if cpu_vendor is None and is_laptop is None:
-        return all_tweaks
     out = []
     for t in all_tweaks:
         when = t.get("when", {})
         req_vendor = when.get("cpu_vendor")
         req_laptop = when.get("laptop")
-        # If tweak specifies cpu_vendor, check match.
+        req_family = when.get("cpu_family")
         if req_vendor and cpu_vendor:
             if cpu_vendor.lower() not in [v.lower() for v in req_vendor]:
                 continue
-        # If tweak specifies laptop, check match.
+        if req_family:
+            if not cpu_family:
+                continue
+            if cpu_family not in req_family:
+                continue
         if req_laptop is not None and is_laptop is not None:
             if req_laptop != is_laptop:
                 continue

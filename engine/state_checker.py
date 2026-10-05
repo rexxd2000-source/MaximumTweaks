@@ -30,7 +30,7 @@ Detection is implemented natively per action kind:
 
 All reads go through a per-process cache, so a full-system audit reuses
 previous answers (one ``reg query`` serves every value under a key, one
-``powercfg /query SCHEME_CURRENT`` serves every power setting). The cache is
+``powercfg /qh SCHEME_CURRENT`` serves every power setting). The cache is
 invalidated after apply/revert batches so the UI re-syncs to the real system.
 """
 from __future__ import annotations
@@ -297,12 +297,18 @@ def _active_scheme() -> tuple[str, str]:
 
 
 def _power_map() -> dict[tuple[str, str], tuple[int, int]]:
-    """{(subgroup, setting): (AC value, DC value)} from `powercfg /query`."""
+    """{(subgroup, setting): (AC value, DC value)} from `powercfg /qh`.
+
+    Must be the hidden view. ``/query`` lists only the ~6 visible processor
+    settings, so EPP, boost mode, core parking, the increase/decrease policies,
+    the heterogeneous scheduling policies and idle-disable returned nothing -
+    and the cards carrying them showed no current value at all.
+    """
     cached = _cache_get(("power",))
     if cached is not _MISS:
         return cached
     gen = _current_gen()
-    ok, out = _run("powercfg /query SCHEME_CURRENT")
+    ok, out = _run("powercfg /qh SCHEME_CURRENT")
     power: dict[tuple[str, str], tuple[int, int]] = {}
     sub = setid = None
     ac = dc = None
@@ -930,13 +936,30 @@ def _check_ini_absent(path: str, section: str, key: str) -> bool | None:
     return vals.get(key.strip().lower()) is None
 
 
+def _appx_packages() -> set | None:
+    """Lower-cased names of every installed Appx package, cached per audit
+    generation. A full ``Get-AppxPackage`` listing replaces per-tweak probes
+    (each tweak used to spawn its own PowerShell process — several seconds of
+    process spawn overhead for every two-package audit). None on failure."""
+    cached = _cache_get(("appx_packages",))
+    if cached is not _MISS:
+        return cached
+    gen = _current_gen()
+    packages: set | None = None
+    cmd = ('powershell -NoProfile -Command '
+           '"Get-AppxPackage | Select-Object -ExpandProperty Name"')
+    ok, out = _run(cmd, timeout=30)
+    if ok:
+        packages = {ln.strip().lower() for ln in out.splitlines() if ln.strip()}
+    _cache_set(("appx_packages",), packages, gen)
+    return packages
+
+
 def _check_appx(op: str, package: str) -> bool | None:
-    cmd = (f'powershell -NoProfile -Command '
-           f'"([bool](Get-AppxPackage *{package}*))"')
-    ok, out = _run(cmd, timeout=20)
-    if not ok:
+    packages = _appx_packages()
+    if packages is None:
         return None
-    present = "True" in out
+    present = package.lower() in packages
     return (not present) if op == "remove" else present
 
 

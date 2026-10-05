@@ -302,7 +302,7 @@ class RamTierCard(QFrame):
 
         self.desc_lbl = QLabel(sub if sub is not None else TIER_SUB.get(tier_key, ""))
         self.desc_lbl.setObjectName("RamTierDesc")
-        self.desc_lbl.setStyleSheet("font-size: 11.5px; color: #9399A9;")
+        self.desc_lbl.setStyleSheet("font-size: 12px; color: #9399A9;")
         self.desc_lbl.setWordWrap(True)
         inner.addWidget(self.desc_lbl)
 

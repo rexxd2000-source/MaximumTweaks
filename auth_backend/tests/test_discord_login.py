@@ -10,8 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-_tmpdir = tempfile.mkdtemp(prefix="mt-discord-")
-os.environ["LICENSE_DB_PATH"] = os.path.join(_tmpdir, "test.db")
+# LICENSE_DB_PATH is pinned by tests/conftest.py (isolated sqlite temp file)
 os.environ["LICENSE_SECRET"] = "test-secret-not-for-production"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
 os.environ["SESSION_TTL_HOURS"] = "2"

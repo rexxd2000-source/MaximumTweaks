@@ -20,6 +20,7 @@ import psutil
 
 INTERVAL_S = 1.0           # spec: poll every 1000 ms
 _NVIDIA_TTL = 2.0          # nvidia-smi subprocess cache (seconds)
+_AMD_TTL = 5.0             # AMD WMI perf-counter cache (seconds)
 _LHM_TTL = 5.0             # LibreHardwareMonitor WMI cache (seconds)
 _DISK_TTL = 30.0           # games/OS folder-size scan cache (seconds)
 
@@ -78,6 +79,99 @@ def _gpu_sample() -> dict | None:
         }
     except Exception:  # noqa: BLE001
         return None
+
+
+def _amd_gpu_sample() -> dict | None:
+    """AMD path — Windows GPU Performance Counters via WMI.
+
+    Returns name / utilization (sum of 3D engine load) / VRAM used & total for
+    the first AMD display adapter, or None when no AMD GPU is present. Cached
+    at the sampler level (see _amd_gpu_cache) so the PowerShell cost is paid
+    every _AMD_TTL seconds at most.
+    """
+    script = (
+        "$e=(Get-CimInstance -Namespace root\\cimv2 -ClassName "
+        "Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine | "
+        "Where-Object { $_.Name -match 'engtype_3D' } | "
+        "Measure-Object UtilizationPercentage -Sum).Sum;"
+        "$m=(Get-CimInstance -Namespace root\\cimv2 -ClassName "
+        "Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory | "
+        "Measure-Object DedicatedUsage -Sum).Sum;"
+        "$vc=Get-CimInstance Win32_VideoController | "
+        "Where-Object { $_.PNPDeviceID -match 'VEN_1002|VEN_1022' } | "
+        "Select-Object -First 1;"
+        "Write-Output ('U=' + $e);"
+        "Write-Output ('M=' + $m);"
+        "if($vc){ Write-Output ('N=' + $vc.Name) }"
+    )
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-Command", script],
+            capture_output=True, text=True, timeout=6,
+            creationflags=_NO_WINDOW)
+        vals = {}
+        for line in out.stdout.splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                vals[key] = value
+        if "N" not in vals or vals.get("U") is None:
+            return None
+        util = max(0, min(100, int(float(vals["U"]))))
+        used_mb = int(vals.get("M") or 0) // 2**20
+        result = {
+            "gpu_name": vals["N"],
+            "gpu_util": util,
+            "gpu_mem_used": used_mb,
+            "gpu_mem_total": _amd_vram_total_mb(),
+        }
+        return result
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _amd_vram_total_mb() -> int | None:
+    """Total dedicated VRAM for the AMD adapter from the driver class key.
+
+    Win32_VideoController.AdapterRAM is capped at ~4 GB and the perf-counter
+    set exposes only used memory, so the driver-written
+    HardwareInformation.qwMemorySize is the authoritative total."""
+    try:
+        import winreg
+    except Exception:  # noqa: BLE001
+        return None
+    base = (r"SYSTEM\CurrentControlSet\Control\Class"
+            r"\{4d36e968-e325-11ce-bfc1-08002be10318}")
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as root:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(root, i)
+                except OSError:
+                    return None
+                i += 1
+                path = base + "\\" + sub
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as k:
+                        mid, _ = winreg.QueryValueEx(k, "MatchingDeviceId")
+                        mid = str(mid)
+                        if "VEN_1002" not in mid and "VEN_1022" not in mid:
+                            continue
+                        for name in ("HardwareInformation.qwMemorySize",
+                                     "HardwareInformation.QWordMemorySize"):
+                            try:
+                                mem, fmt = winreg.QueryValueEx(k, name)
+                            except OSError:
+                                continue
+                            if isinstance(mem, int) and mem > 0:
+                                return max(1, mem // 2**20)
+                        return None
+                except OSError:
+                    continue
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -303,6 +397,8 @@ def collect_metrics() -> dict:
         pass
 
     gpu = _gpu_cache.get()
+    if not gpu:
+        gpu = _amd_gpu_cache.get()
     if gpu:
         data.update(gpu)
     data["gpu_temp"] = _gpu_temp(gpu.get("gpu_temp") if gpu else None)
@@ -319,6 +415,7 @@ def collect_metrics() -> dict:
 
 
 _gpu_cache = _Cached(_NVIDIA_TTL, _gpu_sample)
+_amd_gpu_cache = _Cached(_AMD_TTL, _amd_gpu_sample)
 _lhm_temps_cache = _Cached(_LHM_TTL, _lhm_temps)
 _disk_cache = _Cached(_DISK_TTL, _disk_breakdown)
 

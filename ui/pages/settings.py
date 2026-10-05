@@ -16,10 +16,11 @@ import platform
 import subprocess
 import time
 
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QSize
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QIcon,
     QLinearGradient,
     QPainter,
     QPixmap,
@@ -53,6 +54,7 @@ from engine import license as license_mgr
 from engine import state as state_mgr
 from engine import telemetry
 from ui.license import plan_label
+from ui.widgets import brand_icon_pixmap
 
 # --- Reference palette (:root in settings-premium.html) --------------------
 _BG = "#07050D"
@@ -334,7 +336,7 @@ def _badge(text):
     """.badge.violet"""
     lbl = QLabel(text.upper())
     lbl.setStyleSheet(
-        f"font-family:{_MONO}; font-size:9.5px;"
+        f"font-family:{_MONO}; font-size:10px;"
         f" color:{_VIOLET_SOFT}; background-color:rgba(139,107,255,0.12);"
         f" border:1px solid rgba(139,107,255,0.30); border-radius:6px;"
         f" padding:3px 9px; font-weight:700;")
@@ -367,7 +369,7 @@ def _section_head(icon_name, title, subtitle):
     lay.addWidget(h2)
     p = QLabel(f"\u00b7 {subtitle}")
     p.setStyleSheet(
-        f"font-size:11.5px; color:{_TEXT_3}; background:transparent;")
+        f"font-size:12px; color:{_TEXT_3}; background:transparent;")
     lay.addWidget(p)
     lay.addStretch()
     return w
@@ -412,14 +414,14 @@ class _Tile(QFrame):
 
         val = _ElideLabel(str(value))
         val.setStyleSheet(
-            f"font-family:{_DISPLAY}; font-size:14.5px; font-weight:700;"
+            f"font-family:{_DISPLAY}; font-size:15px; font-weight:700;"
             f" color:{_TEXT_1}; background:transparent;")
         lay.addWidget(val)
         lay.addSpacing(3)
 
         lbl = QLabel(label.upper())
         lbl.setStyleSheet(
-            f"font-size:10.5px; color:{_TEXT_3};"
+            f"font-size:11px; color:{_TEXT_3};"
             f" background:transparent;")
         _track(lbl, 0.5)
         lay.addWidget(lbl)
@@ -452,7 +454,7 @@ class _Row(QFrame):
 
         d = _WrapLabel(desc, maxw=520)
         d.setStyleSheet(
-            f"font-size:12.5px; color:{_TEXT_2}; background:transparent;")
+            f"font-size:13px; color:{_TEXT_2}; background:transparent;")
         box.addWidget(d)
 
         lay.addLayout(box, 1)
@@ -507,7 +509,7 @@ class _LicenseCard(QFrame):
         ll.addWidget(_ref_icon("bolt", _VIOLET_SOFT, 14), 0, Qt.AlignVCenter)
         lt = QLabel("License")
         lt.setStyleSheet(
-            f"font-size:12.5px; color:{_TEXT_2}; font-weight:700;"
+            f"font-size:13px; color:{_TEXT_2}; font-weight:700;"
             f" background:transparent;")
         ll.addWidget(lt)
         top.addWidget(label)
@@ -589,7 +591,7 @@ def _btn(text, kind="default"):
             "QPushButton{background:qlineargradient(x1:0,y1:0,x2:1,y2:0.3,"
             f" stop:0 {_CYAN}, stop:1 {_VIOLET}); color:#0A0714;"
             " border:none; border-radius:9px; padding:9px 16px;"
-            " font-size:12.5px; font-weight:700;}"
+            " font-size:13px; font-weight:700;}"
             "QPushButton:hover{background:qlineargradient(x1:0,y1:0,x2:1,y2:0.3,"
             f" stop:0 {_CYAN}, stop:1 {_VIOLET_SOFT});}}"
             "QPushButton:disabled{background:rgba(255,255,255,0.05);"
@@ -598,7 +600,7 @@ def _btn(text, kind="default"):
         b.setStyleSheet(
             "QPushButton{background:rgba(255,107,107,0.06); color:" + _RED + ";"
             " border:1px solid rgba(255,107,107,0.35); border-radius:9px;"
-            " padding:9px 16px; font-size:12.5px; font-weight:700;}"
+            " padding:9px 16px; font-size:13px; font-weight:700;}"
             "QPushButton:hover{background:rgba(255,107,107,0.12);}"
             "QPushButton:disabled{color:#6b4a4a;"
             " border-color:rgba(255,107,107,0.15);}")
@@ -606,7 +608,7 @@ def _btn(text, kind="default"):
         b.setStyleSheet(
             "QPushButton{background:rgba(255,255,255,0.03); color:" + _TEXT_1 + ";"
             " border:1px solid rgba(255,255,255,0.09); border-radius:9px;"
-            " padding:9px 16px; font-size:12.5px; font-weight:700;}"
+            " padding:9px 16px; font-size:13px; font-weight:700;}"
             "QPushButton:hover{background:rgba(255,255,255,0.06);"
             " border-color:rgba(255,255,255,0.18);}"
             "QPushButton:disabled{color:" + _TEXT_3 + ";}")
@@ -692,7 +694,7 @@ class SettingsPage(QWidget):
         p = _WrapLabel(f"{greeting}, {current_windows_user()}. Manage your "
                        "account, system, and preferences below.")
         p.setStyleSheet(
-            f"font-size:13.5px; color:{_TEXT_2}; background:transparent;")
+            f"font-size:14px; color:{_TEXT_2}; background:transparent;")
         root.addWidget(p)
         root.addSpacing(26)
 
@@ -730,7 +732,7 @@ class SettingsPage(QWidget):
 
         spec = _WrapLabel(f"{_cpu_name()} \u00b7 {_ram_gb()} GB RAM")
         spec.setStyleSheet(
-            f"font-size:12.5px; color:{_TEXT_3}; background:transparent;")
+            f"font-size:13px; color:{_TEXT_3}; background:transparent;")
         right.addWidget(spec)
 
         lay.addLayout(right, 1)
@@ -891,6 +893,8 @@ class SettingsPage(QWidget):
         b_logs = _btn("View logs")
         b_logs.clicked.connect(lambda: self.navigate("logs"))
         b_discord = _btn("Join Discord")
+        b_discord.setIcon(QIcon(brand_icon_pixmap("discord", size=15)))
+        b_discord.setIconSize(QSize(15, 15))
         b_discord.clicked.connect(
             lambda: __import__("webbrowser").open(DISCORD_INVITE_URL))
         rows = [
@@ -918,7 +922,7 @@ class SettingsPage(QWidget):
         f.setTextFormat(Qt.RichText)
         f.setAlignment(Qt.AlignCenter)
         f.setStyleSheet(
-            f"font-size:11.5px; color:{_TEXT_3}; background:transparent;")
+            f"font-size:12px; color:{_TEXT_3}; background:transparent;")
         root.addWidget(f)
 
     # ---------------------------------------------------------------

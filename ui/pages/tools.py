@@ -190,11 +190,11 @@ class _ToolRow(QFrame):
         box.setSpacing(2)
         nm = QLabel(item["name"])
         nm.setStyleSheet(
-            "font-size:13.5px;font-weight:600;color:" + _INK_100
+            "font-size:14px;font-weight:600;color:" + _INK_100
             + ";background:transparent;")
         de = QLabel(item.get("desc", ""))
         de.setStyleSheet(
-            "font-size:11.5px;color:" + _INK_600 + ";background:transparent;")
+            "font-size:12px;color:" + _INK_600 + ";background:transparent;")
         de.setWordWrap(False)
         self._full_desc = item.get("desc", "")
         self._de = de
@@ -384,7 +384,7 @@ class ToolsPage(QWidget):
             e = QLabel("No tools match this search.")
             e.setAlignment(Qt.AlignCenter)
             e.setStyleSheet(
-                "font-size:12.5px;color:" + _INK_600 + ";"
+                "font-size:13px;color:" + _INK_600 + ";"
                 "background:transparent;padding:26px;")
             self._list_host.addWidget(e)
             return
@@ -401,7 +401,7 @@ class ToolsPage(QWidget):
             f.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
             label.setFont(f)
             label.setStyleSheet(
-                "font-family:" + _MONO + ";font-size:10.5px;color:"
+                "font-family:" + _MONO + ";font-size:11px;color:"
                 + _INK_400 + ";background:transparent;")
             host = QVBoxLayout()
             host.setSpacing(10)

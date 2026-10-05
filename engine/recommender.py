@@ -5,12 +5,11 @@ import platform
 
 READY = "ready"
 INCOMPATIBLE = "incompatible"
-NOT_FOR_YOU = "not_for_you"   # vendor-specific guidance not matching this system
-OPTIONAL = "optional"         # advanced / optional risk, compatible but user should decide
-WARNING = "warning"           # risky for the detected hardware
-UNKNOWN = "unknown"           # hardware not detected yet — cannot confirm compatibility
+NOT_FOR_YOU = "not_for_you"
+OPTIONAL = "optional"
+WARNING = "warning"
+UNKNOWN = "unknown"
 
-#: ``when`` condition keys the recommender actually evaluates against a profile.
 HARDWARE_KEYS = ("gpu", "gpu_type", "cpu_vendor", "intel_cpu", "cpu_cores",
                  "ram_gb", "ram_channels", "ssd", "hdd", "nvme", "laptop",
                  "audio_realtek", "audio_usb", "audio_bluetooth", "audio_hdmi")
@@ -34,11 +33,13 @@ def _effective_win_version(profile: dict) -> str | None:
     if v in ("10", "11"):
         return v
     try:
-        _, build, _, _ = platform.win32_ver()
+        _, _, build, _ = platform.win32_ver()
         if build:
-            return "11" if int(build) >= 22000 else "10"
+            if int(build) >= 22000:
+                return "11"
+            return "10"
     except Exception:  # noqa: BLE001
-        pass
+        return None
     return None
 
 
@@ -46,7 +47,7 @@ def _in(vals, key, profile):
     """Match an OR list against a scalar profile value."""
     if not isinstance(vals, (list, tuple)):
         vals = [vals]
-    return any(v == profile.get(key) for v in vals)
+    return any(profile.get(key) == v for v in vals)
 
 
 def _numeric(cond, profile, key="cpu_cores"):
@@ -55,9 +56,9 @@ def _numeric(cond, profile, key="cpu_cores"):
         for op, limit in cond.items():
             try:
                 val = float(profile.get(key) or 0)
+                limit = float(limit)
             except (TypeError, ValueError):
                 return False
-            limit = float(limit)
             if op == "<=":
                 return val <= limit
             if op == "<":
@@ -81,9 +82,9 @@ def _cond_text(cond) -> str:
     """
     if isinstance(cond, dict):
         for op, limit in cond.items():
-            return {"<=": "at most", "<": "under",
-                    ">=": "at least", ">": "over"}.get(op, op) + f" {limit}"
-    return f"at least {cond}"
+            return {"<=": "at most", "<": "under", ">=": "at least",
+                    ">": "over"}[op] + " " + f"{limit}"
+    return "at least " + f"{cond}"
 
 
 def evaluate(tweak: dict, profile: dict) -> dict:
@@ -94,40 +95,37 @@ def evaluate(tweak: dict, profile: dict) -> dict:
 
     if when.get("gpu"):
         gpu = profile.get("gpu") or ["unknown"]
-        if not set(when["gpu"]) & set(gpu):
-            names = {
-                "nvidia": "NVIDIA",
-                "amd": "AMD",
-                "intel": "Intel",
-            }
-            need = "/".join(names.get(v, v) for v in when["gpu"])
+        if not (set(when["gpu"]) & set(gpu)):
+            names = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}
+            need = "/".join(names[v] for v in when["gpu"])
             reasons.append(f"Requires a {need} GPU")
 
     if when.get("gpu_type"):
         gpu_types = profile.get("gpu_types") or []
-        if isinstance(when["gpu_type"], (list, tuple)):
-            needed = set(when["gpu_type"])
-        else:
-            needed = {when["gpu_type"]}
-        if not needed & set(gpu_types):
+        needed = set(when["gpu_type"]) if isinstance(when["gpu_type"], (list, tuple)) \
+            else {when["gpu_type"]}
+        if not (needed & set(gpu_types)):
             need = "/".join(when["gpu_type"])
             reasons.append(f"Requires a {need} GPU")
 
-    if when.get("cpu_vendor") and not _in(when["cpu_vendor"], "cpu_vendor", profile):
-        reasons.append(f"Requires {'/'.join(when['cpu_vendor'])} CPU")
+    if (when.get("cpu_vendor")
+            and not _in(when["cpu_vendor"], "cpu_vendor", profile)):
+        reasons.append("Requires " + "/".join(when["cpu_vendor"]) + " CPU")
 
     if when.get("intel_cpu") is False and profile.get("cpu_vendor") == "intel":
         reasons.append("Designed for AMD systems")
 
-    if when.get("cpu_cores") is not None and not _numeric(when["cpu_cores"], profile):
-        reasons.append(f"Requires {_cond_text(when['cpu_cores'])} CPU cores")
+    if (when.get("cpu_cores") is not None
+            and not _numeric(when["cpu_cores"], profile)):
+        reasons.append("Requires " + _cond_text(when["cpu_cores"]) + " CPU cores")
 
-    if when.get("ram_gb") is not None and not _numeric(when["ram_gb"], profile, key="ram_gb"):
-        reasons.append(f"Requires {_cond_text(when['ram_gb'])} GB RAM")
+    if (when.get("ram_gb") is not None
+            and not _numeric(when["ram_gb"], profile, key="ram_gb")):
+        reasons.append("Requires " + _cond_text(when["ram_gb"]) + " GB RAM")
 
-    if when.get("ram_channels") is not None and not _numeric(
-            when["ram_channels"], profile, key="ram_channels"):
-        reasons.append(f"Requires {_cond_text(when['ram_channels'])} memory channel(s)")
+    if (when.get("ram_channels") is not None
+            and not _numeric(when["ram_channels"], profile, key="ram_channels")):
+        reasons.append("Requires " + _cond_text(when["ram_channels"]) + " memory channel(s)")
 
     if when.get("ssd") and not profile.get("ssd"):
         reasons.append("Requires an SSD")
@@ -139,8 +137,6 @@ def evaluate(tweak: dict, profile: dict) -> dict:
         reasons.append("Requires a laptop")
     if when.get("laptop") is False and profile.get("laptop"):
         reasons.append("Not compatible with laptops — causes excessive battery drain or breaks hybrid graphics")
-
-    # Audio hardware gating
     if when.get("audio_realtek") and not profile.get("has_audio_realtek"):
         reasons.append("Requires Realtek or compatible onboard audio")
     if when.get("audio_usb") and not profile.get("has_audio_usb"):
@@ -150,20 +146,18 @@ def evaluate(tweak: dict, profile: dict) -> dict:
     if when.get("audio_hdmi") and not profile.get("has_audio_hdmi"):
         reasons.append("Requires an HDMI or DisplayPort audio device")
 
-    # Windows version gating: the ``win`` field is the per-tweak support list
-    # (e.g. "10" or "11"), and ``when.win_versions`` is the same as a condition.
     win = _effective_win_version(profile)
     if win is not None:
         supported = windows_versions(tweak)
         if supported and win not in supported:
-            reasons.append(
-                f"Designed for Windows {'/'.join(sorted(supported))} "
-                f"(this PC runs Windows {win})")
+            reasons.append("Designed for Windows "
+                           + "/".join(sorted(supported))
+                           + " (this PC runs Windows " + win + ")")
         when_wins = when.get("win_versions")
         if when_wins and win not in set(when_wins):
-            reasons.append(
-                f"Requires Windows {'/'.join(when_wins)} "
-                f"(this PC runs Windows {win})")
+            reasons.append("Requires Windows "
+                           + "/".join(when_wins)
+                           + " (this PC runs Windows " + win + ")")
 
     state = READY
     if reasons:

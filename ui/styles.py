@@ -1,4 +1,4 @@
-"""Maximum Tweaks QSS — one consistent deep-space + neon-violet design system.
+"""Maximum Tweaks QSS â€” one consistent deep-space + neon-violet design system.
 
 Tokens live in config.app_config.THEME. Surfaces are built from dark
 indigo-obsidian neutrals (translucent cards, muted text) with the neon
@@ -68,13 +68,13 @@ QMainWindow, QDialog {{
     font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.2px;
-    color: #F6F4FC;
+    color: {T["text"]};
 }}
 #BrandSub {{
     font-family: "JetBrains Mono", "Cascadia Mono", monospace;
     font-size: 9px;
     letter-spacing: 1.5px;
-    color: #514A70;
+    color: {T["text_faint"]};
     font-weight: 700;
 }}
 QLabel#NavSectionLabel {{
@@ -82,7 +82,7 @@ QLabel#NavSectionLabel {{
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 1.3px;
-    color: #514A70;
+    color: {T["text_faint"]};
     padding-top: 1px;
     padding-bottom: 1px;
 }}
@@ -100,7 +100,7 @@ QLabel#NavSectionLabel {{
 #NavRow[active="true"] {{
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 rgba(139, 107, 255, 0.16), stop:1 rgba(139, 107, 255, 0.03));
     border: 1px solid rgba(150, 130, 235, 0.18);
-    border-left: 2.5px solid #8B6BFF;
+    border-left: 2.5px solid {T["accent"]};
 }}
 QLabel#NavIcon {{
     background-color: transparent;
@@ -108,14 +108,14 @@ QLabel#NavIcon {{
 QLabel#NavText {{
     font-size: 13px;
     font-weight: 600;
-    color: #928AAD;
+    color: {T["text_dim"]};
     background-color: transparent;
 }}
 QLabel#NavText[hovered="true"] {{
-    color: #F6F4FC;
+    color: {T["text"]};
 }}
 QLabel#NavText[active="true"] {{
-    color: #F6F4FC;
+    color: {T["text"]};
     font-weight: 700;
 }}
 #SoonBadge {{
@@ -153,11 +153,28 @@ QLabel#NewBadge {{
     padding: 3px 10px;
 }}
 
+QLabel#UpdatedBadge {{
+    font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #2b1700;
+    background-color: #FFB454;
+    border: 2px solid #FFB454;
+    border-radius: 7px;
+    padding: 3px 10px;
+}}
+
 /* ---------------- Tweaks toolbar + pagination ---------------- */
 QFrame#SearchBox {{
     background-color: {T["card"]};
     border: 1px solid {T["border"]};
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 10px;
+}}
+QFrame#SearchBox:focus-within {{
+    border-color: {accent_45};
+    border-top: 1px solid rgba(196, 132, 255, 0.35);
 }}
 QLabel#SearchIcon {{
     color: {T["text_dim"]};
@@ -186,17 +203,25 @@ QComboBox QAbstractItemView {{
 }}
 QPushButton#Primary {{
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.35,
-        stop:0 #8B6BFF, stop:1 #6D4FE0);
+        stop:0 {T["accent"]}, stop:1 #6D4FE0);
     color: #FFFFFF;
     border: none;
     border-radius: 10px;
     padding: 9px 18px;
     font-weight: 600;
-    font-size: 12.5px;
+    font-size: 13px;
+}}
+QPushButton#Primary:enabled {{
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.25);
 }}
 QPushButton#Primary:hover:enabled {{
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.35,
         stop:0 #9C80FF, stop:1 #7C5FF0);
+}}
+QPushButton#Primary:pressed:enabled {{
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.35,
+        stop:0 {T["accent_press"]}, stop:1 #5B3FC8);
 }}
 QPushButton#Primary:disabled {{
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0.35,
@@ -207,12 +232,17 @@ QPushButton#Secondary {{
     background-color: {T["card"]};
     color: {T["text"]};
     border: 1px solid {T["border"]};
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 10px;
     padding: 8px 16px;
     font-weight: 600;
 }}
 QPushButton#Secondary:hover:enabled {{
     background-color: {T["card_alt"]};
+}}
+QPushButton#Secondary:pressed:enabled {{
+    background-color: {T["card_hover"]};
+    border-color: {T["border_hover"]};
 }}
 QPushButton#Ghost {{
     background: transparent;
@@ -226,6 +256,11 @@ QPushButton#Ghost:hover:enabled {{
     color: {T["text"]};
     background-color: {accent_08};
     border-color: {accent_45};
+}}
+QPushButton#Ghost:pressed:enabled {{
+    color: {T["text"]};
+    background-color: {accent_12};
+    border-color: {accent_55};
 }}
 QWidget#PageBar {{
     background-color: transparent;
@@ -280,7 +315,8 @@ QProgressBar {{
     color: {T["text"]};
 }}
 QProgressBar::chunk {{
-    background-color: {T["accent"]};
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #7C5FF0, stop:1 {T["accent"]});
     border-radius: 7px;
 }}
 
@@ -288,7 +324,26 @@ QProgressBar::chunk {{
 #Card, #Hero, #ProfileCard, #ActionCard, #LicenseAccountCard, #GpuVendorCard {{
     background-color: {T["card"]};
     border: 1px solid {T["border"]};
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 14px;
+}}
+/* Depth: layered gradient panel with a soft top-light edge (no blur costs). */
+#Card {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.05), stop:0.14 rgba(255, 255, 255, 0.02),
+        stop:1 {T["card"]});
+}}
+#Hero {{
+    border-radius: 16px;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.06), stop:0.2 {T["card"]},
+        stop:1 #0D0B14);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+}}
+#ProfileCard, #ActionCard, #GpuVendorCard {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.04), stop:0.16 {T["card"]},
+        stop:1 {T["card"]});
 }}
 /* Dashboard license account card: same accent treatment as the old Discord card. */
 #LicenseAccountCard {{
@@ -305,14 +360,14 @@ QProgressBar::chunk {{
     border-radius: 12px;
 }}
 #Card:hover, #ActionCard:hover {{
-    border-color: #2A313C;
+    border-color: {T["border_hover"]};
     background-color: {T["card_alt"]};
 }}
 #Hero {{
     border-radius: 16px;
 }}
 #ProfileCard:hover {{
-    border-color: #2A313C;
+    border-color: {T["border_hover"]};
 }}
 #ProfileCard[active="true"] {{
     border: 1px solid {accent_55};
@@ -321,6 +376,7 @@ QProgressBar::chunk {{
 #TweakCard, QFrame#tweak-card {{
     background-color: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.09);
+    border-top: 1px solid rgba(255, 255, 255, 0.13);
     border-radius: 16px;
 }}
 #TweakCard:hover, QFrame#tweak-card:hover {{
@@ -331,6 +387,7 @@ QProgressBar::chunk {{
     border: 1px solid rgba(74, 222, 128, 0.55);
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 rgba(74, 222, 128, 0.055), stop:0.4 rgba(255, 255, 255, 0.03), stop:1 rgba(255, 255, 255, 0.03));
+    border-top: 1px solid rgba(74, 222, 128, 0.35);
 }}
 #TweakCard[state="reverted"], QFrame#tweak-card[state="reverted"] {{
     border: 1px solid rgba(248, 121, 121, 0.35);
@@ -366,8 +423,9 @@ QProgressBar::chunk {{
     border-radius: 11px;
 }}
 #Toast {{
-    background-color: #151B24;
-    border: 1px solid #2A313C;
+    background-color: {T["toast_bg"]};
+    border: 1px solid {T["border_hover"]};
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 10px;
 }}
 
@@ -375,16 +433,16 @@ QProgressBar::chunk {{
 #GlassCard {{
     background-color: rgba(17, 20, 26, 0.72);
     border: 1px solid #232A35;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 18px;
 }}
 #GlassCard:hover {{
     border-color: #2E3742;
 }}
-/* Reference dashboard glass panel: gradient fill + hairline glass border + 14px radius. */
+/* Dashboard panel: flat solid card with a crisp single-accent border. */
 #DashPanel {{
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(255,255,255,0.07), stop:1 rgba(255,255,255,0.015));
-    border: 1px solid rgba(255,255,255,0.09);
+    background-color: #14121C;
+    border: 1px solid #8B5CF6;
     border-radius: 14px;
 }}
 #DashStatusPill {{
@@ -393,27 +451,27 @@ QProgressBar::chunk {{
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 100px;
     padding: 5px 12px;
-    font-size: 11.5px;
-    color: #928AAD;
+    font-size: 12px;
+    color: {T["text_dim"]};
 }}
 #DashChip {{
     background-color: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 8px;
     padding: 5px 11px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-family: "JetBrains Mono", "Cascadia Mono", monospace;
-    color: #928AAD;
+    color: {T["text_dim"]};
 }}
 #DashPanelTitle {{
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
-    color: #F6F4FC;
+    color: {T["text"]};
 }}
 #DashPanelSub {{
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 400;
-    color: #514A70;
+    color: {T["text_faint"]};
 }}
 #DashMono {{
     font-family: "JetBrains Mono", "Cascadia Mono", monospace;
@@ -423,22 +481,28 @@ QPushButton#DashPrimary {{
         stop:0 #B79BFF, stop:1 #8266E8);
     color: #100B22;
     border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.25);
     border-radius: 8px;
     padding: 10px 16px;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
 }}
 QPushButton#DashPrimary:hover:enabled {{
     background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 #C5AAFf, stop:1 #8F73F0);
 }}
+QPushButton#DashPrimary:pressed:enabled {{
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #9C85F0, stop:1 #6F55D8);
+}}
 QPushButton#DashGhost {{
     background-color: transparent;
-    color: #F6F4FC;
+    color: {T["text"]};
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 8px;
     padding: 10px 16px;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
 }}
 QPushButton#DashGhost:hover:enabled {{
@@ -446,11 +510,11 @@ QPushButton#DashGhost:hover:enabled {{
 }}
 QPushButton#DashSmall {{
     background-color: rgba(255,255,255,0.04);
-    color: #F6F4FC;
+    color: {T["text"]};
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 8px;
     padding: 7px 12px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
 }}
 QPushButton#DashSmall:hover:enabled {{
@@ -475,7 +539,7 @@ QPushButton#DashSmall:hover:enabled {{
     background: transparent;
     border: none;
     color: {T["accent"]};
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 700;
     padding: 0;
 }}
@@ -538,7 +602,7 @@ QLabel#StatLabel {{
 }}
 QLabel#Tag {{
     font-family: "JetBrains Mono", "Cascadia Mono", monospace;
-    color: #514A70;
+    color: {T["text_faint"]};
     font-size: 9px;
     letter-spacing: 0.4px;
 }}
@@ -567,7 +631,7 @@ QLabel#Badge {{
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.5px;
-    color: #8B6BFF;
+    color: {T["accent"]};
     background-color: rgba(139, 92, 246, 0.08);
     border: 1px solid rgba(139, 92, 246, 0.25);
 }}
@@ -577,7 +641,7 @@ QLabel#StatusPill {{
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 0.6px;
-    color: #8B6BFF;
+    color: {T["accent"]};
     background-color: rgba(139, 92, 246, 0.08);
     border: 1px solid rgba(139, 92, 246, 0.25);
 }}
@@ -586,7 +650,7 @@ QLabel#StatChip {{
     border-radius: 9px;
     font-size: 12px;
     font-weight: 500;
-    color: #8B6BFF;
+    color: {T["accent"]};
     background-color: rgba(139, 92, 246, 0.08);
     border: 1px solid rgba(139, 92, 246, 0.25);
 }}

@@ -45,24 +45,42 @@ def mask_key(key: str) -> str:
         return ""
     parts = str(key).split("-")
     if len(parts) >= 3:
-        return "MAX-\u2022\u2022\u2022\u2022-\u2022\u2022\u2022\u2022-" + parts[-1]
+        return "MAX-\u25cf\u25cf\u25cf\u25cf-\u25cf\u25cf\u25cf\u25cf-" + parts[-1]
     return key
 
 
+#: Billing DURATION codes -> display text. This is the `plan` field only; the
+#: subscription LEVEL is the separate `tier` field (see config.plans).
+_DURATION = {
+    "lifetime": "Lifetime",
+    "life": "Lifetime",
+    "monthly": "Monthly",
+    "1m": "Monthly",
+    "6m": "6 Months",
+    "yearly": "Yearly",
+    "annual": "Annual",
+    "custom": "Custom",
+}
+
+
 def plan_label(sess: dict | None = None) -> str:
-    """Human-friendly subscription name for the session's plan, e.g. 'Maximum
-    Lifetime'. The raw key code is never shown in the UI."""
-    sess = sess or license_mgr.session()
+    """Human subscription name for a session, e.g. 'Maximum \u00b7 Yearly'.
+
+    The tier and the billing duration are shown together because they answer two
+    different questions: `tier` is what is unlocked, `plan` is how long it runs
+    for. This used to hard-code "Maximum" for every key, which mislabelled a
+    Foundation subscriber as a paid Maximum one.
+    """
+    from config.plans import PLAN_LABEL, normalize_tier
+
+    sess = sess if sess is not None else license_mgr.session()
+    tier = normalize_tier((sess or {}).get("tier"))
     if not sess:
-        return "Maximum Lifetime"
+        return f"{PLAN_LABEL[tier]} \u00b7 {_DURATION['lifetime']}"
+
     plan = str(sess.get("plan") or "lifetime").lower()
-    pretty = {
-        "lifetime": "Lifetime",
-        "monthly": "Monthly",
-        "yearly": "Yearly",
-        "custom": "Custom",
-    }.get(plan, plan.capitalize())
-    return f"Maximum {pretty}"
+    duration = _DURATION.get(plan, plan.capitalize())
+    return f"{PLAN_LABEL[tier]} \u00b7 {duration}"
 
 
 class _BlinkDot(QWidget):
@@ -240,10 +258,10 @@ def relock(window, payload=None):
     server refusal (banned / revoked / timeout) so the gate opens on the
     matching status screen when the key was taken away mid-session.
     """
-    from ui.gate import GateWindow
+    from ui.gate import GateWindow, default_gate_geometry
     ctx = getattr(window, "ctx", None)
     gate = GateWindow(payload=payload)
-    gate.setGeometry(window.frameGeometry())
+    gate.setGeometry(default_gate_geometry())
     gate.show()
     window.hide()
 
@@ -311,7 +329,7 @@ class SidebarLicenseCard(QFrame):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(IconTile(ICONS.get("shield", "\u26d1"), _ACCENT,
-                                size=30, font_scale=0.5))
+                                size=30, font_scale=0.5, lucide="shield"))
         t = QLabel("License")
         t.setStyleSheet("font-size: 12px; font-weight: 700;")
         head.addWidget(t)
@@ -412,7 +430,7 @@ class LicenseAccountCard(QFrame):
         head = QHBoxLayout()
         head.setSpacing(8)
         head.addWidget(IconTile(ICONS.get("shield", "\u26d1"), _ACCENT,
-                                size=32, font_scale=0.5))
+                                size=32, font_scale=0.5, lucide="shield"))
         t = QLabel("License")
         t.setStyleSheet("font-size: 13px; font-weight: 700;"
                         " letter-spacing: 0.4px;")
@@ -477,3 +495,55 @@ class LicenseAccountCard(QFrame):
             activate.setObjectName("Primary")
             activate.clicked.connect(self.activate_requested)
             lay.addWidget(activate)
+
+class LicenseDiscordWorker(QThread):
+    done = Signal(str, str, object)  # status, message, session
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def run(self):
+        try:
+            import webbrowser
+            import time
+            from engine import license as license_mgr
+            # easier: use license_mgr's API via http
+            import urllib.request
+            import urllib.parse
+            import json
+            import os
+            base = os.environ.get("AUTH_API_URL") or "http://127.0.0.1:8000"
+            print(f"[DISCORD AUTH] Using base: {base}")
+            if base:
+                base = base.rstrip("/")
+            # start
+            req = urllib.request.Request(base + "/auth/discord/start", data=json.dumps({}).encode("utf-8"), method="POST")
+            req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                d = json.loads(resp.read().decode("utf-8"))
+            if not d.get("ok") or not d.get("url") or not d.get("state"):
+                self.done.emit("error", "Discord login unavailable", None)
+                return
+            webbrowser.open(d["url"])
+            state = d["state"]
+            # poll
+            for _ in range(60):  # ~30 seconds
+                time.sleep(0.5)
+                try:
+                    preq = urllib.request.Request(base + f"/auth/discord/poll/{urllib.parse.quote(state)}")
+                    with urllib.request.urlopen(preq, timeout=5) as presp:
+                        pd = json.loads(presp.read().decode("utf-8"))
+                    if pd.get("status") == "ok":
+                        # get session
+                        sess = {"license": "FOUNDATION-DISCORD", "owner": pd.get("username") or "Discord User", "plan": "foundation", "tier": "foundation", "customer": pd.get("username") or ""}
+                        license_mgr.set_session(sess)
+                        self.done.emit("ok", "", sess)
+                        return
+                    if pd.get("status") in ("denied", "expired"):
+                        self.done.emit("error", "Discord login cancelled/expired", None)
+                        return
+                except Exception:
+                    pass
+            self.done.emit("error", "Discord login timed out", None)
+        except Exception as e:
+            self.done.emit("error", str(e), None)

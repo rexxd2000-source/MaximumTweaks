@@ -141,7 +141,7 @@ def _validate_action(action, tweak_id):
 def _normalize_when(when):
     out = {}
     for key, req in (when or {}).items():
-        if key in ("gpu", "gpu_type", "cpu_vendor", "ntfs", "win_versions"):
+        if key in ("gpu", "gpu_type", "cpu_vendor", "cpu_family", "ntfs", "win_versions"):
             out[key] = list(req) if isinstance(req, (list, tuple)) else [req]
         elif isinstance(req, dict) and req.keys() <= {">=", "<=", "==", ">", "<"}:
             out[key] = {k: _norm_int(v, f"{key}.{k}") for k, v in req.items()}
@@ -158,7 +158,7 @@ def make_T(category, win_default="7,8,10,11"):
     def T(tid, name, desc, actions=None, revert=None, why=None, changes=None,
           risk="low", impact="moderate", recommended="recommended", win=None,
           admin=False, confirm=False, warn=None, when=None, tags=None,
-          crafted_for=None, sub_category=None, added=None,
+          crafted_for=None, sub_category=None, added=None, updated=None,
           status="VALID", evidence="UNKNOWN", target="WINDOWS", verdict="SHIP",
           **extra):
         if not tid or not isinstance(tid, str):
@@ -199,6 +199,7 @@ def make_T(category, win_default="7,8,10,11"):
             "tags": list(tags or []),
             "crafted_for": crafted_for,
             "added": added,
+            "updated": updated,
             "status": status,
             "evidence": evidence,
             "target": target,
@@ -224,6 +225,24 @@ def is_new_tweak(tweak, today=None):
         return False
     today = today or _dt.date.today()
     return (today - added_dt).days <= NEW_WINDOW_DAYS
+
+
+def is_updated_tweak(tweak, today=None, window_days=NEW_WINDOW_DAYS):
+    """True when the tweak's ``updated`` date falls inside the window.
+
+    ``updated`` is an ISO "YYYY-MM-DD" string set on tweaks that were changed
+    in a recent release. Omitted or unparsable dates are never treated as
+    recently updated.
+    """
+    updated = (tweak or {}).get("updated")
+    if not updated:
+        return False
+    try:
+        updated_dt = _dt.date.fromisoformat(str(updated))
+    except (TypeError, ValueError):
+        return False
+    today = today or _dt.date.today()
+    return (today - updated_dt).days <= window_days
 
 
 def validate_module(module_name, tweaks):

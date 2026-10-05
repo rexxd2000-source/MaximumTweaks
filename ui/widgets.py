@@ -7,6 +7,8 @@ Design rules (see config.app_config.THEME):
 """
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
@@ -51,8 +53,9 @@ from PySide6.QtWidgets import (
 
 from config.app_config import THEME as T
 from database import BY_ID
-from database.tweaks._base import is_new_tweak
+from database.tweaks._base import is_new_tweak, is_updated_tweak
 from engine import activity, applier, state as state_mgr
+from engine.probe import evaluate_support
 from ui.categories import affects_for, group_key_for_category, logo_path
 
 
@@ -102,6 +105,9 @@ NAV_LUCIDE = {
                '<path d="M14.734 13.841a2 2 0 00-.314-2.42L12.58 9.58a2 2 0 00-2.421-.314l-7.657 4.461A1 1 0 002.3 15.3l6.403 6.403a1 1 0 001.571-.204z"/>'
                '<path d="M20 15v4"/><path d="M22 17h-4"/><path d="M4 4v4"/>'
                '<path d="m5 18 2-2"/><path d="M6 6H2"/><path d="m7.699 10.7 5.602 5.601"/>',
+    # Official lucide "app-window" glyph (window frame with title-bar marks).
+    "app_optimizers": '<rect x="2" y="4" width="20" height="16" rx="2"/>'
+                      '<path d="M2 8h20"/><path d="M6 4v4"/><path d="M10 4v4"/>',
     "route_analyzer": '<circle cx="12" cy="12" r="9"/>'
                      '<path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
     "profiles": '<rect x="2" y="7" width="20" height="10" rx="4"/>'
@@ -115,6 +121,27 @@ NAV_LUCIDE = {
     "chat": '<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',
     "settings": '<circle cx="12" cy="12" r="3"/>'
                 '<path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12"/>',
+    # Added for the bottom dock, which needs a few glyphs the old sidebar
+    # never drew. Same lucide geometry, same stroke-width, same family.
+    # "monitor" is the dock's Windows/System category orb (distinct from the
+    # gear used by the Settings category and the Windows/System tile), "gauge"
+    # is the FPS boost page, and "activity" is the Diagnostics page.
+    "monitor": '<rect width="20" height="14" x="2" y="3" rx="2"/>'
+               '<line x1="8" x2="16" y1="21" y2="21"/>'
+               '<line x1="12" x2="12" y1="17" y2="21"/>',
+    "gauge": '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+    "activity": '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+    "check": '<path d="M20 6 9 17l-5-5"/>',
+    "close": '<path d="M18 6 6 18M6 6l12 12"/>',
+    "alert": '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
+              '<path d="M12 9v4M12 17h.01"/>',
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    "hourglass": '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 18.83V22"/>'
+                 '<path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 5.83V2"/>',
+    "ban": '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/>',
+    "shield": '<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z"/>'
+              '<path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10z"/>',
 }
 
 
@@ -128,6 +155,144 @@ def _lucide_svg(kind: str) -> str:
         'fill="none" stroke="currentColor" stroke-width="1.5" '
         'stroke-linecap="round" stroke-linejoin="round">{}</svg>'.format(body)
     )
+
+
+# Brand logos (Simple Icons, CC-0 licensed, bundled inline). Single-path
+# monochrome glyphs on a 24x24 viewBox, rendered fill-colorable like lucide.
+_BRAND_FILL = {
+    "discord": "#5865F2",
+    "steam": "#1B2838",
+    "epicgames": "#313131",
+    "riotgames": "#EB0029",
+    "battledotnet": "#4381C3",
+}
+
+BRAND_SVGS = {
+    "discord": ('M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 '
+                '00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-'
+                '.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 '
+                '00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 '
+                '00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 '
+                '00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 '
+                '00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 '
+                '00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 '
+                '01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 '
+                '01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 '
+                '01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 '
+                '12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.'
+                '7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 '
+                '3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-'
+                '.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 '
+                '15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 '
+                '2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 '
+                '2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-'
+                '2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 '
+                '2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z'),
+    "steam": ('M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 '
+              '1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-'
+              '2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 '
+              '4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.'
+              '004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-'
+              '2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 '
+              '11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.'
+              '262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-'
+              '.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-'
+              '.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.'
+              '957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-'
+              '3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 '
+              '3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-'
+              '1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 '
+              '1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z'),
+    "epicgames": ('M3.537 0C2.165 0 1.66.506 1.66 1.879V18.44a4.262 4.262 0 00.'
+                  '02.433c.031.3.037.59.316.92.027.033.311.245.311.245.153.075.'
+                  '258.13.43.2l8.335 3.491c.433.199.614.276.928.27h.002c.314.'
+                  '006.495-.071.928-.27l8.335-3.492c.172-.07.277-.124.43-.2 0 0 '
+                  '.284-.211.311-.243.28-.33.285-.621.316-.92a4.261 4.261 0 00.'
+                  '02-.434V1.879c0-1.373-.506-1.88-1.878-1.88zm13.366 3.11h.68c1.'
+                  '138 0 1.688.553 1.688 1.696v1.88h-1.374v-1.8c0-.369-.17-.54-'
+                  '.523-.54h-.235c-.367 0-.537.17-.537.539v5.81c0 .369.17.54.'
+                  '537.54h.262c.353 0 .523-.171.523-.54V8.619h1.373v2.143c0 '
+                  '1.144-.562 1.71-1.7 1.71h-.694c-1.138 0-1.7-.566-1.7-1.71V4.'
+                  '82c0-1.144.562-1.709 1.7-1.709zm-12.186.08h3.114v1.274H6.117v2.'
+                  '603h1.648v1.275H6.117v2.774h1.74v1.275h-3.14zm3.816 0h2.198c1.'
+                  '138 0 1.7.564 1.7 1.708v2.445c0 1.144-.562 1.71-1.7 1.71h-.799v3.'
+                  '338h-1.4zm4.53 0h1.4v9.201h-1.4zm-3.13 1.235v3.392h.575c.354 0 '
+                  '.523-.171.523-.54V4.965c0-.368-.17-.54-.523-.54zm-3.74 10.147a1.'
+                  '708 1.708 0 01.591.108 1.745 1.745 0 01.49.299l-.452.546a1.247 '
+                  '1.247 0 00-.308-.195.91.91 0 00-.363-.068.658.658 0 00-.28.06.'
+                  '703.703 0 00-.224.163.783.783 0 00-.151.243.799.799 0 00-.056.'
+                  '299v.008a.852.852 0 00.056.31.7.7 0 00.157.245.736.736 0 00.'
+                  '238.16.774.774 0 00.303.058.79.79 0 00.445-.116v-.339h-.548v-'
+                  '.565H7.37v1.255a2.019 2.019 0 01-.524.307 1.789 1.789 0 01-'
+                  '.683.123 1.642 1.642 0 01-.602-.107 1.46 1.46 0 01-.478-.3 1.371 '
+                  '1.371 0 01-.318-.455 1.438 1.438 0 01-.115-.58v-.008a1.426 1.426 0 '
+                  '01.113-.57 1.449 1.449 0 01.312-.46 1.418 1.418 0 01.474-.309 '
+                  '1.58 1.58 0 01.598-.111 1.708 1.708 0 01.045 0zm11.963.008a2.006 '
+                  '2.006 0 01.612.094 1.61 1.61 0 01.507.277l-.386.546a1.562 1.562 '
+                  '0 00-.39-.205 1.178 1.178 0 00-.388-.07.347.347 0 00-.208.052.'
+                  '.154.154 0 00-.07.127v.008a.158.158 0 00.022.084.198.198 0 00.'
+                  '076.066.831.831 0 00.147.06c.062.02.14.04.236.061a3.389 3.389 0 '
+                  '01.43.122 1.292 1.292 0 01.328.17.678.678 0 01.207.24.739.739 0 '
+                  '01.071.337v.008a.865.865 0 01-.081.382.82.82 0 01-.229.285 1.032 '
+                  '1.032 0 01-.353.18 1.606 1.606 0 01-.46.061 2.16 2.16 0 01-.71-'
+                  '.116 1.718 1.718 0 01-.593-.346l.43-.514c.277.223.578.335.9.'
+                  '335a.457.457 0 00.236-.05.157.157 0 00.082-.142v-.008a.15.15 0 '
+                  '00-.02-.077.204.204 0 00-.073-.066.753.753 0 00-.143-.062 2.45 '
+                  '2.45 0 00-.233-.062 5.036 5.036 0 01-.413-.113 1.26 1.26 0 01-'
+                  '.331-.16.72.72 0 01-.222-.243.73.73 0 01-.082-.36v-.008a.863.863 '
+                  '0 01.074-.359.794.794 0 01.214-.283 1.007 1.007 0 01.34-.185 '
+                  '1.423 1.423 0 01.448-.066 2.006 2.006 0 01.025 0zm-9.358.025h.'
+                  '742l1.183 2.81h-.825l-.203-.499H8.623l-.198.498h-.81zm2.197.'
+                  '02h.814l.663 1.08.663-1.08h.814v2.79h-.766v-1.602l-.711 1.091h-'
+                  '.016l-.707-1.083v1.593h-.754zm3.469 0h2.235v.658h-1.473v.422h1.'
+                  '334v.61h-1.334v.442h1.493v.658h-2.255zm-5.3.897l-.315.793h.'
+                  '624zm-1.145 5.19h8.014l-4.09 1.348z'),
+    "riotgames": ('M13.458.86 0 7.093l3.353 12.761 2.552-.313-.701-8.024.838-'
+                  '.373 1.447 8.202 4.361-.535-.775-8.857.83-.37 1.591 9.025 '
+                  '4.412-.542-.849-9.708.84-.374 1.74 9.87L24 17.318V3.5Zm.316 '
+                  '19.356.222 1.256L24 23.14v-4.18l-10.22 1.256Z'),
+    "battledotnet": ('M18.94 8.296C15.9 6.892 11.534 6 7.426 6.332c.206-1.36.'
+                     '714-2.308 1.548-2.508 1.148-.275 2.4.48 3.594 1.854.'
+                     '782.102 1.71.28 2.355.429C12.747 2.013 9.828-.282 7.607.'
+                     '565c-1.688.644-2.553 2.97-2.448 6.094-2.2.468-3.915 1.3-'
+                     '5.013 2.495-.056.065-.181.227-.137.305.034.058.146-.008.'
+                     '194-.04 1.274-.89 2.904-1.373 5.027-1.676.303 3.333 1.713 '
+                     '7.56 4.055 10.952-1.28.502-2.356.536-2.946-.087-.812-.856-'
+                     '.784-2.318-.19-4.04a26.764 26.764 0 0 1-.807-2.254c-2.459 '
+                     '3.934-2.986 7.61-1.143 9.11 1.402 1.14 3.847.725 6.502-'
+                     '.926 1.505 1.672 3.083 2.74 4.667 3.094.084.015.287.043.'
+                     '332-.034.034-.06-.08-.124-.131-.149-1.408-.657-2.64-1.828-'
+                     '3.964-3.515 2.735-1.929 5.691-5.263 7.457-8.988 1.076.86 '
+                     '1.64 1.773 1.398 2.595-.336 1.131-1.615 1.84-3.403 2.185a27.'
+                     '697 27.697 0 0 1-1.548 1.826c4.634.16 8.08-1.22 8.458-'
+                     '3.565.286-1.786-1.295-3.696-4.053-5.17.696-2.139.832-4.04.'
+                     '346-5.588-.029-.08-.106-.27-.196-.27-.068 0-.067.13-.063.'
+                     '187.135 1.547-.263 3.2-1.062 5.19zm-8.533 9.869c-1.96-'
+                     '3.145-3.09-6.849-3.082-10.594 3.702-.124 7.474.748 10.714 '
+                     '2.627-1.743 3.269-4.385 6.1-7.633 7.966h.001z'),
+}
+
+
+def brand_icon_pixmap(kind: str, color=None, size=16) -> QPixmap:
+    """Brand glyph as a crisp QPixmap. Uses official brand color when
+    *color* is None, otherwise tints to *color*."""
+    path = BRAND_SVGS.get(kind)
+    if not path:
+        return QPixmap()
+    fill = _BRAND_FILL.get(kind, "#8f93a6")
+    fill = color or fill
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+           'fill="{}">{}</svg>'.format(fill, path))
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    renderer = QSvgRenderer()
+    renderer.load(svg.encode("utf-8"))
+    renderer.render(p, QRectF(0, 0, size, size))
+    p.end()
+    return pm
 
 
 def nav_icon_pixmap(kind: str, color="#B6A3FF", size=16) -> QPixmap:
@@ -330,7 +495,7 @@ def badge(text, color, filled=False):
     if filled:
         lbl.setStyleSheet(
             f"background-color: {color}; color: {T['accent_dark']};"
-            "border-radius: 8px; padding: 2px 8px; font-size: 10.5px;"
+            "border-radius: 8px; padding: 2px 8px; font-size: 11px;"
             "font-weight: 700; letter-spacing: 0.5px;")
     else:
         lbl.setStyleSheet(
@@ -420,6 +585,13 @@ def new_badge():
     return lbl
 
 
+def updated_badge():
+    """Amber 'UPDATED' pill for tweak cards changed in a recent release."""
+    lbl = QLabel("UPDATED")
+    lbl.setObjectName("UpdatedBadge")
+    return lbl
+
+
 def stat_chip(value, label, color=None):
     """Header stat chip: bold colored value + uppercase label."""
     lbl = QLabel()
@@ -472,7 +644,7 @@ class IconTile(QLabel):
     tile background + soft border)."""
 
     def __init__(self, char, color, size=40, font_scale=0.5, radius=None,
-                 bg=None, fg=None, logo=None, parent=None):
+                 bg=None, fg=None, logo=None, lucide=None, parent=None):
         super().__init__(parent)
         self._char = char
         self._color = color
@@ -483,18 +655,28 @@ class IconTile(QLabel):
         self._fg = fg or color
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignCenter)
-        self.set_logo(logo)
+        self.set_logo(logo, lucide=lucide)
 
-    def set_logo(self, logo=None):
-        """Switch the tile to a tinted logo pixmap (path) or back to the glyph."""
+    def set_logo(self, logo=None, lucide=None):
+        """Switch the tile to a tinted logo pixmap (path or lucide name) or
+        back to the glyph."""
         self._logo = logo
         ss = (f"background-color: {self._bg};"
               f" border-radius: {self._radius}px;"
               f" border: 1px solid {qss_rgba(self._color, 0x33)};")
+        if logo is None and lucide is not None:
+            logo = nav_icon_pixmap(lucide, self._color,
+                                   max(12, int(self._size * 0.55)))
         if logo is not None:
-            pix = QPixmap(str(logo))
+            if isinstance(logo, str):
+                pix = QPixmap(str(logo))
+                if pix.isNull():
+                    pix = QPixmap()
+            else:
+                pix = QPixmap(logo)
             if not pix.isNull():
-                pix = tint_pixmap(pix, self._color)
+                if isinstance(logo, str):
+                    pix = tint_pixmap(pix, self._color)
                 pad = max(5, int(self._size * 0.3))
                 side = self._size - pad * 2
                 self.setPixmap(pix.scaled(side, side, Qt.KeepAspectRatio,
@@ -763,7 +945,7 @@ class Toast(QFrame):
         lay.addWidget(dot)
         msg = QLabel(text)
         msg.setStyleSheet(
-            f"color: {T['text']}; font-size: 12.5px; font-weight: 600;")
+            f"color: {T['text']}; font-size: 13px; font-weight: 600;")
         msg.setWordWrap(True)
         lay.addWidget(msg, 1)
 
@@ -809,8 +991,15 @@ class Toast(QFrame):
         super().resizeEvent(event)
         host = self.parentWidget()
         if host is not None:
+            # Keep clear of the floating dock: sit just above its top edge so a
+            # toast can never land on top of (or be hidden by) the navigation
+            # bar, without reserving any space when no dock is present.
+            bottom = 24
+            dock = getattr(host, "dock", None)
+            if dock is not None and dock.isVisible():
+                bottom = max(24, host.height() - dock.top_edge() + 16)
             self.move(host.width() - self.width() - 24,
-                      host.height() - self.height() - 24)
+                      host.height() - self.height() - bottom)
 
 
 def toast(text, kind="info", parent=None):
@@ -1107,7 +1296,7 @@ def _rec_badge(text="Recommended"):
     lbl = QLabel(text.upper())
     lbl.setStyleSheet(
         "font-family: \"JetBrains Mono\", \"Cascadia Mono\", monospace;"
-        " font-size: 8.5px; color: #C9C0FF;"
+        " font-size: 9px; color: #C9C0FF;"
         " background-color: rgba(139,107,255,0.12);"
         " border: 1px solid rgba(139,107,255,0.30);"
         " border-radius: 5px; padding: 3px 7px;")
@@ -1157,6 +1346,35 @@ class DotChip(QFrame):
         p.setBrush(dc)
         p.drawEllipse(QRectF(s / 2 - 4, s / 2 - 4, 8, 8))
         p.end()
+
+
+#: Tweak ids are developer identifiers (apply/revert keys, state rows, catalogue
+#: lookups) and are hidden from cards by default. Set ``mx.show_tweak_ids = True``
+#: or the env var ``MX_SHOW_TWEAK_IDS=1`` to print them again when debugging.
+SHOW_TWEAK_IDS = os.environ.get("MX_SHOW_TWEAK_IDS", "").strip() not in ("", "0", "false", "False")
+
+
+def _card_title(tweak: dict) -> str:
+    """Human-readable card title.
+
+    ``name`` is the tweak's display title and ``title`` is accepted as an alias.
+    Never falls back to ``id``: a record missing both would otherwise print a
+    developer key where a title belongs.
+    """
+    for key in ("name", "title"):
+        value = str(tweak.get(key) or "").strip()
+        if value:
+            return value
+    return "Untitled tweak"
+
+
+def _card_desc(tweak: dict) -> str:
+    """Card body text, empty rather than the id when the record has none."""
+    for key in ("desc", "description"):
+        value = str(tweak.get(key) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 class TweakCard(QFrame):
@@ -1211,6 +1429,10 @@ class TweakCard(QFrame):
         if is_new_tweak(tweak):
             self._new_lbl = new_badge()
             top.addWidget(self._new_lbl, 0, Qt.AlignVCenter)
+        self._upd_lbl = None
+        if is_updated_tweak(tweak):
+            self._upd_lbl = updated_badge()
+            top.addWidget(self._upd_lbl, 0, Qt.AlignVCenter)
         self.state_badge = QLabel()
         self.state_badge.setObjectName("Badge")
         self.state_badge.hide()
@@ -1228,23 +1450,32 @@ class TweakCard(QFrame):
         outer.addLayout(top)
         outer.addSpacing(12)
 
-        # ---- title + id
-        name_lbl = QLabel(tweak["name"])
+        # ---- title
+        # `name` is the human-readable title, so it stands on its own; the raw
+        # tweak id used to be printed under it in mono, but that is a developer
+        # identifier (apply/revert keys, state rows) and has no business in the
+        # UI. Set mx.show_tweak_ids = True (or MX_SHOW_TWEAK_IDS=1 in the
+        # environment) to bring it back for debugging.
+        name_lbl = QLabel(_card_title(tweak))
         name_lbl.setStyleSheet(
-            "font-size: 13.5px; font-weight: 600; color: #F6F4FC;"
+            "font-size: 14px; font-weight: 600; color: #F6F4FC;"
             " background: transparent;")
         name_lbl.setWordWrap(True)
         outer.addWidget(name_lbl)
-        outer.addSpacing(2)
-        id_lbl = QLabel(tweak["id"])
-        id_lbl.setStyleSheet(
-            "font-family: \"JetBrains Mono\", \"Cascadia Mono\", monospace;"
-            " font-size: 9.5px; color: #514A70; background: transparent;")
-        outer.addWidget(id_lbl)
-        outer.addSpacing(10)
+        if SHOW_TWEAK_IDS:
+            id_lbl = QLabel(tweak["id"])
+            id_lbl.setStyleSheet(
+                "font-family: \"JetBrains Mono\", \"Cascadia Mono\", monospace;"
+                " font-size: 10px; color: #514A70; background: transparent;")
+            outer.addWidget(id_lbl)
+            outer.addSpacing(10)
+        else:
+            # One gap in place of the two the id line used to need, so the
+            # title-to-description rhythm stays even with nothing printed.
+            outer.addSpacing(8)
 
         # ---- description
-        desc = QLabel(tweak.get("desc", ""))
+        desc = QLabel(_card_desc(tweak))
         desc.setWordWrap(True)
         desc.setStyleSheet(
             "color: #928AAD; font-size: 12px; background: transparent;")
@@ -1306,7 +1537,15 @@ class TweakCard(QFrame):
             self._apply_state("incompatible", reasons=(
                 ctx.eval.get(self.tid, {}).get("reasons", [])))
         else:
-            self._apply_state(self._initial_state())
+            # Live support probes (e.g. "no Ethernet adapter"): a tweak whose
+            # required hardware is absent shows INCOMPATIBLE here too, so the
+            # card is honest before the user even clicks Apply. Probes only run
+            # for tweaks that declare a ``support`` block and are cached.
+            ok_support, support_reasons = evaluate_support(self.tweak)
+            if not ok_support:
+                self._apply_state("incompatible", reasons=support_reasons)
+            else:
+                self._apply_state(self._initial_state())
         self._make_children_click_through()
 
     # ---------------- State ----------------
@@ -1405,7 +1644,7 @@ class TweakCard(QFrame):
             ss = (f"color: {color}; border: 1px solid {color};"
                   f" background-color: {qss_rgba(color, 0x1f)};")
         self.state_badge.setStyleSheet(
-            ss + "border-radius: 5px; padding: 3px 7px; font-size: 8.5px;"
+            ss + "border-radius: 5px; padding: 3px 7px; font-size: 9px;"
             "font-weight: 700; letter-spacing: 0.5px;")
         self.state_badge.setText(text)
         self.state_badge.show()
@@ -1533,7 +1772,7 @@ class ProfileCard(QFrame):
         name.setStyleSheet("font-size: 17px; font-weight: 700;")
         sub = QLabel("COMPETITIVE PERFORMANCE")
         sub.setStyleSheet(
-            f"color: {T['accent']}; font-size: 10.5px; font-weight: 700;"
+            f"color: {T['accent']}; font-size: 11px; font-weight: 700;"
             "letter-spacing: 1.2px;")
         box.addWidget(name)
         box.addWidget(sub)
@@ -1670,8 +1909,14 @@ class ProgressDialog(QDialog):
     def _on_progress(self, done, total, tid, ok, summary):
         self.bar.setValue(done)
         name = BY_ID.get(tid, {}).get("name", tid) if tid else ""
-        mark = "OK" if ok else "FAIL"
-        color = T["success"] if ok else T["danger"]
+        if summary.startswith("Not supported on this PC:"):
+            # Hardware-dependent tweak whose required device/driver is absent:
+            # report it as a SKIP, never as a generic failure.
+            mark = "SKIP"
+            color = T["warning"]
+        else:
+            mark = "OK" if ok else "FAIL"
+            color = T["success"] if ok else T["danger"]
         self.current.setText(f"({done}/{total}) {tid} \u2014 {name}")
         self.log.appendHtml(
             f"<span style='color:{color}'>{mark}</span>  {tid} \u2014 {name}<br/>"
@@ -1684,10 +1929,14 @@ class ProgressDialog(QDialog):
         ok_ids = [tid for tid, r in results.items()
                   if r.get("ok") and r.get("status") != "dry_run"]
         failed = len(results) - len(ok_ids)
+        unsupported = [tid for tid, r in results.items()
+                       if r.get("code") == "not_supported"]
+        tail = (f" ({len(unsupported)} not supported on this PC)"
+                if unsupported else "")
         self.current.setText(
-            f"Done \u2014 {len(applied)} succeeded, {failed} failed/blocked.")
+            f"Done \u2014 {len(applied)} succeeded, {failed} failed/blocked{tail}.")
         self.log.appendHtml(
-            f"<br/><b>{len(applied)} succeeded, {failed} failed.</b>")
+            f"<br/><b>{len(applied)} succeeded, {failed} failed{tail}.</b>")
         self.close_btn.setEnabled(True)
         self.close_btn.setText("Close")
 

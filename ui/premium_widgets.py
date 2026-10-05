@@ -48,7 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from config.app_config import DIRS, THEME as T
-from ui.widgets import tint_pixmap
+from ui.widgets import brand_icon_pixmap, nav_icon_pixmap, tint_pixmap
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -80,6 +80,15 @@ GAME_ICONS: dict[str, dict] = {
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
     "gp-012": {"initials": "WZ", "color": "#9C80FF", "shape": "wave",
                "platform": "BATTLE.NET", "platform_color": "#60a5fa"},
+}
+
+# Platform -> Simple Icons brand glyph shown next to the tag on game cards.
+# MICROSOFT has no Simple Icon (removed), so it keeps the text tag only.
+_PLATFORM_BRAND = {
+    "EPIC GAMES": "epicgames",
+    "RIOT": "riotgames",
+    "STEAM": "steam",
+    "BATTLE.NET": "battledotnet",
 }
 
 
@@ -707,9 +716,19 @@ class GameListItem(QFrame):
         icon_data = GAME_ICONS.get(self.game_id, {})
         platform = icon_data.get("platform", "")
         plat_color = icon_data.get("platform_color", T["text_faint"])
+        plat_brand = _PLATFORM_BRAND.get(platform)
+        tag_x = 64
+        tag_y = h * 0.50
+        tag_h = h * 0.22
+        if plat_brand:
+            pm = brand_icon_pixmap(plat_brand, color="#C9C2E8", size=12)
+            if not pm.isNull():
+                p.drawPixmap(int(tag_x), int(tag_y + (tag_h - 12) / 2),
+                             int(12), int(12))
+                tag_x += 17
         p.setPen(QColor(plat_color))
         p.setFont(QFont("Segoe UI", 9))
-        p.drawText(QRectF(64, h * 0.48, 100, h * 0.25),
+        p.drawText(QRectF(tag_x, tag_y, 100, tag_h),
                    Qt.AlignVCenter | Qt.AlignLeft, platform)
 
         # Status badge (right side).
@@ -1163,14 +1182,14 @@ class NvapiFlagsAccordion(QWidget):
             row.setSpacing(8)
             k_lbl = QLabel(key)
             k_lbl.setStyleSheet(f"color: {T['text_dim']}; font-size: 11px; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
-            k_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            k_lbl.setTextInteractionFlags(Qt.NoTextInteraction)
             row.addWidget(k_lbl, 1)
             arrow = QLabel("\u279c")
             arrow.setStyleSheet(f"color: {T['text_faint']}; background: transparent; border: none;")
             row.addWidget(arrow)
             v_lbl = QLabel(value)
             v_lbl.setStyleSheet(f"color: {T['accent']}; font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; background: transparent; border: none;")
-            v_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            v_lbl.setTextInteractionFlags(Qt.NoTextInteraction)
             row.addWidget(v_lbl, 1)
             grid.addLayout(row)
 
@@ -1230,6 +1249,7 @@ class ChangesPreviewDialog(QDialog):
             }}
         """)
         code.setPlainText(self._build_preview(game_id, config_values))
+        code.setTextInteractionFlags(Qt.NoTextInteraction)
         lay.addWidget(code, 1)
 
         # Close button.
@@ -1388,10 +1408,9 @@ class AnimatedToast(QWidget):
         p.setBrush(Qt.NoBrush)
         p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 12, 12)
 
-        icons = {"success": "\u2713", "error": "\u2717", "warning": "\u26a0", "info": "\u2139"}
-        p.setPen(QColor(self._accent))
-        p.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        p.drawText(QRectF(14, 0, 30, h), Qt.AlignCenter, icons.get(self._style, "\u2713"))
+        icons = {"success": "check", "error": "close", "warning": "alert", "info": "info"}
+        icon_pm = nav_icon_pixmap(icons.get(self._style, "check"), self._accent, 18)
+        p.drawPixmap(QRectF(13, (h - 18) / 2.0, 18, 18).toRect(), icon_pm)
 
         p.setPen(QColor(T["text"]))
         p.setFont(QFont("Segoe UI", 12))

@@ -10,12 +10,18 @@ hardware, or conflicts with a tweak that is already applied.
 Codes returned to callers (so the UI can render a specific badge/message):
 
   info_only          guidance tweak — nothing to execute
+  tier_required      subscriber's tier does not include this optimization
   status_blocked     INVALID / PLACEBO / OUTDATED / CONFLICTING validation status
   admin              requires elevation and the app is not elevated
   win_version        tweak supports a different Windows version
   incompatible       detected hardware fails a ``when`` condition
   no_profile         hardware-gated tweak but hardware was never detected
+  not_supported      a live ``support`` probe failed — the required hardware
+                     (adapter, GPU driver/service, device) is absent
   conflict_active    a conflicting tweak is currently applied (force-able)
+  unverified         implementation not cleared by the safety audit — allowed,
+                     but requires explicit confirmation and is excluded from
+                     automated batches (never force-applied)
 """
 from __future__ import annotations
 
@@ -29,6 +35,7 @@ from database.validation import BLOCKED_STATUSES
 _HARD_BLOCK_STATUSES = BLOCKED_STATUSES - {"CONFLICTING"}
 
 from . import state as state_mgr
+from .probe import evaluate_support
 from .recommender import _effective_win_version, evaluate, has_hardware_gates, windows_versions
 
 
@@ -52,14 +59,34 @@ def preflight(tweak: dict, profile: dict | None = None,
     tid = tweak["id"]
 
     if mode == "revert":
-        # Revert always restores — never blocked by status or hardware. Only a
-        # guidance tweak has nothing to revert.
+        # Revert always restores — never blocked by status, hardware or tier.
+        # A downgrade or a lapsed entitlement must never trap a user with a
+        # change they cannot undo.
         if tweak.get("guidance"):
             return _deny(result, "info_only", "Informational guide — nothing to revert.")
         return result
 
     if tweak.get("guidance"):
         return _deny(result, "info_only", "Informational guide — nothing to apply.")
+
+    # Subscription entitlement. This runs before every other check so a locked
+    # optimization is never even probed, and it is not force-able: `force` only
+    # ever relaxes the conflict guard below.
+    from .entitlements import GATE_UNVERIFIED, gate as entitlement_gate
+    ent = entitlement_gate(tweak)
+    if not ent["allowed"]:
+        return _deny(result, ent["code"] or "tier_required", ent["reason"])
+    if ent.get("requires_confirmation"):
+        # Recorded, not blocked. Surfaced as `unverified` so callers can warn
+        # and keep it out of unattended batches.
+        result["code"] = GATE_UNVERIFIED
+        result["reason"] = ent["reason"]
+        result["unverified"] = True
+        # Must be propagated under the same key the entitlement gate uses:
+        # batch builders branch on `requires_confirmation`, and without this
+        # they cannot tell an unverified tweak from a clean one, which would
+        # quietly turn Apply All into a force-apply path.
+        result["requires_confirmation"] = True
 
     status = tweak.get("status", "UNKNOWN")
     if status in _HARD_BLOCK_STATUSES:
@@ -103,13 +130,28 @@ def preflight(tweak: dict, profile: dict | None = None,
             return _deny(result, "incompatible",
                          f"Not compatible with this PC: {reasons}")
 
+    # Live hardware support probes. A tweak may target hardware that is simply
+    # absent on this PC (an Ethernet NIC, an NVIDIA GPU with nvidia-smi, a
+    # specific service). Detect it with live probes before touching anything so
+    # the result is "NOT SUPPORTED ON THIS PC" instead of a generic, misleading
+    # apply failure. Unlike ``when`` gates these need no detection profile.
+    if tweak.get("support"):
+        ok_support, support_reasons = evaluate_support(tweak)
+        if not ok_support:
+            return _deny(
+                result, "not_supported",
+                "Not supported on this PC: " + "; ".join(support_reasons))
+
     # Conflict guard: applying this tweak while a conflicting one is already
     # applied would silently overwrite the other change.
     conflicts = tweak.get("conflicts") or []
     applied = state_mgr.applied_ids()
     active_conflicts = [c["with"] for c in conflicts if c["with"] in applied]
+    # Always report the live conflicts, even when `force` lets the apply
+    # through. The caller still needs to know what it is overwriting so it can
+    # warn; only the denial is conditional.
+    result["conflicts"] = active_conflicts
     if active_conflicts and not force:
-        result["conflicts"] = active_conflicts
         return _deny(
             result, "conflict_active",
             "Conflicts with an applied tweak: " + ", ".join(active_conflicts)

@@ -34,7 +34,9 @@ class _ActivityBus:
 
     def emit(self, kind: str, text: str) -> None:
         """kind: success | error | warn | info | profile | scan | restart."""
-        item = {"kind": kind, "text": text, "time": time.strftime("%H:%M:%S")}
+        now = time.time()
+        item = {"kind": kind, "text": text, "ts": now,
+                "time": time.strftime("%H:%M:%S", time.localtime(now))}
         self._history.appendleft(item)
         if self._qt is not None:
             self._qt.added.emit(item)  # queued across threads

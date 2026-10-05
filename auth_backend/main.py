@@ -441,6 +441,17 @@ def _now_ts() -> float:
 # redirect URI in the Discord Developer Portal.
 # ---------------------------------------------------------------------------
 
+
+# Discord Bot & User OAuth (Maximum Optimizations)
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "").strip()
+DISCORD_SERVER_ID = DISCORD_GUILD_ID
+DISCORD_REGISTRATION_CHANNEL_ID = os.environ.get("DISCORD_REGISTRATION_CHANNEL_ID", "").strip()
+DISCORD_CLIENT_ID_USER = os.environ.get("DISCORD_CLIENT_ID_USER", "").strip() or os.environ.get("DISCORD_CLIENT_ID", "").strip()
+DISCORD_CLIENT_SECRET_USER = os.environ.get("DISCORD_CLIENT_SECRET_USER", "").strip() or os.environ.get("DISCORD_CLIENT_SECRET", "").strip()
+DISCORD_REDIRECT_USER = os.environ.get("DISCORD_REDIRECT_USER", "").strip()
+
+
 _DISCORD_API = "https://discord.com/api"
 _DISCORD_STATE_TTL = 300            # seconds a sign-in request stays valid
 _DISCORD_STATES: dict[str, dict] = {}
@@ -544,6 +555,42 @@ def _discord_exchange(code: str, redirect_uri: str) -> dict:
         return {"__error__": f"HTTP {e.code}: {detail[:200]}"}
     except Exception as e:  # noqa: BLE001
         logger.exception("discord: token exchange failed")
+        return {"__error__": str(e)[:200]}
+
+
+def _discord_exchange_user(code: str, redirect_uri: str) -> dict:
+    """Redeem an end-user OAuth code using the *user* app credentials.
+
+    The authorize URL in ``/auth/discord/start`` is built with
+    ``DISCORD_CLIENT_ID_USER``/``DISCORD_CLIENT_SECRET_USER``, so Discord will
+    only accept the code when it is exchanged by that same client. Exchanging
+    it with the bot app's credentials (see ``_discord_exchange``) fails with
+    ``unauthorized_client`` / ``invalid_grant``.
+    """
+    client_id = (DISCORD_CLIENT_ID_USER or "").strip()
+    client_secret = (DISCORD_CLIENT_SECRET_USER or "").strip()
+    if not client_id or not client_secret:
+        return {"__error__": "client credentials missing"}
+    data = urllib.parse.urlencode({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+    }).encode("utf-8")
+    req = urllib.request.Request(f"{_DISCORD_API}/oauth2/token", data=data,
+                                 method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    req.add_header("User-Agent", _DISCORD_UA)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        detail = _discord_http_error(e)
+        logger.error("discord: user token exchange HTTP %s: %s", e.code, detail)
+        return {"__error__": f"HTTP {e.code}: {detail[:200]}"}
+    except Exception as e:  # noqa: BLE001
+        logger.exception("discord: user token exchange failed")
         return {"__error__": str(e)[:200]}
 
 
@@ -895,6 +942,16 @@ def _check_expiry(rec: dict) -> dict | None:
 @app.get("/health")
 def health():
     return _OK
+
+
+@app.get("/admin/discord/selfcheck")
+def admin_discord_selfcheck():
+    """Diagnose the Discord wiring. Reports configuration gaps and tells you
+    exactly what is missing instead of failing silently at sign-in time.
+
+    Contains no secrets - the bot token is never echoed back.
+    """
+    return {"ok": True, "discord": discord_bot_self_check()}
 
 
 @app.post("/api/license/activate")
@@ -1550,3 +1607,435 @@ def admin_waitlist_send_launch(payload: WaitlistSendRequest,
         }
     stats["provider"] = mailer.name
     return {"ok": True, **stats}
+
+
+# Discord Bot helpers
+
+
+
+_DISCORD_USER_STATES: dict[str, dict] = {}
+_DISCORD_USER_STATE_TTL = 300
+
+def _discord_user_state_new() -> str:
+    state = secrets.token_urlsafe(24)
+    with _DISCORD_LOCK:
+        _DISCORD_USER_STATES[state] = {"exp": time.time() + _DISCORD_USER_STATE_TTL, "status": "waiting"}
+    return state
+
+
+def _discord_user_state_get(state: str) -> dict | None:
+    with _DISCORD_LOCK:
+        entry = _DISCORD_USER_STATES.get(state)
+        if entry is None:
+            return None
+        if entry["exp"] < time.time():
+            _DISCORD_USER_STATES.pop(state, None)
+            return None
+        return entry
+
+
+def _discord_user_state_set(state: str, **kw: object) -> None:
+    with _DISCORD_LOCK:
+        entry = _DISCORD_USER_STATES.get(state)
+        if entry is not None:
+            entry.update(kw)
+
+@app.post("/auth/discord/start")
+def auth_discord_start(request: Request):
+    """Start Discord OAuth for app users."""
+    client_id = DISCORD_CLIENT_ID_USER
+    client_secret = DISCORD_CLIENT_SECRET_USER
+    if not client_id or not client_secret:
+        raise _err("discord_disabled", "Discord login is not configured.", 403)
+    state = _discord_user_state_new()
+    redirect_uri = DISCORD_REDIRECT_USER or (str(request.base_url).rstrip("/") + "/auth/discord/callback")
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "identify guilds.join",
+        "state": state,
+    })
+    return {"ok": True, "url": "https://discord.com/oauth2/authorize?" + params, "state": state}
+
+@app.get("/auth/discord/callback")
+def auth_discord_callback(request: Request, code: str = "", state: str = ""):
+    entry = _discord_user_state_get(state)
+    if entry is None:
+        return _discord_page("Link expired", "This link is no longer valid.")
+    if not code:
+        _discord_user_state_set(state, status="denied")
+        return _discord_page("Cancelled", "Discord authorization was cancelled.")
+    redirect_uri = DISCORD_REDIRECT_USER or (str(request.base_url).rstrip("/") + "/auth/discord/callback")
+    token_body = _discord_exchange_user(code, redirect_uri)
+    access_token = token_body.get("access_token")
+    if not access_token:
+        _discord_user_state_set(state, status="denied")
+        return _discord_page("Failed", "Discord authentication failed.")
+    user = _discord_user(access_token)
+    uid = str(user.get("id") or "")
+    username = user.get("username") or uid or "Unknown"
+    if not uid:
+        _discord_user_state_set(state, status="denied")
+        return _discord_page("Failed", "Could not verify Discord identity.")
+    # Find or create account. Everything from here is wrapped so a database or
+    # bot hiccup can never leak a raw server_error to the desktop app.
+    try:
+        existing = _DB.get_discord_account_by_discord_id(uid)
+        server_membership = "UNKNOWN"
+        # Try to join server
+        if DISCORD_GUILD_ID:
+            joined = discord_bot_add_member(DISCORD_GUILD_ID, uid, access_token)
+            server_membership = "CONFIRMED" if joined else "PENDING"
+        if existing:
+            # Already known: keep the paid entitlement we already granted.
+            license_key = existing.get("license_key")
+            current_tier = existing.get("current_tier") or "foundation"
+            if license_key:
+                lic = _DB.get(license_key)
+                if lic:
+                    lt = lic.get("tier") or current_tier
+                    current_tier = lt
+            _DB.log_discord_registration(uid, username, existing.get("account_id"), existing.get("region") or "", current_tier, license_key, event_type="DISCORD_LINKED", server_membership=server_membership, discord_verified=1)
+            _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=existing.get("account_id"))
+        else:
+            # Brand new verified Discord user -> Foundation entitlement.
+            acc = _DB.create_discord_account(discord_id=uid, discord_username=username, region="", tier="foundation")
+            account_id = acc.get("account_id") or ("MO-" + secrets.token_hex(3).upper())
+            _DB.log_discord_registration(uid, username, account_id, "", "foundation", None, event_type="ACCOUNT_CREATED", server_membership=server_membership, discord_verified=1)
+            _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=account_id)
+        return _discord_page("Connected", "Discord successfully connected. You can close this window.")
+    except Exception:  # noqa: BLE001
+        logger.exception("discord: user callback failed after identity verification")
+        _discord_user_state_set(state, status="error")
+        return _discord_page("Failed", "We could not finish setting up your account. Please try again.")
+
+@app.get("/auth/discord/poll/{state}")
+def auth_discord_poll(state: str):
+    entry = _discord_user_state_get(state)
+    if entry is None:
+        return {"ok": True, "status": "expired"}
+    if entry.get("status") == "ok":
+        return {"ok": True, "status": "ok", "discord_id": entry.get("discord_id"), "username": entry.get("username"), "account_id": entry.get("account_id")}
+    if entry.get("status") == "denied":
+        return {"ok": True, "status": "denied"}
+    return {"ok": True, "status": "waiting"}
+
+@app.post("/auth/discord/set-region")
+def auth_discord_set_region(payload: dict = Body(default={})):
+    discord_id = str(payload.get("discord_id") or "")
+    region = str(payload.get("region") or "")
+    if not discord_id:
+        raise _err("bad_request", "discord_id required", 400)
+    acc = _DB.get_discord_account_by_discord_id(discord_id)
+    if not acc:
+        raise _err("not_found", "account not found", 404)
+    # update region
+    now = _utc_now()
+    def _fn(conn):
+        _DB._exec(conn, "UPDATE discord_accounts SET region = ?, updated_at = ? WHERE discord_id = ?", (region, now, discord_id))
+    with _DB._lock:
+        _DB._run_with_retry(_fn)
+    return {"ok": True}
+
+
+@app.post("/auth/discord/register-event")
+def auth_discord_register_event(payload: dict = Body(default={})):
+    discord_id = str(payload.get("discord_id") or "")
+    event_type = str(payload.get("event_type") or "ACCOUNT_EVENT")
+    if not discord_id:
+        raise _err("bad_request", "discord_id required", 400)
+    acc = _DB.get_discord_account_by_discord_id(discord_id)
+    if acc:
+        log = _DB.log_discord_registration(discord_id, acc.get("discord_username") or "", acc.get("account_id"), acc.get("region") or "", acc.get("current_tier") or "foundation", acc.get("license_key"), event_type=event_type, server_membership="UNKNOWN", discord_verified=1)
+    else:
+        log = None
+    # Send to staff channel
+    msg = None
+    sent = False
+    if DISCORD_REGISTRATION_CHANNEL_ID and DISCORD_BOT_TOKEN:
+        acc_id = acc.get("account_id") if acc else "N/A"
+        uname = acc.get("discord_username") if acc else "Unknown"
+        reg = acc.get("region") if acc else ""
+        tier = acc.get("current_tier") if acc else "foundation"
+        status = acc.get("status") if acc else "UNKNOWN"
+        msg = f"━━━━━━━━━━━━━━━━━━━━\nMAXIMUM OPTIMIZATIONS\n{event_type}\n━━━━━━━━━━━━━━━━━━━━\n\nUsername: {uname}\nDiscord ID: {discord_id}\nRegion: {reg or 'N/A'}\nAccount ID: {acc_id}\nTier: {tier.upper()}\nStatus: {status}\n\nDiscord: Verified\nServer Membership: {payload.get('server_membership','Unknown')}\n\n━━━━━━━━━━━━━━━━━━━━"
+        sent = discord_bot_send_message(DISCORD_REGISTRATION_CHANNEL_ID, msg)
+        if not sent:
+            logger.warning("discord: staff notification not delivered for %s",
+                           discord_id)
+    return {"ok": True, "logged": bool(log), "notified": sent}
+
+@app.get("/auth/discord/session")
+def auth_discord_session(discord_id: str = ""):
+    if not discord_id:
+        raise _err("bad_request", "discord_id required", 400)
+    acc = _DB.get_discord_account_by_discord_id(discord_id)
+    if not acc:
+        raise _err("not_found", "account not found", 404)
+    # Determine entitlement - backend is authoritative
+    tier = acc.get("current_tier") or "foundation"
+    # If linked to a license, maybe get tier from license
+    lic = None
+    if acc.get("license_key"):
+        lic = _DB.get(acc.get("license_key"))
+        if lic:
+            tier = lic.get("tier") or tier
+    return {"ok": True, "account": {"account_id": acc.get("account_id"), "discord_id": acc.get("discord_id"), "discord_username": acc.get("discord_username"), "region": acc.get("region"), "tier": tier, "license_key": acc.get("license_key")}, "entitlement": tier}
+
+# --- Bot helpers ---------------------------------------------------------
+# The bot needs two capabilities for the registration flow:
+#   * Add members to the guild  -> guilds.join is requested in the user OAuth
+#     scope and redeemed here against the bot token.
+#   * Post the audit line       -> requires Send Messages in the target
+#     channel. "View Channel" alone is NOT enough.
+# Bitfield used for the invite URL below.
+DISCORD_PERM_VIEW_CHANNEL = 1 << 10        # 1024
+DISCORD_PERM_SEND_MESSAGES = 1 << 11      # 2048
+DISCORD_PERM_READ_HISTORY = 1 << 16       # 65536 (nice-to-have)
+DISCORD_BOT_PERMISSIONS = (DISCORD_PERM_VIEW_CHANNEL
+                           | DISCORD_PERM_SEND_MESSAGES
+                           | DISCORD_PERM_READ_HISTORY)   # = 77824
+
+
+def discord_bot_invite_url() -> str:
+    """Bot invite link carrying the permissions the flow actually needs."""
+    client_id = (os.environ.get("DISCORD_CLIENT_ID", "").strip()
+                 or (DISCORD_CLIENT_ID_USER or "").strip())
+    if not client_id:
+        return ""
+    return ("https://discord.com/oauth2/authorize"
+            f"?client_id={client_id}"
+            f"&permissions={DISCORD_BOT_PERMISSIONS}"
+            "&scope=bot")
+
+
+def _discord_bot_headers():
+    if not DISCORD_BOT_TOKEN:
+        return None
+    return {"Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+            "Content-Type": "application/json",
+            "User-Agent": _DISCORD_UA}
+
+
+def _discord_bot_call(method: str, url: str, body: dict | None = None):
+    """Shared bot REST call. Returns (ok, status, detail) and always logs the
+    reason on failure - silent ``False`` returns were impossible to debug."""
+    headers = _discord_bot_headers()
+    if not headers:
+        logger.warning("discord: bot call skipped, DISCORD_BOT_TOKEN not set")
+        return False, 0, "DISCORD_BOT_TOKEN not configured"
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.getcode() in (200, 201, 204), r.getcode(), ""
+    except urllib.error.HTTPError as e:
+        detail = _discord_http_error(e)
+        # An IP/edge block is NOT a permissions problem. Reporting it as one
+        # sent us chasing the wrong fix, so detect it first.
+        if _discord_is_ip_block(detail):
+            hint = ("Discord blocked this machine's IP (code "
+                    f"{e.code}); not a permission issue - retry from the "
+                    "deployed host")
+        else:
+            hint = {
+                401: "bot token invalid or revoked",
+                403: "bot lacks permission, or is not in the guild/channel",
+                404: "guild/channel id wrong, or the bot cannot see it",
+            }.get(e.code, "")
+        logger.error("discord: bot %s %s -> HTTP %s %s %s",
+                     method, url.rsplit("/", 2)[-2:], e.code, detail, hint)
+        return False, e.code, (detail + " " + hint).strip()[:300]
+    except Exception as e:  # noqa: BLE001
+        logger.exception("discord: bot %s failed", method)
+        return False, 0, str(e)[:200]
+
+
+def discord_bot_add_member(guild_id: str, user_id: str,
+                           access_token: str = "") -> bool:
+    """Add an authorized user to our guild.
+
+    Discord returns 201 when the member was added and 204 when they were
+    already present - both count as success. 403 usually means the bot is not
+    in the guild or the token was not granted the ``guilds.join`` scope.
+    """
+    if not DISCORD_BOT_TOKEN or not guild_id or not user_id:
+        return False
+    body = {"access_token": access_token} if access_token else {}
+    ok, status, detail = _discord_bot_call(
+        "PUT",
+        f"{_DISCORD_API}/v10/guilds/{guild_id}/members/{user_id}",
+        body)
+    if not ok:
+        logger.warning("discord: add-to-server failed for user %s (%s)",
+                       user_id, detail or status)
+    return ok
+
+
+def discord_bot_send_message(channel_id: str, content: str) -> bool:
+    """Post the staff-facing registration line to the audit channel."""
+    if not DISCORD_BOT_TOKEN or not channel_id or not content:
+        return False
+    ok, status, detail = _discord_bot_call(
+        "POST",
+        f"{_DISCORD_API}/v10/channels/{channel_id}/messages",
+        {"content": content[:2000]})
+    if not ok:
+        logger.warning("discord: staff channel post failed (%s)",
+                       detail or status)
+    return ok
+
+
+#: Discord answers 403 with code 40333 ("internal network error") or 1010
+#: (Cloudflare fingerprint block) for some endpoints depending on the egress
+#: IP. Those are NOT permission failures, so they must not be reported as one.
+_DISCORD_IP_BLOCK_CODES = ("40333", "1010")
+
+
+def _discord_is_ip_block(detail: str) -> bool:
+    d = (detail or "").lower()
+    return any(c in d for c in _DISCORD_IP_BLOCK_CODES) or "internal network error" in d
+
+
+def discord_bot_self_check() -> dict:
+    """Report whether the bot pieces are configured and the bot is in the
+    guild. Safe to call from /admin; never returns the token itself."""
+    out = {
+        "token_configured": bool(DISCORD_BOT_TOKEN),
+        "guild_id_configured": bool(DISCORD_GUILD_ID),
+        "channel_id_configured": bool(DISCORD_REGISTRATION_CHANNEL_ID),
+        "user_client_configured": bool(DISCORD_CLIENT_ID_USER
+                                       and DISCORD_CLIENT_SECRET_USER),
+        "permissions_decimal": DISCORD_BOT_PERMISSIONS,
+        "invite_url": discord_bot_invite_url(),
+        "bot_reachable": False,
+        "in_guild": False,
+        "guild_name": "",
+        "can_read_channel": False,
+        "network_restricted": False,
+        "problems": [],
+    }
+    if not out["token_configured"]:
+        out["problems"].append("DISCORD_BOT_TOKEN is not set - the bot cannot "
+                               "add users to the server or post to staff chat.")
+    if not out["guild_id_configured"]:
+        out["problems"].append("DISCORD_GUILD_ID is not set.")
+    if not out["channel_id_configured"]:
+        out["problems"].append("DISCORD_REGISTRATION_CHANNEL_ID is not set.")
+    if not out["user_client_configured"]:
+        out["problems"].append("DISCORD_CLIENT_ID_USER / "
+                               "DISCORD_CLIENT_SECRET_USER are not set.")
+    if not out["token_configured"]:
+        return out
+
+    headers = _discord_bot_headers()
+
+    def _get(path: str):
+        req = urllib.request.Request(f"{_DISCORD_API}/v10{path}",
+                                     headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+
+    try:
+        me = _get("/users/@me")
+        out["bot_reachable"] = True
+        out["bot_username"] = me.get("username") or me.get("global_name")
+    except urllib.error.HTTPError as e:
+        detail = _discord_http_error(e)
+        if _discord_is_ip_block(detail):
+            out["network_restricted"] = True
+            out["problems"].append(
+                "Discord is blocking this machine's IP (code %s). The token may "
+                "still be valid - retry from the deployed host." % e.code)
+        else:
+            out["problems"].append(
+                f"bot token rejected by Discord (HTTP {e.code}): {detail[:120]}")
+    except Exception as e:  # noqa: BLE001
+        out["problems"].append(f"bot unreachable: {str(e)[:150]}")
+
+    # Guild membership: /users/@me/guilds is the reliable endpoint. The
+    # /guilds/{id}/members/{bot} route is frequently IP-blocked and would
+    # otherwise produce a false "not in guild".
+    if out["bot_reachable"] and DISCORD_GUILD_ID:
+        try:
+            guilds = _get("/users/@me/guilds")
+            if isinstance(guilds, list):
+                for g in guilds:
+                    if str(g.get("id")) == str(DISCORD_GUILD_ID):
+                        out["in_guild"] = True
+                        out["guild_name"] = g.get("name") or ""
+                if not out["in_guild"]:
+                    out["problems"].append(
+                        "the bot is NOT in the configured guild "
+                        f"({DISCORD_GUILD_ID}). Invite it with: "
+                        + out["invite_url"])
+        except urllib.error.HTTPError as e:
+            detail = _discord_http_error(e)
+            if _discord_is_ip_block(detail):
+                out["network_restricted"] = True
+                out["problems"].append(
+                    "could not list the bot's guilds - Discord blocked this IP "
+                    f"(code {e.code}). Membership is unverified.")
+            else:
+                out["problems"].append(
+                    f"guild list failed (HTTP {e.code}): {detail[:120]}")
+        except Exception as e:  # noqa: BLE001
+            out["problems"].append(f"guild list failed: {str(e)[:120]}")
+
+    # Permission bits come from the member object; treat an IP block as
+    # "unknown" rather than "missing permissions".
+    if out["in_guild"] and out.get("bot_username"):
+        try:
+            member = _get(f"/guilds/{DISCORD_GUILD_ID}/members/{me['id']}")
+            perms = int(member.get("permissions") or 0)
+            out["bot_permission_bits"] = perms
+            missing = []
+            if not perms & DISCORD_PERM_VIEW_CHANNEL:
+                missing.append("View Channel")
+            if not perms & DISCORD_PERM_SEND_MESSAGES:
+                missing.append("Send Messages")
+            if missing:
+                out["problems"].append(
+                    "bot is in the guild but missing: " + ", ".join(missing)
+                    + ". Re-invite using: " + out["invite_url"])
+        except urllib.error.HTTPError as e:
+            detail = _discord_http_error(e)
+            if _discord_is_ip_block(detail):
+                out["network_restricted"] = True
+                out["problems"].append(
+                    "permissions could not be read - Discord blocked this IP "
+                    f"(code {e.code}). Verify from the deployed host.")
+            elif e.code == 404:
+                out["problems"].append(
+                    "bot member record not found for this guild.")
+            else:
+                out["problems"].append(
+                    f"permission check failed (HTTP {e.code}): {detail[:120]}")
+        except Exception as e:  # noqa: BLE001
+            out["problems"].append(f"permission check failed: {str(e)[:120]}")
+
+    if out["in_guild"] and DISCORD_REGISTRATION_CHANNEL_ID:
+        try:
+            ch = _get(f"/channels/{DISCORD_REGISTRATION_CHANNEL_ID}")
+            out["can_read_channel"] = True
+            out["channel_name"] = ch.get("name") if isinstance(ch, dict) else ""
+        except urllib.error.HTTPError as e:
+            detail = _discord_http_error(e)
+            if _discord_is_ip_block(detail):
+                out["network_restricted"] = True
+                out["problems"].append(
+                    "channel visibility unverified - Discord blocked this IP "
+                    f"(code {e.code}).")
+            elif e.code == 404:
+                out["problems"].append(
+                    "registration channel not found. Check "
+                    "DISCORD_REGISTRATION_CHANNEL_ID (enable Developer Mode "
+                    "and right-click the channel -> Copy ID).")
+            else:
+                out["problems"].append(
+                    "bot cannot see the registration channel. Check the id and "
+                    "that the bot has View Channel + Send Messages there.")
+        except Exception:  # noqa: BLE001
+            pass
+    return out

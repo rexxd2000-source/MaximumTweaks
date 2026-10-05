@@ -10,8 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 
-_tmpdir = tempfile.mkdtemp(prefix="mt-admin-actions-")
-os.environ["LICENSE_DB_PATH"] = os.path.join(_tmpdir, "test.db")
+# LICENSE_DB_PATH is pinned by tests/conftest.py (isolated sqlite temp file)
 os.environ["LICENSE_SECRET"] = "test-secret-not-for-production"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
 os.environ["SESSION_TTL_HOURS"] = "2"
@@ -43,7 +42,6 @@ DEVICE_B = "b" * 64
 
 PAST = "2020-01-01 00:00:00"
 
-
 @pytest.fixture(autouse=True)
 def _clean_db():
     with db._lock:
@@ -58,30 +56,24 @@ def _clean_db():
             conn.close()
     yield
 
-
 def _admin_headers():
     return {"Authorization": f"Bearer {os.environ['ADMIN_TOKEN']}"}
-
 
 def _make_key(customer="Alice", max_pcs=1) -> str:
     key = generate_key()
     db.create(key, plan="life", customer=customer, max_pcs=max_pcs)
     return key
 
-
 def _activate(key, device=DEVICE_A):
     return client.post("/api/license/activate",
                        json={"key": key, "device_id": device})
-
 
 def _checkin(key, device=DEVICE_A, pc_name="Test PC"):
     return client.post("/api/license/checkin",
                        json={"key": key, "device_id": device, "pc_name": pc_name})
 
-
 def _events(key):
     return db.logs(key)
-
 
 # ---------------------------------------------------------------------------
 # Hard ban / unban
@@ -130,7 +122,6 @@ def test_ban_revokes_key_and_blocks_pcs():
     assert got["error"] == "license_banned"
     assert got.get("revoked_reason") == "banned"
 
-
 def test_plain_revoke_is_license_revoked_not_banned():
     key = _make_key()
     _activate(key, DEVICE_A)
@@ -144,12 +135,10 @@ def test_plain_revoke_is_license_revoked_not_banned():
     assert got["error"] == "license_revoked"
     assert got.get("revoked_at")
 
-
 def test_ban_unknown_key_is_404():
     r = client.post("/admin/ban", json={"key": "NOPE-NOPE-NOPE-NOPE", "reason": ""},
                     headers=_admin_headers())
     assert r.status_code == 404
-
 
 def test_unban_restores_key():
     key = _make_key()
@@ -167,13 +156,11 @@ def test_unban_restores_key():
     kinds = [e["event"] for e in _events(key)]
     assert "unbanned" in kinds
 
-
 def test_ban_requires_admin_auth():
     key = _make_key()
     r = client.post("/admin/ban", json={"key": key, "reason": ""})
     assert r.status_code == 401
     assert db.get(key)["status"] == "unused"
-
 
 # ---------------------------------------------------------------------------
 # Suspend (timeout) / unsuspend
@@ -203,7 +190,6 @@ def test_suspend_refuses_activate_validate_and_checkin():
     assert got["error"] == "license_suspended"
     assert got.get("suspended_until")
 
-
 def test_suspend_rejects_bad_hours():
     key = _make_key()
     for hours in (0, -3, 200):
@@ -214,7 +200,6 @@ def test_suspend_rejects_bad_hours():
     r = client.post("/admin/suspend", json={"key": key, "hours": "abc"},
                     headers=_admin_headers())
     assert r.status_code == 422
-
 
 def test_unsuspend_restores_key():
     key = _make_key()
@@ -231,7 +216,6 @@ def test_unsuspend_restores_key():
     assert got.get("success") is True
     assert "unsuspended" in [e["event"] for e in _events(key)]
 
-
 def test_suspensions_resume_automatically_when_past_due():
     key = _make_key()
     _activate(key, DEVICE_A)
@@ -243,7 +227,6 @@ def test_suspensions_resume_automatically_when_past_due():
     assert db.get(key)["suspended_until"] is None
     assert "auto-resumed" in [e["detail"] for e in _events(key)]
 
-
 def test_checkin_auto_resumes_past_due_suspension():
     key = _make_key()
     _activate(key, DEVICE_A)
@@ -254,7 +237,6 @@ def test_checkin_auto_resumes_past_due_suspension():
     assert got.json()["success"] is True
     assert db.get(key)["suspended_until"] is None
     assert "auto-resumed" in [e["detail"] for e in _events(key)]
-
 
 # ---------------------------------------------------------------------------
 # Keys list + inspect
@@ -273,10 +255,8 @@ def test_keys_list_carries_suspended_and_revoked_fields():
     assert by[active]["suspended_until"] == "2099-01-01 00:00:00"
     assert by[active]["suspended_at"]
 
-
 def test_keys_list_requires_admin():
     assert client.get("/admin/keys").status_code == 401
-
 
 def test_inspect_shape_and_timeline():
     key = _make_key("Inspect Me")
@@ -303,7 +283,6 @@ def test_inspect_shape_and_timeline():
     # Log is newest-first, so the suspends happened before the resume.
     assert kinds.index("suspended") > kinds.index("unsuspended")
 
-
 def test_inspect_banned_key_lists_blocked_pcs():
     key = _make_key()
     _activate(key, DEVICE_A)
@@ -318,12 +297,10 @@ def test_inspect_banned_key_lists_blocked_pcs():
                for b in info["blocked"])
     assert "banned" in [e["event"] for e in info["events"]]
 
-
 def test_inspect_unknown_key_is_404():
     r = client.get("/admin/keys/NOPE-NOPE-NOPE-NOPE/inspect",
                    headers=_admin_headers())
     assert r.status_code == 404
-
 
 # ---------------------------------------------------------------------------
 # Bulk actions: disable all / delete all
@@ -347,7 +324,6 @@ def test_disable_all_revokes_every_non_revoked_key():
     # Per-key audit line exists so the inspect timeline stays truthful.
     assert "revoked" in [e["event"] for e in _events(a)]
 
-
 def test_disable_all_is_idempotent():
     key = _make_key()
     json = {"code": os.environ["ADMIN_TOKEN"]}
@@ -355,7 +331,6 @@ def test_disable_all_is_idempotent():
     r = client.post("/admin/disable-all", json=json, headers=_admin_headers())
     assert r.status_code == 200
     assert r.json()["revoked"] == 0
-
 
 def test_delete_all_removes_everything():
     keys = [_make_key(f"K{i}") for i in range(3)]
@@ -380,13 +355,11 @@ def test_delete_all_removes_everything():
         finally:
             conn.close()
 
-
 def test_bulk_actions_require_admin():
     key = _make_key()
     assert client.post("/admin/disable-all", json={}).status_code == 401
     assert client.post("/admin/delete-all", json={}).status_code == 401
     assert db.get(key)["status"] == "unused"
-
 
 def test_bulk_actions_reject_wrong_confirm_code():
     a = _make_key("Alpha")

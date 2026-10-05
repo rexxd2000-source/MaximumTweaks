@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Optimizers — Maximum Tweaks</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a12;
+    --panel: #121320;
+    --panel2: #151623;
+    --border: #22233a;
+    --violet: #7c5cff;
+    --violet-soft: rgba(124,92,255,0.14);
+    --text: #f2f3f7;
+    --sub: #8a8d99;
+    --green: #3ddc97;
+    --blue: #4fb6ed;
+    --orange: #f5c874;
+    --red: #ff6f6f;
+  }
+  body {
+    background: #0a0a12;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    padding: 26px 34px 40px;
+  }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+  .page-title { font-size: 23px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+  .page-icon { width: 34px; height: 34px; border-radius: 9px; background: var(--violet-soft); border: 1px solid rgba(124,92,255,0.4); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 16px rgba(124,92,255,0.18); }
+  .page-icon svg { width: 17px; height: 17px; }
+  .page-sub { font-size: 12.5px; color: var(--sub); margin-top: 4px; margin-left: 44px; }
+  .topbar-actions { display: flex; gap: 10px; }
+  .search { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; width: 210px; }
+  .search svg { width: 14px; height: 14px; color: #565866; }
+  .search input { background: none; border: none; outline: none; color: var(--text); font-size: 12px; width: 100%; }
+  .search input::placeholder { color: #565866; }
+  .btn { display: flex; align-items: center; gap: 7px; border: none; color: #fff; font-size: 12px; font-weight: 700; padding: 9px 15px; border-radius: 9px; cursor: pointer; }
+  .btn-primary { background: linear-gradient(150deg, #9d84ff, #6b46ff); box-shadow: 0 4px 16px rgba(124,92,255,0.35); }
+  .btn-ghost { background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card { position: relative; background: linear-gradient(165deg, var(--panel2), var(--panel)); border: 1px solid var(--border); border-radius: 13px; padding: 15px 16px; overflow: hidden; }
+  .stat-card::before { content: ""; position: absolute; inset: 0; background: radial-gradient(90% 70% at 0% 0%, var(--tint), transparent 60%); pointer-events: none; }
+  .stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; position: relative; }
+  .stat-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--iconbg); border: 1px solid var(--iconborder); }
+  .stat-icon svg { width: 14px; height: 14px; }
+  .stat-value { position: relative; font-size: 21px; font-weight: 800; }
+  .stat-label { position: relative; font-size: 11px; color: var(--sub); margin-top: 2px; }
+  .stat-delta { font-size: 10.5px; font-weight: 700; color: var(--green); }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .section-head h2 { font-size: 14px; font-weight: 700; color: #d7d8e2; }
+  .filter-row { display: flex; gap: 6px; }
+  .chip { font-size: 10.5px; font-weight: 600; color: var(--sub); background: var(--panel); border: 1px solid var(--border); padding: 5px 10px; border-radius: 100px; cursor: pointer; }
+  .chip.active { color: #ded7ff; background: var(--violet-soft); border-color: rgba(124,92,255,0.4); }
+  .app-list { display: flex; flex-direction: column; gap: 12px; }
+  .app-card { position: relative; background: linear-gradient(165deg, var(--panel2) 0%, var(--panel) 100%); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; overflow: hidden; }
+  .app-card::before { content: ""; position: absolute; inset: 0; background: radial-gradient(70% 90% at 0% 0%, var(--tint), transparent 60%); pointer-events: none; }
+  /* Working card: dimmed, with a slow sheen so it reads as "in progress"
+     while the engine is applying or restarting that one app. */
+  .app-card.working { opacity: .72; }
+  .app-card.working::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.055) 45%, transparent 70%);
+    background-size: 220% 100%;
+    animation: cardSheen 1.5s linear infinite;
+  }
+  @keyframes cardSheen { 0% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+  .status-tag.busy { color: #b9aeff; background: rgba(124,92,255,0.16); border: 1px solid rgba(124,92,255,0.40); }
+  .app-card-top { position: relative; display: flex; align-items: center; gap: 14px; }
+  .app-icon { width: 46px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--iconbg); border: 1px solid var(--iconborder); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10); flex-shrink: 0; }
+  .app-icon svg { width: 26px; height: 26px; display: block; }
+  .app-title-row { display: flex; align-items: center; gap: 8px; }
+  .app-name { font-size: 15px; font-weight: 700; }
+  .status-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 100px; }
+  .status-tag.active { color: #8ff0c4; background: rgba(61,220,151,0.14); border: 1px solid rgba(61,220,151,0.35); }
+  .status-tag.detected { color: #a9acba; background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+  .app-desc { font-size: 12px; color: var(--sub); margin-top: 3px; max-width: 560px; line-height: 1.45; }
+  .app-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .meta-pill {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .2px;
+    color: var(--sub); background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07);
+    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .meta-pill.green { color: #8ff0c4; background: rgba(61,220,151,.10); border-color: rgba(61,220,151,.28); }
+  .app-right { margin-left: auto; display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
+  .savings { text-align: right; }
+  .savings .val { font-size: 15px; font-weight: 800; color: #8ff0c4; }
+  .savings .lbl { font-size: 9.5px; color: var(--sub); margin-top: 1px; }
+  .toggle { width: 40px; height: 23px; border-radius: 100px; background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); border: 1px solid var(--border); display: flex; align-items: center; padding: 2px; cursor: pointer; }
+  .toggle.on { background: linear-gradient(160deg, rgba(61,220,151,0.30), rgba(61,220,151,0.14)); border-color: rgba(61,220,151,0.45); }
+  .toggle .knob { width: 17px; height: 17px; border-radius: 50%; background: #565866; }
+  .toggle.on .knob { background: var(--green); margin-left: auto; box-shadow: 0 0 8px rgba(61,220,151,0.7); }
+  .chevron { width: 15px; height: 15px; color: #565866; cursor: pointer; transform: rotate(-90deg); }
+  .chevron.open { transform: rotate(0deg); }
+  .details { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .details.open { display: block; }
+  .feature-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+  .feature { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #b6b8c4; background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 5px 10px; border-radius: 100px; }
+  .feature svg { width: 11px; height: 11px; color: var(--green); }
+  .impact-strip { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+  .impact-strip .imp-label { font-size: 10.5px; color: var(--sub); }
+  .imp-bars { display: flex; gap: 3px; }
+  .imp-bars span { width: 5px; height: 12px; border-radius: 2px; background: #4a4b57; }
+  .imp-bars span.fill { background: #f5c874; }
+  .ops { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .op { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 9px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); }
+  .op input { margin-top: 2px; }
+  .op-title { font-size: 12px; font-weight: 600; }
+  .op-desc { font-size: 11px; color: var(--sub); margin-top: 2px; line-height: 1.45; }
+  .actions { display: flex; gap: 8px; margin-left: auto; }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .progress { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #121320; border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); display: none; }
+  .progress.show { display: flex; align-items: center; gap: 12px; }
+  .progress-bar { width: 180px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #9d84ff, #3ddc97); transition: width 0.2s ease; }
+  .toast { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); background: #121320; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); display: none; }
+  .toast.show { display: block; }
+  .empty { color: var(--sub); padding: 20px 0; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <div class="page-title">
+        <div class="page-icon" title="App Optimizers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#b9aeff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="App Optimizers logo"><path d="M10 4v4"/><path d="M6 4v4"/><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/></svg>
+        </div>
+        App Optimizers
+      </div>
+      <div class="page-sub">Trim background overhead from apps you keep running alongside your games</div>
+    </div>
+    <div class="topbar-actions">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="search" placeholder="Search apps..." />
+      </div>
+      <button class="btn btn-ghost" id="btnRefresh">Refresh</button>
+      <button class="btn btn-primary" id="btnOptimizeAll">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+        Optimize All
+      </button>
+    </div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="section-head">
+    <h2>Detected Applications</h2>
+    <div class="filter-row">
+      <div class="chip active" data-filter="all">All</div>
+      <div class="chip" data-filter="active">Active</div>
+      <div class="chip" data-filter="available">Available</div>
+    </div>
+  </div>
+  <div class="app-list" id="apps"></div>
+  <div class="progress" id="progress">
+    <div>Optimizing… <span id="progText">0/0</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progFill"></div></div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script>
+    function api(){ return (window.pywebview && window.pywebview.api) || null; }
+    const $ = (id)=>document.getElementById(id);
+    let data = {apps:{}, totalDetected:0, totalEngaged:0, ramReclaimed:0};
+    let filter='all', q='';
+    const ICONS = {
+      /* Official brand marks, taken from the vendors' published SVG assets:
+         Discord / Spotify / Brave from simple-icons (cdn.simpleicons.org),
+         Edge and Chrome from Wikimedia Commons (Microsoft- and Google-authored
+         SVG). Gradient/clipPath ids are namespaced per icon so that inlining
+         several of these on one page cannot make them reference each other. */
+      discord: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>`,
+      edge: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><radialGradient id="ed-b" cx="161.8" cy="68.9" r="95.4" gradientTransform="matrix(1 0 0 -.95 0 248.8)" gradientUnits="userSpaceOnUse"><stop offset=".7" stop-opacity="0"/><stop offset=".9" stop-opacity=".5"/><stop offset="1"/></radialGradient><radialGradient id="ed-d" cx="-340.3" cy="63" r="143.2" gradientTransform="matrix(.15 -.99 -.8 -.12 176.6 -125.4)" gradientUnits="userSpaceOnUse"><stop offset=".8" stop-opacity="0"/><stop offset=".9" stop-opacity=".5"/><stop offset="1"/></radialGradient><radialGradient id="ed-e" cx="113.4" cy="570.2" r="202.4" gradientTransform="matrix(-.04 1 2.13 .08 -1179.5 -106.7)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#35c1f1"/><stop offset=".1" stop-color="#34c1ed"/><stop offset=".2" stop-color="#2fc2df"/><stop offset=".3" stop-color="#2bc3d2"/><stop offset=".7" stop-color="#36c752"/></radialGradient><radialGradient id="ed-f" cx="376.5" cy="568" r="97.3" gradientTransform="matrix(.28 .96 .78 -.23 -303.8 -148.5)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#66eb6e"/><stop offset="1" stop-color="#66eb6e" stop-opacity="0"/></radialGradient><linearGradient id="ed-a" x1="63.3" y1="84" x2="241.7" y2="84" gradientTransform="matrix(1 0 0 -1 0 266)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0c59a4"/><stop offset="1" stop-color="#114a8b"/></linearGradient><linearGradient id="ed-c" x1="157.3" y1="161.4" x2="46" y2="40.1" gradientTransform="matrix(1 0 0 -1 0 266)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1b9de2"/><stop offset=".2" stop-color="#1595df"/><stop offset=".7" stop-color="#0680d7"/><stop offset="1" stop-color="#0078d4"/></linearGradient></defs><path d="M235.7 195.5a93.7 93.7 0 0 1-10.6 4.7 101.9 101.9 0 0 1-35.9 6.4c-47.3 0-88.5-32.5-88.5-74.3a31.5 31.5 0 0 1 16.4-27.3c-42.8 1.8-53.8 46.4-53.8 72.5 0 74 68.1 81.4 82.8 81.4 7.9 0 19.8-2.3 27-4.6l1.3-.4a128.3 128.3 0 0 0 66.6-52.8 4 4 0 0 0-5.3-5.6Z" transform="translate(-4.6 -5)" style="fill:url(#ed-a)"/><path d="M235.7 195.5a93.7 93.7 0 0 1-10.6 4.7 101.9 101.9 0 0 1-35.9 6.4c-47.3 0-88.5-32.5-88.5-74.3a31.5 31.5 0 0 1 16.4-27.3c-42.8 1.8-53.8 46.4-53.8 72.5 0 74 68.1 81.4 82.8 81.4 7.9 0 19.8-2.3 27-4.6l1.3-.4a128.3 128.3 0 0 0 66.6-52.8 4 4 0 0 0-5.3-5.6Z" transform="translate(-4.6 -5)" style="isolation:isolate;opacity:.35;fill:url(#ed-b)"/><path d="M110.3 246.3A79.2 79.2 0 0 1 87.6 225a80.7 80.7 0 0 1 29.5-120c3.2-1.5 8.5-4.1 15.6-4a32.4 32.4 0 0 1 25.7 13 31.9 31.9 0 0 1 6.3 18.7c0-.2 24.5-79.6-80-79.6-43.9 0-80 41.6-80 78.2a130.2 130.2 0 0 0 12.1 56 128 128 0 0 0 156.4 67 75.5 75.5 0 0 1-62.8-8Z" transform="translate(-4.6 -5)" style="fill:url(#ed-c)"/><path d="M110.3 246.3A79.2 79.2 0 0 1 87.6 225a80.7 80.7 0 0 1 29.5-120c3.2-1.5 8.5-4.1 15.6-4a32.4 32.4 0 0 1 25.7 13 31.9 31.9 0 0 1 6.3 18.7c0-.2 24.5-79.6-80-79.6-43.9 0-80 41.6-80 78.2a130.2 130.2 0 0 0 12.1 56 128 128 0 0 0 156.4 67 75.5 75.5 0 0 1-62.8-8Z" transform="translate(-4.6 -5)" style="opacity:.41;fill:url(#ed-d);isolation:isolate"/><path d="M157 153.8c-.9 1-3.4 2.5-3.4 5.6 0 2.6 1.7 5.2 4.8 7.3 14.3 10 41.4 8.6 41.5 8.6a59.6 59.6 0 0 0 30.3-8.3 61.4 61.4 0 0 0 30.4-52.9c.3-22.4-8-37.3-11.3-43.9C228 28.8 182.3 5 132.6 5a128 128 0 0 0-128 126.2c.5-36.5 36.8-66 80-66 3.5 0 23.5.3 42 10a72.6 72.6 0 0 1 30.9 29.3c6.1 10.6 7.2 24.1 7.2 29.5s-2.7 13.3-7.8 19.9Z" transform="translate(-4.6 -5)" style="fill:url(#ed-e)"/><path d="M157 153.8c-.9 1-3.4 2.5-3.4 5.6 0 2.6 1.7 5.2 4.8 7.3 14.3 10 41.4 8.6 41.5 8.6a59.6 59.6 0 0 0 30.3-8.3 61.4 61.4 0 0 0 30.4-52.9c.3-22.4-8-37.3-11.3-43.9C228 28.8 182.3 5 132.6 5a128 128 0 0 0-128 126.2c.5-36.5 36.8-66 80-66 3.5 0 23.5.3 42 10a72.6 72.6 0 0 1 30.9 29.3c6.1 10.6 7.2 24.1 7.2 29.5s-2.7 13.3-7.8 19.9Z" transform="translate(-4.6 -5)" style="fill:url(#ed-f)"/></svg>`,
+      chrome: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="8 8 176 176.01"><clipPath id="ch-b"><circle cx="96" cy="96" r="88"/></clipPath><linearGradient id="ch-c" gradientUnits="userSpaceOnUse" x1="29.337" x2="81.837" y1="75.021" y2="44.354"><stop offset="0" stop-color="#a52714" stop-opacity=".6"/><stop offset=".66" stop-color="#a52714" stop-opacity="0"/></linearGradient><linearGradient id="ch-d" gradientUnits="userSpaceOnUse" x1="110.872" x2="52.538" y1="164.495" y2="130.329"><stop offset="0" stop-color="#055524" stop-opacity=".4"/><stop offset=".33" stop-color="#055524" stop-opacity="0"/></linearGradient><clipPath id="ch-e"><path d="M8 184h83.77l38.88-38.88V116H61.36L8 24.48z"/></clipPath><linearGradient id="ch-f" gradientUnits="userSpaceOnUse" x1="121.858" x2="136.547" y1="49.804" y2="114.13"><stop offset="0" stop-color="#ea6100" stop-opacity=".3"/><stop offset=".66" stop-color="#ea6100" stop-opacity="0"/></linearGradient><clipPath id="ch-g"><path d="M96 56l34.65 60-38.88 68H184V56z"/></clipPath><linearGradient id="ch-a"><stop offset="0" stop-color="#3e2723" stop-opacity=".2"/><stop offset="1" stop-color="#3e2723" stop-opacity="0"/></linearGradient><radialGradient id="ch-h" cx="92.176" cy="55.948" gradientUnits="userSpaceOnUse" r="84.078" xlink:href="#ch-a"/><clipPath id="ch-i"><path d="M21.97 8v40.34L61.36 116 96 56h88V8z"/></clipPath><radialGradient id="ch-j" cx="21.875" cy="48.52" gradientUnits="userSpaceOnUse" r="78.044" xlink:href="#ch-a"/><radialGradient id="ch-k" cx="95.844" cy="96.138" gradientUnits="userSpaceOnUse" r="87.87"><stop offset="0" stop-color="#263238" stop-opacity=".2"/><stop offset="1" stop-color="#263238" stop-opacity="0"/></radialGradient><radialGradient id="ch-l" cx="34.286" cy="32.014" gradientUnits="userSpaceOnUse" r="176.746"><stop offset="0" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><g clip-path="url(#ch-b)"><path d="M21.97 8v108h39.39L96 56h88V8z" fill="#db4437"/><path d="M21.97 8v108h39.39L96 56h88V8z" fill="url(#ch-c)"/></g><path clip-path="url(#ch-b)" d="M62.31 115.65L22.48 47.34l-.58 1 39.54 67.8z" fill="#3e2723" fill-opacity=".15"/><g clip-path="url(#ch-b)"><path d="M8 184h83.77l38.88-38.88V116H61.36L8 24.48z" fill="#0f9d58"/><path d="M8 184h83.77l38.88-38.88V116H61.36L8 24.48z" fill="url(#ch-d)"/></g><path clip-path="url(#ch-b)" d="M129.84 117.33l-.83-.48L90.62 184h1.15l38.1-66.64z" fill="#263238" fill-opacity=".15"/><g clip-path="url(#ch-b)"><g clip-path="url(#ch-e)"><path d="M96 56l34.65 60-38.88 68H184V56z" fill="#ffcd40"/><path d="M96 56l34.65 60-38.88 68H184V56z" fill="url(#ch-f)"/></g></g><g clip-path="url(#ch-b)"><path d="M96 56l34.65 60-38.88 68H184V56z" fill="#ffcd40"/><path d="M96 56l34.65 60-38.88 68H184V56z" fill="url(#ch-f)"/></g><g clip-path="url(#ch-b)"><g clip-path="url(#ch-g)"><path d="M21.97 8v108h39.39L96 56h88V8z" fill="#db4437"/><path d="M21.97 8v108h39.39L96 56h88V8z" fill="url(#ch-c)"/></g></g><path clip-path="url(#ch-b)" d="M96 56v20.95L174.4 56z" fill="url(#ch-h)"/><g clip-path="url(#ch-b)"><g clip-path="url(#ch-i)"><path d="M8 184h83.77l38.88-38.88V116H61.36L8 24.48z" fill="#0f9d58"/><path d="M8 184h83.77l38.88-38.88V116H61.36L8 24.48z" fill="url(#ch-d)"/></g></g><path clip-path="url(#ch-b)" d="M21.97 48.45l57.25 57.24L61.36 116z" fill="url(#ch-j)"/><path clip-path="url(#ch-b)" d="M91.83 183.89l20.96-78.2L130.65 116z" fill="url(#ch-k)"/><g clip-path="url(#ch-b)"><circle cx="96" cy="96" fill="#f1f1f1" r="40"/><circle cx="96" cy="96" fill="#4285f4" r="32"/></g><g clip-path="url(#ch-b)"><path d="M96 55c-22.09 0-40 17.91-40 40v1c0-22.09 17.91-40 40-40h88v-1z" fill="#3e2723" fill-opacity=".2"/><path d="M130.6 116c-6.92 11.94-19.81 20-34.6 20-14.8 0-27.69-8.06-34.61-20h-.04L8 24.48v1L61.36 117h.04c6.92 11.94 19.81 20 34.61 20 14.79 0 27.68-8.05 34.6-20h.05v-1z" fill="#fff" fill-opacity=".1"/><path d="M97 56c-.17 0-.33.02-.5.03C118.36 56.3 136 74.08 136 96s-17.64 39.7-39.5 39.97c.17 0 .33.03.5.03 22.09 0 40-17.91 40-40s-17.91-40-40-40z" fill="#3e2723" opacity=".1"/><path d="M131 117.33c3.4-5.88 5.37-12.68 5.37-19.96 0-4.22-.66-8.28-1.87-12.09.95 3.42 1.5 7.01 1.5 10.73 0 7.28-1.97 14.08-5.37 19.96l.02.04-38.88 68h1.16l38.09-66.64z" fill="#fff" fill-opacity=".2"/></g><g clip-path="url(#ch-b)"><path d="M96 9c48.43 0 87.72 39.13 87.99 87.5 0-.17.01-.33.01-.5 0-48.6-39.4-88-88-88S8 47.4 8 96c0 .17.01.33.01.5C8.28 48.13 47.57 9 96 9z" fill="#fff" fill-opacity=".2"/><path d="M96 183c48.43 0 87.72-39.13 87.99-87.5 0 .17-.01.33-.01.5 0 48.6-39.4 88-88 88S8 144.6 8 96c0-.17.01-.33.01-.5C8.28 143.87 47.57 183 96 183z" fill="#3e2723" fill-opacity=".15"/></g><circle cx="96" cy="96" fill="url(#ch-l)" r="88"/><path d="M0 0h192v192H0z" fill="none"/></svg>`,
+      spotify: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1ED760"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>`,
+      brave: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FB542B"><path d="M15.68 0l2.096 2.38s1.84-.512 2.709.358c.868.87 1.584 1.638 1.584 1.638l-.562 1.381.715 2.047s-2.104 7.98-2.35 8.955c-.486 1.919-.818 2.66-2.198 3.633-1.38.972-3.884 2.66-4.293 2.916-.409.256-.92.692-1.38.692-.46 0-.97-.436-1.38-.692a185.796 185.796 0 01-4.293-2.916c-1.38-.973-1.712-1.714-2.197-3.633-.247-.975-2.351-8.955-2.351-8.955l.715-2.047-.562-1.381s.716-.768 1.585-1.638c.868-.87 2.708-.358 2.708-.358L8.321 0h7.36zm-3.679 14.936c-.14 0-1.038.317-1.758.69-.72.373-1.242.637-1.409.742-.167.104-.065.301.087.409.152.107 2.194 1.69 2.393 1.866.198.175.489.464.687.464.198 0 .49-.29.688-.464.198-.175 2.24-1.759 2.392-1.866.152-.108.254-.305.087-.41-.167-.104-.689-.368-1.41-.741-.72-.373-1.617-.69-1.757-.69zm0-11.278s-.409.001-1.022.206-1.278.46-1.584.46c-.307 0-2.581-.434-2.581-.434S4.119 7.152 4.119 7.849c0 .697.339.881.68 1.243l2.02 2.149c.192.203.59.511.356 1.066-.235.555-.58 1.26-.196 1.977.384.716 1.042 1.194 1.464 1.115.421-.08 1.412-.598 1.776-.834.364-.237 1.518-1.19 1.518-1.554 0-.365-1.193-1.02-1.413-1.168-.22-.15-1.226-.725-1.247-.95-.02-.227-.012-.293.284-.851.297-.559.831-1.304.742-1.8-.089-.495-.95-.753-1.565-.986-.615-.232-1.799-.671-1.947-.74-.148-.068-.11-.133.339-.175.448-.043 1.719-.212 2.292-.052.573.16 1.552.403 1.632.532.079.13.149.134.067.579-.081.445-.5 2.581-.541 2.96-.04.38-.12.63.288.724.409.094 1.097.256 1.333.256s.924-.162 1.333-.256c.408-.093.329-.344.288-.723-.04-.38-.46-2.516-.541-2.961-.082-.445-.012-.45.067-.579.08-.129 1.059-.372 1.632-.532.573-.16 1.845.009 2.292.052.449.042.487.107.339.175-.148.069-1.332.508-1.947.74-.615.233-1.476.49-1.565.986-.09.496.445 1.241.742 1.8.297.558.304.624.284.85-.02.226-1.026.802-1.247.95-.22.15-1.413.804-1.413 1.169 0 .364 1.154 1.317 1.518 1.554.364.236 1.355.755 1.776.834.422.079 1.08-.4 1.464-1.115.384-.716.039-1.422-.195-1.977-.235-.555.163-.863.355-1.066l2.02-2.149c.341-.362.68-.546.68-1.243 0-.697-2.695-3.96-2.695-3.96s-2.274.436-2.58.436c-.307 0-.972-.256-1.585-.461-.613-.205-1.022-.206-1.022-.206z"/></svg>`,
+    };
+    function icon(k){ return ICONS[k]||''; }
+    /* Honest RAM reporting.
+       - Not engaged: show the app's CURRENT measured working set, no claim.
+       - Engaged:     show the REAL measured reclaim (working set captured
+                      before optimizing vs. now). If nothing has changed yet
+                      (apps only give memory back after a restart) say so
+                      instead of inventing a number. */
+    function ramText(a){
+      if(!a.installed) return '—';
+      if(!a.engaged) return Math.round(a.ram_mb||0)+' MB';
+      const saved = a.ram_reclaimed_mb||0;
+      if(saved >= 1) return saved.toFixed(0)+' MB';
+      return '0 MB';
+    }
+    function ramHint(a){
+      if(!a.installed) return '';
+      if(!a.engaged) return 'Current process memory (measured live)';
+      if((a.ram_reclaimed_mb||0) >= 1)
+        return 'Measured: ' + Math.round(a.ram_before_mb||0) + ' MB before → ' + Math.round(a.ram_mb||0) + ' MB now';
+      if(a.ram_before_mb)
+        return 'No change yet — ' + Math.round(a.ram_before_mb||0) + ' MB before and now. Restart ' + a.name + ' to realise savings.';
+      return 'Restart ' + a.name + ' to measure real savings';
+    }
+    function showToast(t){ $('toast').textContent=t; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),1600); }
+    function setBusy(b){
+      document.querySelectorAll('.toggle,.chip,.btn').forEach(function(e){
+        e.style.pointerEvents = b ? 'none' : '';
+        e.style.opacity = b ? '0.5' : '';
+      });
+    }
+    /* Per-card busy state.
+       Toggling one app must never lock or disturb the other cards, so this
+       scopes to a single .app-card and only its own controls. */
+    function setCardBusy(k, on){
+      const cards = document.querySelectorAll('.app-card');
+      for(const c of cards){
+        if(c.dataset.key !== k) continue;
+        c.classList.toggle('working', !!on);
+        c.querySelectorAll('.toggle,.btn').forEach(function(e){
+          e.style.pointerEvents = on ? 'none' : '';
+          e.style.opacity = on ? '0.55' : '';
+        });
+      }
+    }
+    function setCardState(k, label, tone){
+      const cards = document.querySelectorAll('.app-card');
+      for(const c of cards){
+        if(c.dataset.key !== k) continue;
+        const tag = c.querySelector('.status-tag');
+        if(!tag) continue;
+        if(label){
+          tag.textContent = label;
+          tag.className = 'status-tag ' + (tone || 'detected');
+        }
+      }
+    }
+    /* Official Lucide (lucide-static, ISC) 24x24 line glyphs, stroke 2.
+       Sourced from lucide.dev / jsdelivr lucide-static, not hand-rolled. */
+    const LUCIDE = {
+      appWindow: '<path d="M10 4v4"/><path d="M6 4v4"/><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20"/>',
+      shieldCheck: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+      memoryStick: '<path d="M12 12v-2"/><path d="M12 18v-2"/><path d="M16 12v-2"/><path d="M16 18v-2"/><path d="M2 11h1.5"/><path d="M20 18v-2"/><path d="M20.5 11H22"/><path d="M4 18v-2"/><path d="M8 12v-2"/><path d="M8 18v-2"/><rect x="2" y="6" width="20" height="10" rx="2"/>',
+      hardDrive: '<path d="M10 16h.01"/><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M21.946 12.013H2.054"/><path d="M6 16h.01"/>',
+    };
+    function lucide(body, color, w){
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="' + (w||2) + '" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+    }
+    function renderStats(){
+      const d=window.mx.data||data;
+      const ram = d.ramReclaimed||0;
+      const disk = d.diskSaved||0;
+      const cards = [
+        [ lucide(LUCIDE.appWindow, '#b9aeff'), d.totalDetected, 'Apps detected', '#7c5cff' ],
+        [ lucide(LUCIDE.shieldCheck, '#3ddc97'), d.totalEngaged, 'Optimizations active', '#3ddc97' ],
+        [ lucide(LUCIDE.memoryStick, '#f5c874'), ram.toFixed(0)+' MB', 'RAM reclaimed (measured)', '#f5c874' ],
+        [ lucide(LUCIDE.hardDrive, '#4fb6ed'), disk.toFixed(0)+' MB', 'Disk freed (measured)', '#4fb6ed' ],
+      ];
+      $('stats').innerHTML = cards.map(function(c){
+        return `
+        <div class="stat-card" style="--tint: ${c[3]}20;">
+          <div class="stat-top">
+            <div class="stat-icon" style="background:${c[3]}16;border-color:${c[3]}40">${c[0]}</div>
+          </div>
+          <div class="stat-value">${c[1]}</div>
+          <div class="stat-label">${c[2]}</div>
+        </div>`;
+      }).join('');
+    }
+    function passFilter(a){
+      if(q && !a.name.toLowerCase().includes(q)) return false;
+      if(filter==='active') return a.engaged;
+      if(filter==='available') return a.installed && !a.engaged;
+      return true;
+    }
+    function renderApps(){
+      const d=window.mx.data||data;
+      const list = Object.values(d.apps||{}).filter(passFilter);
+      $('apps').innerHTML = list.length? list.map(a=>`
+        <div class="app-card" data-key="${a.key}" style="--tint: ${a.color}10;">
+          <div class="app-card-top">
+            <div class="app-icon" style="--iconbg:${a.color}16;--iconborder:${a.color}40;">${icon(a.icon)}</div>
+            <div>
+              <div class="app-title-row">
+                <div class="app-name">${a.name}</div>
+                ${a.installed?(a.engaged?'<div class="status-tag active">ACTIVE</div>':'<div class="status-tag detected">AVAILABLE</div>'):'<div class="status-tag">NOT INSTALLED</div>'}
+              </div>
+              <div class="app-desc">${a.desc}</div>
+              <div class="app-meta">
+                ${a.installed?`<span class="meta-pill" title="Detected version">${a.version||'version unknown'}</span>`:''}
+                ${a.engaged&&a.disk_saved_mb?`<span class="meta-pill green" title="Real bytes removed from the install folder">${a.disk_saved_mb} MB freed on disk</span>`:''}
+                ${a.engaged?`<span class="meta-pill" title="Operations applied">${(a.ops_text||[]).length} change(s) applied</span>`:''}
+              </div>
+            </div>
+            <div class="app-right">
+              <div class="savings" title="${ramHint(a)}">
+                <div class="val" style="${a.engaged?'':'color:#6b7394'}">${ramText(a)}</div>
+                <div class="lbl">${a.engaged?'RAM saved':'RAM now'}</div>
+              </div>
+              <div class="toggle ${a.engaged?'on':''}" onclick="toggle('${a.key}', ${!a.engaged})"><div class="knob"></div></div>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" onclick="expand('${a.key}')"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div class="details" id="det-${a.key}">
+            <div class="feature-strip">
+              ${(a.features||[]).map(f=>`<div class="feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>${f}</div>`).join('')}
+            </div>
+            <div class="impact-strip">
+              <div class="imp-label">Impact</div>
+              <div class="imp-bars">${[1,2,3,4].map(i=>`<span class="${i<=a.impact?'fill':''}"></span>`).join('')}</div>
+            </div>
+            <div class="ops">
+              ${(a.ops||[]).map(o=>`
+                <div class="op">
+                  <input type="checkbox" id="opt-${a.key}-${o.id}" ${o.optional?(o.applied?'checked':''):'checked disabled'}>
+                  <div style="flex:1">
+                    <div class="op-title">${o.title}</div>
+                    <div class="op-desc">${o.desc}</div>
+                  </div>
+                </div>`).join('')}
+              <div style="display:flex;justify-content:flex-end;margin-top:8px;gap:8px">
+                ${a.engaged?`<button class="btn btn-ghost btn-sm" onclick="reset('${a.key}')">Reset</button>`:''}
+                <button class="btn btn-primary btn-sm" onclick="apply('${a.key}')">Apply</button>
+              </div>
+            </div>
+          </div>
+        </div>`).join('') : '<div class="empty">No apps match your filters.</div>';
+    }
+    function expand(k){ const el=$('det-'+k); if(!el) return; el.classList.toggle('open'); }
+    function toggle(k,on){ if(on) apply(k); else reset(k); }
+    function apply(k){
+      const a=window.mx.data.apps[k]; if(!a) return;
+      const opts=[];
+      (a.ops||[]).forEach(o=>{ if(o.optional){ const cb=$('opt-'+k+'-'+o.id); if(cb&&cb.checked) opts.push(o.id); }});
+      setCardBusy(k, true);
+      setCardState(k, 'APPLYING', 'detected');
+      if(api()) api().activate(k, opts);
+    }
+    function reset(k){
+      setCardBusy(k, true);
+      setCardState(k, 'RESETTING', 'detected');
+      if(api()) api().reset(k);
+    }
+    window.mx = {
+      data: data,
+      setData: function(d){
+        window.mx.data = d||{};
+        renderStats(); renderApps();
+      },
+      setProgress: function(i, n, label){
+        const el=$('progress'), f=$('progFill'), t=$('progText');
+        el.classList.add('show');
+        f.style.width = (n ? Math.round((i/n)*100) : 0) + '%';
+        t.textContent = (label||'') + ' (' + (i||0) + '/' + (n||0) + ')';
+      },
+      hideProgress: function(){ $('progress').classList.remove('show'); },
+      showToast,
+      setBusy,
+      setCardBusy,
+      setCardState,
+    };
+    document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active')); c.classList.add('active'); filter=c.dataset.filter; renderApps(); });
+    $('search').oninput=e=>{ q=e.target.value.toLowerCase(); renderApps(); };
+    $('btnRefresh').onclick=()=>{ if(api()) api().detect(); };
+    $('btnOptimizeAll').onclick=()=>{ if(api()) api().optimizeAll(); };
+    if(window.qt && window.qt.webChannelTransport && window.QWebChannel){
+      new QWebChannel(window.qt.webChannelTransport,function(ch){
+        window.pywebview = window.pywebview||{};
+        window.pywebview.api = ch.objects.api;
+        setTimeout(()=>{ if(api()) api().detect(); }, 10);
+      });
+    } else {
+      setTimeout(()=>{ if(api()) api().detect(); }, 10);
+    }
+  </script>
+</body>
+</html>

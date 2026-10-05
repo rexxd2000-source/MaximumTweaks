@@ -102,6 +102,7 @@ TWEAKS = validate_module("network", [
       why="Stops background P2P uploads that can saturate your upstream during games.",
       changes="Sets DODownloadMode to 0 (off).",
       risk="safe", impact="low", recommended="recommended", admin=True,
+      updated="2026-09-27",
       tags=["p2p", "update", "upload"]),
     T("net-014", "Flush DNS Cache",
       "Clears the DNS resolver cache.",

@@ -125,6 +125,13 @@ _COLORS = {
     "CS2": "#E8A317",
 }
 
+# Game -> Simple Icons brand glyph used when no PNG logo is bundled.
+_PROFILE_BRANDS = {
+    "Fortnite": "epicgames",
+    "Valorant": "riotgames",
+    "CS2": "steam",
+}
+
 
 def _color(name: str) -> str:
     return _COLORS.get(name, T["accent"])
@@ -340,7 +347,7 @@ class GameCard(QFrame):
         if self.desc:
             d = QLabel(self.desc)
             d.setStyleSheet(
-                f"color: {T['text_dim']}; font-size: 10.5px; line-height: 1.4; "
+                f"color: {T['text_dim']}; font-size: 11px; line-height: 1.4; "
                 "background: transparent; border: none;")
             d.setWordWrap(True)
             info.addWidget(d)
@@ -352,7 +359,7 @@ class GameCard(QFrame):
             detail += f"  \u00b7  {exe_str}"
         dl = QLabel(detail)
         dl.setStyleSheet(
-            f"color: {T['text_faint']}; font-size: 9.5px; "
+            f"color: {T['text_faint']}; font-size: 10px; "
             "background: transparent; border: none;")
         info.addWidget(dl)
 
@@ -420,6 +427,29 @@ class GameCard(QFrame):
         self._pulse += 0.08
         if self._applied:
             self.update()
+
+    def _draw_initial(self, p: QPainter, rect: QRectF, radius: float):
+        p.setPen(QColor(255, 255, 255, 220))
+        f = QFont("Segoe UI", 26, QFont.Weight.Bold)
+        p.setFont(f)
+        p.drawText(rect, Qt.AlignCenter, self.gname[0].upper())
+
+    def _draw_game_brand(self, p: QPainter, logo_rect: QRectF, logo_R: float):
+        from ui.widgets import brand_icon_pixmap
+        brand = _PROFILE_BRANDS.get(self.gname)
+        if brand:
+            pm = brand_icon_pixmap(brand, color="#FFFFFF", size=34)
+            if not pm.isNull():
+                bx = logo_rect.x() + (logo_rect.width() - 34) / 2.0
+                by = logo_rect.y() + (logo_rect.height() - 34) / 2.0
+                p.save()
+                clip = QPainterPath()
+                clip.addRoundedRect(logo_rect, logo_R, logo_R)
+                p.setClipPath(clip)
+                p.drawPixmap(int(bx), int(by), int(34), int(34))
+                p.restore()
+                return
+        self._draw_initial(p, logo_rect, logo_R)
 
     def _get_hv(self):
         return self._hv
@@ -525,10 +555,7 @@ class GameCard(QFrame):
             p.setBrush(QBrush(grad))
             p.setPen(Qt.NoPen)
             p.drawRoundedRect(logo_rect, logo_R, logo_R)
-            p.setPen(QColor(255, 255, 255, 220))
-            f = QFont("Segoe UI", 26, QFont.Weight.Bold)
-            p.setFont(f)
-            p.drawText(logo_rect, Qt.AlignCenter, self.gname[0].upper())
+            self._draw_game_brand(p, logo_rect, logo_R)
 
         p.setPen(QPen(QColor(c.red(), c.green(), c.blue(), int(18 + hv * 25)), 1.0))
         p.drawLine(130, 20, 130, h - 20)
@@ -933,7 +960,7 @@ class ExploreCard(QFrame):
 
         d = QLabel(preset["desc"])
         d.setStyleSheet(
-            f"color: {T['text_dim']}; font-size: 10.5px; background: transparent; border: none;")
+            f"color: {T['text_dim']}; font-size: 11px; background: transparent; border: none;")
         d.setWordWrap(True)
         info.addWidget(d)
         info.addStretch()

@@ -26,7 +26,9 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import hashlib
 from pathlib import Path
+import tempfile
 
 from config.app_config import (
     APP_VERSION,
@@ -166,6 +168,25 @@ def _github_asset_url(asset_id) -> str:
     return f"https://api.github.com/repos/{owner_repo}/releases/assets/{asset_id}"
 
 
+
+def _load_cache():
+    try:
+        if _CACHE_FILE.exists():
+            with open(_CACHE_FILE,'r',encoding='utf-8') as f:
+                d=json.load(f)
+            if time.time()-d.get('ts',0) < _CACHE_TTL_SECONDS:
+                return d
+    except Exception:
+        pass
+    return None
+
+def _save_cache(d):
+    try:
+        with open(_CACHE_FILE,'w',encoding='utf-8') as f:
+            json.dump(d,f)
+    except Exception:
+        pass
+
 # ---------------------------------------------------------------------------
 # Remote update info
 # ---------------------------------------------------------------------------
@@ -198,6 +219,7 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         version = tag
         notes = str(data.get("body") or "")
         url = ""
+        checksum_url = ""
 
     if not is_newer(version, APP_VERSION):
         logger.info(f"updater: up to date (latest is v{version})")
@@ -214,19 +236,37 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
                 else:
                     asset_url = str(asset.get("browser_download_url") or "")
                 break
+        for asset in data.get("assets", []):
+            name = str(asset.get("name") or "")
+            if name.endswith(".sha256") or name == f"{UPDATE_EXE_NAME}.sha256" or name == f"MaximumTweaks-Setup-{version}.exe.sha256":
+                checksum_url = str(asset.get("browser_download_url") or "")
+                break
         if not asset_url:
             raise UpdaterError(
                 f"No asset named {UPDATE_EXE_NAME!r} on the latest release.")
         url = asset_url
     logger.info(f"updater: update available: v{version} -> {url}")
-    return {"version": version, "notes": notes, "url": url}
+    res = {"version": version, "notes": notes, "url": url}
+    if checksum_url:
+        res["checksum_url"] = checksum_url
+    return res
 
 
 # ---------------------------------------------------------------------------
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest().lower()
+
 # Download + install
 # ---------------------------------------------------------------------------
 
-def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
+def download(url: str, progress_cb=None, timeout: float = 60.0, checksum_url: str = "") -> Path:
     """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(got, total)."""
     logger.info("updater: download started")
     dest = data_dir() / UPDATE_EXE_NAME
@@ -257,6 +297,8 @@ def download(url: str, progress_cb=None, timeout: float = 60.0) -> Path:
         dest.unlink(missing_ok=True)
         raise UpdaterError("Downloaded file is empty.")
     logger.info(f"updater: downloaded {size} bytes")
+    if checksum_url:
+        _verify_checksum(dest, checksum_url, timeout)
     _verify_download(dest)
     logger.info("updater: download verified OK")
     return dest

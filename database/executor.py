@@ -131,14 +131,6 @@ POWER_SETTINGS = {
         "54533251-82be-4824-96c1-47b60b740d00",
         "94d3a615-a899-4ac5-ae2b-e4d8f634367f",          # System cooling policy (0 Passive, 1 Active)
     ),
-    "idle_disable": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "5d76a2ca-e8c0-402f-a133-2158312c3406",
-    ),
-    "time_check": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "18a7d39f-c168-4f6f-b3c4-bbf17f66a4c9",
-    ),
     "parking_min": (
         "54533251-82be-4824-96c1-47b60b740d00",
         "0cc5b647-c1df-4637-891a-dec35c318583",
@@ -155,17 +147,46 @@ POWER_SETTINGS = {
     ),
     "perf_decrease_policy": (
         "54533251-82be-4824-96c1-47b60b740d00",
-        "8baa4a8a-14c6-4451-8e8b-14bdbd197537",
+        "40fbefc7-2e9d-4d25-a185-0cfd8574bac6",
     ),
     "boost_policy": (
         "54533251-82be-4824-96c1-47b60b740d00",
-        "45bcc044-d885-43a2-8605-ee0ec6e96b59",
+        "45bcc044-d885-43e2-8605-ee0ec6e96b59",
     ),
     "epp": (
         "54533251-82be-4824-96c1-47b60b740d00",
         "36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
     ),
+    # Heterogeneous (P-core / E-core) scheduling. Only meaningful on hybrid
+    # parts; 0=All, 1=Performant, 2=Prefer performant, 3=Efficient,
+    # 4=Prefer efficient, 5=Automatic. Both default to 5/2 on a desktop.
+    "sched_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "93b8b6dc-0698-4d1c-9ee4-0644e900c85d",
+    ),
+    "short_sched_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "bae08b81-2d5e-4688-ad6a-13243356654b",
+    ),
+    # Processor idle disable is an ENUM, not a percentage:
+    # 0 = Enable idle, 1 = Disable idle. (The old CPU card wrote 0 while
+    # claiming to disable idle states, so it did the exact opposite.)
+    "idle_disable": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "5d76a2ca-e8c0-402f-a133-2158492d58ad",
+    ),
+    # Processor performance time check interval, in milliseconds.
+    "time_check": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "4d2b0152-7d5c-498b-88e2-34345392a2c5",
+    ),
 }
+
+# Power setting GUIDs exposed by each (active scheme, subgroup) pair, keyed by
+# (active scheme guid, subgroup guid).  Populated lazily by
+# _power_setting_supported() and dropped whenever a plan is re-activated, since
+# that can change which settings the plan exposes.
+_POWER_SUBGROUP_CACHE: dict[tuple[str, str], set[str]] = {}
 
 SVC_MODE_MAP = {"auto": "auto", "manual": "demand", "disabled": "disabled",
                 "boot": "boot", "system": "system", "delayed": "delayed"}
@@ -242,11 +263,41 @@ def _reg_key_delete(hive, path):
     return ok, detail
 
 
+def _power_read_index(subgroup, guid, index="AC", scheme=""):
+    """Read a power setting's current index -> the raw value token, or None.
+
+    ``powercfg /query`` only lists *visible* settings. The hidden majority of
+    the processor subgroup (EPP, boost mode, core parking, the increase/decrease
+    policies, the heterogeneous scheduling policies) reads back as empty
+    output, so a snapshot taken that way records nothing - and revert then
+    reports "original value unknown, skip" while quietly leaving the setting
+    changed. ``/qh`` lists every setting, so prefer it and fall back to
+    ``/query`` for schemes where the hidden view is unavailable.
+    """
+    scheme = scheme or "SCHEME_CURRENT"
+    target = f"current {index} power setting index:".lower()
+    for flag in ("/qh", "/query"):
+        ok, out = _run(f"powercfg {flag} {scheme} {subgroup} {guid}")
+        if not ok:
+            continue
+        for line in (out or "").splitlines():
+            if target in line.lower():
+                m = re.search(r"(0x[0-9a-fA-F]+|\d+)", line)
+                if m:
+                    return m.group(1)
+    return None
+
+
 def _snapshot_power_targets(tweak_id: str, actions: list) -> None:
     """Record each power setting's previous value before the apply writes it.
 
     Backups are kept from the FIRST apply: re-applying never overwrites the
     snapshot, so revert always lands on the true pre-tweak value.
+
+    Raises if a setting's original value cannot be read. Applying without a
+    captured original would make the change unrevertable, and apply_tweak aborts
+    before executing anything when a snapshot fails - so failing here is what
+    guarantees Revert can always land on the exact pre-tweak value.
     """
     from engine import state as state_mgr
 
@@ -259,28 +310,35 @@ def _snapshot_power_targets(tweak_id: str, actions: list) -> None:
         setting, value, scheme = a[1], a[2], a[3] if len(a) > 3 else "AC"
         key = f"{setting}_{scheme}"
         if key in existing:
-            continue
+            if existing[key].get("value") is not None:
+                continue
+            # A stored entry with no value is not a usable backup - it came from
+            # the build that snapshotted with the visible-only query. Re-reading
+            # now would capture the *already-tweaked* value and make Revert a
+            # silent no-op, so refuse and say how to clear it.
+            raise RuntimeError(
+                f"{setting} has a snapshot with no recorded original value "
+                f"(written by an older build); revert or clear it before "
+                f"re-applying")
         spec = POWER_SETTINGS.get(setting)
         if spec is None:
-            continue
+            raise RuntimeError(
+                f"{setting} has no GUID mapping; refusing to write an "
+                f"unmapped power setting")
         subgroup, guid = spec
         index = "AC" if scheme in ("AC", None) else "DC"
-        flag = "/query" if False else f"/query SCHEME_CURRENT {subgroup} {guid}"
-        # Read current value via powercfg
-        ok, out = _run(f"powercfg /query SCHEME_CURRENT {subgroup} {guid}")
-        current_val = None
-        if ok:
-            target_label = f"Current {index} Power Setting Index:"
-            for line in (out or "").splitlines():
-                if target_label.lower() in line.lower():
-                    m = re.search(r"(0x[0-9a-fA-F]+|\d+)", line)
-                    if m:
-                        current_val = m.group(1)
-                        break
+        # Snapshot against the real active plan, not the SCHEME_CURRENT alias,
+        # so the stored original belongs to the plan the tweak actually hit.
+        active, _ = _run_powercfg_active()
+        current_val = _power_read_index(subgroup, guid, index, active or "")
+        if current_val is None:
+            raise RuntimeError(
+                f"could not read the current {index} value of {setting} "
+                f"({guid}); refusing to apply without a restorable backup")
         existing[key] = {
             "setting": setting, "scheme": scheme,
             "subgroup": subgroup, "guid": guid,
-            "value": current_val,
+            "value": current_val, "scheme_guid": active,
         }
         changed = True
     if changed:
@@ -291,17 +349,23 @@ def _restore_power_backup(entry: dict, dry_run: bool = False):
     """Restore one backed-up power setting -> (ok, detail)."""
     if dry_run:
         return True, f"dry-run: restore power {entry['setting']}={entry['value']!r}"
-    if entry["value"] is None:
-        return True, f"{entry['setting']}: original value unknown, skip"
+    if entry.get("value") is None:
+        # Never claim success: there is no original value to write back, so the
+        # tweak is still in effect. Say so loudly instead of silently leaving
+        # the machine modified.
+        return False, (
+            f"{entry['setting']}: no original value was recorded, so it was "
+            f"NOT restored - set it manually")
     index = "AC" if entry["scheme"] in ("AC", None) else "DC"
     flag = "/SETACVALUEINDEX" if index == "AC" else "/SETDCVALUEINDEX"
+    target = entry.get("scheme_guid") or "SCHEME_CURRENT"
     ok1, msg1 = _run(
-        f"powercfg {flag} SCHEME_CURRENT {entry['subgroup']} {entry['guid']} {entry['value']}")
+        f"powercfg {flag} {target} {entry['subgroup']} {entry['guid']} {entry['value']}")
     if not ok1 and "does not exist" in (msg1 or "").lower():
         return True, f"{entry['setting']}: not supported, skip"
     if not ok1:
         return ok1, msg1
-    ok2, msg2 = _run("powercfg /setactive SCHEME_CURRENT")
+    ok2, msg2 = _run(f"powercfg /setactive {target}")
     return ok2, msg2 or f"restored {entry['setting']}={entry['value']}"
 
 
@@ -958,27 +1022,87 @@ def _sc(action):
     return False, f"unknown sc subop {subop!r}"
 
 
-def _power(setting, value, scheme):
+def _power_setting_supported(setting: str) -> tuple[bool, str]:
+    """Is *setting* actually exposed by the active power scheme?
+
+    ``powercfg /setacvalueindex`` accepts ANY GUID and exits 0, even one the
+    hardware does not implement, so the write alone proves nothing - the old
+    code reported "applied" for settings that were never touched.
+
+    Ask the scheme instead, and ask with ``/qh`` rather than ``/query``: most
+    processor settings (EPP, boost mode, core parking, the boost/increase/
+    decrease policies, the heterogeneous scheduling policies) are *hidden* by
+    default. On the reference machine ``/query`` shows 6 processor settings
+    while ``/qh`` shows 75, so a visible-only probe would dim every one of them
+    as "unsupported" on hardware that fully supports it.
+
+    Returns ``(supported, detail)``.  Cached per (scheme, subgroup) because the
+    plan only changes when we re-activate it.
+    """
+    spec = POWER_SETTINGS.get(setting)
+    if spec is None:
+        return False, f"unknown power setting {setting!r}"
+    subgroup, guid = spec
+    scheme = _run_powercfg_active()[0] or "SCHEME_CURRENT"
+    cache_key = (scheme.lower(), subgroup.lower())
+    # The cache holds the whole SET of GUIDs the subgroup exposes - caching a
+    # single bool per subgroup would leak one setting's verdict to all the rest.
+    present = _POWER_SUBGROUP_CACHE.get(cache_key)
+    if present is None:
+        ok, out = _run(f"powercfg /qh {scheme} {subgroup}")
+        if not ok:
+            # Cannot prove absence - assume present so behaviour is unchanged
+            # on systems where the query itself is restricted.
+            return True, "presence could not be queried; assuming supported"
+        present = {
+            m.group(1).lower()
+            for m in re.finditer(
+                r"Power Setting GUID:\s*([0-9a-fA-F-]{36})", out or ""
+            )
+        }
+        _POWER_SUBGROUP_CACHE[cache_key] = present
+    if guid.lower() in present:
+        return True, f"{setting} is exposed by the active scheme"
+    return False, f"{setting} is not exposed by this CPU or active power plan"
+
+
+def power_setting_supported(setting: str) -> tuple[bool, str]:
+    """Public wrapper so the UI can dim a card the machine cannot honour."""
+    return _power_setting_supported(setting)
+
+
+def _power(setting, value, scheme, strict=False):
     spec = POWER_SETTINGS.get(setting)
     if spec is None:
         return False, f"unknown power setting {setting!r}"
     subgroup, guid = spec
     index = "AC" if scheme in ("AC", None) else "DC"
     flag = "/SETACVALUEINDEX" if index == "AC" else "/SETDCVALUEINDEX"
+    if strict:
+        supported, why = _power_setting_supported(setting)
+        if not supported:
+            # A strict card must fail loudly rather than pretend it applied.
+            return False, why
     ok1, msg1 = _run(f'powercfg {flag} SCHEME_CURRENT {subgroup} {guid} {value}')
     if not ok1:
         # A setting the CPU/driver does not expose cannot be changed: treat it
         # as satisfied so a plan applying every deep setting does not fail on
         # machines that simply lack one (e.g. EPP on some desktop CPUs).
+        # Strict tweaks opt out of this so the card reports a real failure.
         if "does not exist" in (msg1 or "").lower():
+            if strict:
+                return False, f"{setting}: not supported on this system"
             return True, f"{setting}: not supported on this system"
         return ok1, msg1
     ok2, msg2 = _run("powercfg /setactive SCHEME_CURRENT")
+    # The plan we just committed to may expose a different set of settings.
+    _POWER_SUBGROUP_CACHE.clear()
     return ok2, msg2 or "applied"
 
 
 def _powerscheme(op, *args):
     if op == "setactive":
+        _POWER_SUBGROUP_CACHE.clear()
         return _run(f'powercfg /setactive "{args[0]}"')
     if op in ("create", "duplicate"):
         return _create_scheme(op, *args)
@@ -1181,7 +1305,8 @@ def _execute_action(action, dry_run=False):
             return _ini_delete(action[1], action[2], action[3])
         if kind == "power":
             scheme = action[3] if len(action) > 3 else "AC"
-            return _power(action[1], action[2], scheme)
+            strict = bool(getattr(_tweak_ctx, "power_strict", False))
+            return _power(action[1], action[2], scheme, strict=strict)
         if kind == "powerscheme":
             return _powerscheme(action[1], *action[2:])
         if kind == "sched":
@@ -1243,6 +1368,7 @@ def apply_tweak(tweak_id, mode="apply", dry_run=False):
     if tweak is None:
         return False, [(tweak_id, False, "unknown tweak id")]
     _tweak_ctx.id = tweak_id
+    _tweak_ctx.power_strict = bool(tweak.get("power_strict"))
     try:
         if mode == "revert":
             return _revert_tweak(tweak, dry_run=dry_run)
@@ -1250,6 +1376,10 @@ def apply_tweak(tweak_id, mode="apply", dry_run=False):
     finally:
         try:
             del _tweak_ctx.id
+        except AttributeError:
+            pass
+        try:
+            del _tweak_ctx.power_strict
         except AttributeError:
             pass
 

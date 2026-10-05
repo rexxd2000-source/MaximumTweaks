@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Maximum Tweaks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07060d; --panel:#120f1c; --line:#221d36; --line-soft:#1a1628; --panel-edge:#2b2545;
+    --text:#f4f2fb; --dim:#948db2; --faint:#544d72;
+    --teal:#2fe3ba; --lav:#9c86f5; --amber:#e7b256; --red:#ea6a86;
+    --mono:"SFMono-Regular","JetBrains Mono",Consolas,monospace;
+    --sans:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); -webkit-font-smoothing:antialiased; }
+  body, body *{ -webkit-user-select:none; user-select:none; }
+  input, textarea{ -webkit-user-select:text; user-select:text; }
+  body{
+    padding:38px 46px 70px; min-height:100vh;
+    background:
+      radial-gradient(650px 380px at 4% -6%, rgba(156,134,245,.20), transparent 62%),
+      radial-gradient(560px 340px at 100% -2%, rgba(47,227,186,.13), transparent 58%);
+  }
+
+  .top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
+  .top h1{ margin:0 0 6px; font-size:24px; font-weight:800; letter-spacing:-.01em; }
+  .top p{ margin:0; color:var(--dim); font-size:13.5px; }
+  .status{ display:flex; gap:20px; font-size:12.5px; color:var(--dim); padding-top:4px; }
+  .status .s{ display:flex; align-items:center; gap:7px; }
+  .pulse{ width:6px; height:6px; border-radius:50%; background:var(--teal); box-shadow:0 0 8px rgba(47,227,186,.8); position:relative; }
+  .pulse::after{ content:''; position:absolute; inset:-4px; border-radius:50%; border:1px solid rgba(47,227,186,.5); animation:ping 2s ease-out infinite; }
+  @keyframes ping{ 0%{ transform:scale(.6); opacity:1;} 100%{ transform:scale(2); opacity:0;} }
+
+  .chips{ display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+  .chip{ font-family:var(--mono); font-size:11.5px; color:var(--dim); background:var(--panel); border:1px solid var(--line-soft); border-radius:7px; padding:7px 12px; }
+
+  /* hero row */
+  .hero3{ display:grid; grid-template-columns: 1.3fr 1fr 1fr; gap:14px; margin-bottom:16px; }
+  @media (max-width:920px){ .hero3{ grid-template-columns:1fr; } }
+  .hero-card{ background:var(--panel); border:1px solid var(--line-soft); border-radius:14px; padding:20px 22px; display:flex; align-items:center; gap:18px; }
+  .hero-txt .h-lbl{ font-size:11.5px; color:var(--faint); font-family:var(--mono); text-transform:uppercase; letter-spacing:.04em; margin-bottom:5px; }
+  .hero-txt .h-val{ font-size:20px; font-weight:800; }
+  .hero-txt .h-sub{ font-size:12px; color:var(--dim); margin-top:3px; }
+  .grade{ display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:10px; font-weight:800; font-size:16px; flex-shrink:0; }
+
+  .spotlight-card{ align-items:center; }
+  .spot-icon{ width:38px; height:38px; border-radius:10px; background:rgba(47,227,186,.15); border:1px solid rgba(47,227,186,.35); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .spot-apply{ background:var(--teal); border:none; color:#05261e; font-weight:700; font-size:12.5px; padding:9px 16px; border-radius:8px; cursor:pointer; flex-shrink:0; }
+  .spot-apply:hover{ background:#4aeec0; }
+  .spot-apply:disabled{ opacity:.4; cursor:default; }
+
+  .panel{ background:var(--panel); border:1px solid var(--line-soft); border-radius:14px; padding:22px 24px; margin-bottom:16px; }
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  .panel-head h2{ margin:0; font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:9px; }
+  .panel-head .sub{ font-size:11.5px; color:var(--faint); font-weight:400; }
+
+  /* telemetry */
+  .telemetry{ display:flex; gap:40px; align-items:center; flex-wrap:wrap; }
+  .tele-item{ display:flex; align-items:center; gap:16px; flex:1; min-width:250px; }
+  .ring{ position:relative; width:78px; height:78px; flex-shrink:0; }
+  .ring svg{ transform:rotate(-90deg); }
+  .ring .track{ fill:none; stroke:var(--line); stroke-width:7; }
+  .ring .val{ fill:none; stroke-width:7; stroke-linecap:round; }
+  .ring .num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; }
+  .tele-meta .lbl{ display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; margin-bottom:4px; }
+  .tele-meta .lbl svg{ width:13px; height:13px; opacity:.85; }
+  .tele-meta .lbl .logo-ico{ width:16px; height:16px; object-fit:contain; }
+  .tele-meta .d1{ font-family:var(--mono); font-size:11.5px; color:var(--text); }
+  .tele-meta .d2{ font-family:var(--mono); font-size:11px; color:var(--faint); margin-bottom:6px; }
+  .trend{ display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-family:var(--mono); margin-left:8px; padding:1px 6px; border-radius:5px; }
+  .trend.up{ color:var(--red); background:rgba(234,106,134,.12); }
+  .trend.down{ color:var(--teal); background:rgba(47,227,186,.12); }
+  .trend.hide{ visibility:hidden; }
+  .spark{ display:block; margin-top:2px; }
+
+  /* thermal */
+  .legend{ display:flex; gap:14px; align-items:center; }
+  .leg{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+  .leg i{ width:12px; height:2px; border-radius:2px; display:inline-block; }
+  .toggles{ display:flex; gap:6px; }
+  .tg{ font-size:11.5px; font-family:var(--mono); color:var(--faint); background:transparent; border:1px solid var(--line-soft); padding:5px 11px; border-radius:7px; cursor:pointer; }
+  .tg.active{ background:var(--lav); color:#0d0a1a; border-color:var(--lav); font-weight:700; }
+  .chart-wrap{ position:relative; margin-top:6px; }
+  .chart-wrap .yaxis{ position:absolute; left:0; top:0; bottom:20px; display:flex; flex-direction:column; justify-content:space-between; font-family:var(--mono); font-size:10px; color:var(--faint); }
+  .chart-wrap .yaxis-r{ position:absolute; right:0; top:0; bottom:20px; display:flex; flex-direction:column; justify-content:space-between; font-family:var(--mono); font-size:10px; color:var(--faint); text-align:right; }
+  .chart-wrap svg{ display:block; }
+  .xaxis{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:10px; color:var(--faint); padding:0 44px; margin-top:6px; }
+
+  .chart-tip{ position:absolute; top:4px; transform:translateX(-50%); display:none;
+    background:rgba(18,15,28,.94); border:1px solid var(--panel-edge); border-radius:8px;
+    padding:8px 11px; font-size:11px; font-family:var(--mono); color:var(--text);
+    box-shadow:0 6px 18px rgba(0,0,0,.45); pointer-events:none; white-space:nowrap; z-index:5; }
+  .chart-tip .tt-row{ display:flex; align-items:center; gap:6px; }
+  .chart-tip .tt-row + .tt-row{ margin-top:5px; }
+  .chart-tip .tt-dot{ width:7px; height:7px; border-radius:2px; flex-shrink:0; }
+  .chart-tip .tt-lbl{ color:var(--faint); margin-right:2px; }
+  .chart-tip .tt-val{ color:var(--text); }
+
+  /* two column */
+  .cols{ display:grid; grid-template-columns: 1.15fr .85fr; gap:16px; }
+  @media (max-width:920px){ .cols{ grid-template-columns:1fr; } }
+
+  .big-stat{ font-size:30px; font-weight:800; letter-spacing:-.01em; margin:2px 0 4px; }
+  .big-stat .of{ color:var(--faint); font-weight:600; font-size:20px; }
+  .sub-line{ font-size:12px; color:var(--faint); margin-bottom:18px; }
+  .bar{ height:9px; border-radius:6px; background:var(--line); overflow:hidden; display:flex; margin-bottom:14px; }
+  .bar span{ height:100%; }
+  .legend-keys{ display:flex; gap:18px; font-size:12px; color:var(--dim); padding-top:14px; border-top:1px solid var(--line-soft); flex-wrap:wrap; }
+  .legend-keys .k{ display:flex; align-items:center; gap:7px; }
+  .legend-keys .k i{ width:8px; height:8px; border-radius:2px; }
+  .legend-keys .k b{ color:var(--text); font-family:var(--mono); font-weight:600; }
+  .clean-btn{ font-size:12.5px; background:transparent; border:1px solid var(--line-soft); color:var(--dim); padding:8px 14px; border-radius:8px; cursor:pointer; }
+  .clean-btn:hover{ border-color:var(--panel-edge); color:var(--text); }
+  .clean-btn:disabled{ opacity:.5; cursor:default; }
+  .appdata{ font-size:11.5px; color:var(--faint); margin-top:14px; font-family:var(--mono); }
+
+  .ultra{ border-color:rgba(156,134,245,.35); background:linear-gradient(160deg, rgba(156,134,245,.08), var(--panel) 55%); }
+  .ultra-icon{ width:40px; height:40px; border-radius:11px; background:rgba(156,134,245,.15); border:1px solid rgba(156,134,245,.4); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
+  .ultra-icon svg{ width:18px; height:18px; }
+  .ultra-tag{ font-size:10.5px; font-family:var(--mono); color:var(--lav); letter-spacing:.05em; margin-bottom:8px; }
+  .ultra h3{ margin:0 0 8px; font-size:17px; font-weight:700; }
+  .ultra p{ margin:0 0 20px; font-size:13px; color:var(--dim); line-height:1.55; }
+  .ring-progress{ display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+  .ring-progress .rp-ring{ position:relative; width:46px; height:46px; flex-shrink:0; }
+  .ring-progress .rp-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:700; font-family:var(--mono); }
+  .ring-progress .rp-lbl{ font-size:12px; color:var(--faint); }
+  .join-btn{ width:100%; background:linear-gradient(135deg, var(--lav), #7b63e8); border:none; color:#0d0a1a; font-weight:700; font-size:13.5px; padding:13px; border-radius:10px; cursor:pointer; margin-bottom:12px; }
+  .view-link{ display:block; text-align:center; font-size:12.5px; color:var(--dim); text-decoration:none; cursor:pointer; }
+  .view-link:hover{ color:var(--text); }
+
+  /* activity */
+  .activity-row{ display:flex; flex-direction:column; gap:0; }
+  .act{ display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--line-soft); }
+  .act:last-child{ border-bottom:none; padding-bottom:0; }
+  .act-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .act-name{ font-size:13px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .act-cat{ font-size:11px; color:var(--faint); font-family:var(--mono); }
+  .act-time{ font-size:11px; color:var(--faint); font-family:var(--mono); width:60px; text-align:right; }
+
+  /* waitlist modal — same dark/purple language as the rest of the dashboard */
+  .wl-ov{ position:fixed; inset:0; z-index:80; background:rgba(7,6,13,.74); backdrop-filter:blur(2px);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    opacity:0; visibility:hidden; transition:opacity .18s ease, visibility .18s; }
+  .wl-ov.open{ opacity:1; visibility:visible; }
+  .wl{ position:relative; width:min(460px,100%); max-height:calc(100vh - 40px); overflow:auto;
+    background:linear-gradient(160deg,#171330 0%, var(--panel) 55%);
+    border:1px solid rgba(156,134,245,.45); border-radius:18px;
+    box-shadow:0 26px 80px rgba(0,0,0,.6), 0 0 46px rgba(156,134,245,.16);
+    padding:30px 28px; transform:translateY(12px); transition:transform .2s ease; }
+  .wl-ov.open .wl{ transform:none; }
+  .wl-close{ position:absolute; top:20px; right:20px; width:28px; height:28px; border:none; border-radius:8px;
+    background:rgba(255,255,255,.04); color:#9a90b8; font-size:14px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease; z-index:3; }
+  .wl-close:hover{ background:rgba(255,255,255,.09); color:#f1edfb; }
+  .wl-close:focus-visible{ outline:2px solid #b9a2ff; outline-offset:2px; }
+  .wl-icon{ width:44px; height:44px; border-radius:12px; background:rgba(156,134,245,.15);
+    border:1px solid rgba(156,134,245,.4); display:flex; align-items:center; justify-content:center; margin-bottom:16px; }
+  .wl-icon svg{ width:20px; height:20px; }
+  .wl h2{ margin:0 0 8px; font-size:19px; font-weight:800; letter-spacing:-.01em; }
+  .wl .wl-sub{ margin:0 0 22px; font-size:13px; color:var(--dim); line-height:1.55; padding-right:24px; }
+  .wl label{ display:block; font-size:11.5px; font-family:var(--mono); color:var(--faint);
+    text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .wl input{ width:100%; box-sizing:border-box; background:var(--bg); border:1px solid var(--line-soft);
+    color:var(--text); font-family:var(--mono); font-size:14px; padding:12px 14px; border-radius:10px;
+    outline:none; transition:.15s; user-select:text; -webkit-user-select:text; }
+  .wl input:focus{ border-color:var(--lav); box-shadow:0 0 0 3px rgba(156,134,245,.15); }
+  .wl input::placeholder{ color:#3a3356; }
+  .wl input:disabled{ opacity:.6; }
+  .wl .wl-err{ margin-top:9px; font-size:12px; color:#ff6b7a; line-height:1.4; min-height:0; }
+  .wl .wl-send{ width:100%; margin-top:18px; background:linear-gradient(135deg, var(--lav), #7b63e8);
+    border:none; color:#0d0a1a; font-weight:700; font-size:14px; padding:13px; border-radius:10px;
+    cursor:pointer; transition:.15s; }
+  .wl .wl-send:hover{ filter:brightness(1.08); }
+  .wl .wl-send:disabled{ opacity:.55; cursor:default; filter:none; }
+  .wl .wl-note{ margin:16px 0 0; font-size:11.5px; color:var(--faint); line-height:1.5; text-align:center; }
+  /* success modal — exact design spec */
+  .wl-ov.success-mode{ background:rgba(7,6,13,.66); backdrop-filter:blur(2px); }
+  .wl.success-mode{ background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0) 40%), #17112c;
+    border-color:#2c2347;
+    box-shadow: 0 40px 90px -30px rgba(0,0,0,.65), 0 0 0 1px rgba(139,110,242,.05) inset;
+    padding:32px 30px 34px; }
+  .confetti{ position:absolute; inset:0; z-index:1; pointer-events:none; overflow:hidden; border-radius:18px; }
+  .confetti span{ position:absolute; border-radius:50%; opacity:0; animation:sx-drift 2.6s ease-out forwards; }
+  @keyframes sx-drift{
+    0%{ opacity:0; transform:translateY(0) scale(.4); }
+    15%{ opacity:1; }
+    100%{ opacity:0; transform:translateY(-46px) scale(1); }
+  }
+  .wl-success{ position:relative; z-index:2; text-align:center; padding-top:8px; }
+  .sx-rocket-wrap{ position:relative; width:88px; height:88px; margin:0 auto 22px; display:flex; align-items:center; justify-content:center; }
+  .sx-glow{ position:absolute; inset:0; border-radius:50%;
+    background:radial-gradient(circle, rgba(139,110,242,.5), rgba(139,110,242,0) 70%);
+    animation:sx-pulse 2.4s ease-in-out infinite; }
+  @keyframes sx-pulse{ 0%,100%{ transform:scale(.9); opacity:.7; } 50%{ transform:scale(1.15); opacity:1; } }
+  .sx-ring{ position:absolute; inset:6px; border-radius:50%; border:1px dashed #2c2347; }
+  .sx-rocket{ position:relative; font-size:38px; line-height:1; animation:sx-launch .55s ease-out;
+    filter:drop-shadow(0 6px 14px rgba(139,110,242,.5)); }
+  @keyframes sx-launch{
+    0%{ transform:translateY(14px) scale(.7) rotate(-8deg); opacity:0; }
+    100%{ transform:none; opacity:1; }
+  }
+  .wl-success .sx-eyebrow{ display:inline-block; font-size:11.5px; font-weight:600; letter-spacing:.03em;
+    color:#b9a2ff; background:rgba(139,110,242,.12); border:1px solid rgba(139,110,242,.3);
+    border-radius:20px; padding:4px 12px; margin-bottom:14px; }
+  .wl-success h1{ font-family:'Fraunces', serif; font-weight:600; font-size:23px; letter-spacing:-.01em;
+    color:#f1edfb; margin:0 0 8px; }
+  .wl-success .sx-sub{ font-size:14.5px; line-height:1.6; color:#9a90b8; margin:0 auto; max-width:30ch; }
+  .wl-success .sx-divider{ height:1px; background:linear-gradient(90deg, transparent, #2c2347, transparent); margin:24px 0; }
+  .wl-success .sx-details{ display:flex; gap:14px; text-align:left; position:relative; z-index:2; }
+  .wl-success .sx-detail{ flex:1; background:rgba(255,255,255,.02); border:1px solid #2c2347; border-radius:12px; padding:12px 14px; }
+  .wl-success .sx-detail .label{ font-size:11px; color:#6c6389; margin-bottom:4px; }
+  .wl-success .sx-detail .value{ font-size:13px; font-weight:500; color:#f1edfb; }
+  @media (prefers-reduced-motion: reduce){
+    .wl-success .sx-rocket, .wl-success .sx-glow, .confetti span{ animation:none !important; }
+  }
+  .hidden{ display:none !important; }
+  @media(max-width:560px){ .wl{ padding:24px 20px; } }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <div>
+      <h1 id="welcome">Welcome back</h1>
+      <p>Every optimization counts.</p>
+    </div>
+    <div class="status">
+      <div class="s"><span class="pulse"></span><span id="license-pill">License active</span></div>
+      <div class="s"><span id="telemetry-pill">Telemetry live</span></div>
+    </div>
+  </div>
+
+  <div class="chips" id="chips">
+    <div class="chip">Windows 11 · build 22631</div>
+    <div class="chip">Desktop</div>
+  </div>
+
+  <!-- hero row -->
+  <div class="hero3">
+    <div class="hero-card spotlight-card">
+      <div class="spot-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2fe3ba" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+      </div>
+      <div class="hero-txt" style="flex:1; min-width:0;">
+        <div class="h-lbl">Next best tweak</div>
+        <div class="h-val" id="nb-name" style="font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Scanning recommendations…</div>
+        <div class="h-sub" id="nb-sub">Waiting for the system scan</div>
+      </div>
+      <button class="spot-apply" id="nb-apply">Apply</button>
+    </div>
+    <div class="hero-card">
+      <div class="grade" style="background:rgba(156,134,245,.15); color:#9c86f5; border:1px solid rgba(156,134,245,.35)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      </div>
+      <div class="hero-txt">
+        <div class="h-lbl">PC uptime</div>
+        <div class="h-val" id="up-val">0m</div>
+        <div class="h-sub">since boot</div>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div class="grade" style="background:rgba(231,178,86,.15); color:#e7b256; border:1px solid rgba(231,178,86,.35)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+      </div>
+      <div class="hero-txt">
+        <div class="h-lbl">Tweaks applied</div>
+        <div class="h-val" id="ap-val">0 / 0</div>
+        <div class="h-sub" id="ap-sub">— recommended remaining</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Live telemetry <span class="sub">updated every second</span></h2>
+    </div>
+    <div class="telemetry">
+      <div class="tele-item">
+        <div class="ring">
+          <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="35"/><circle class="val" id="cpu-ring" cx="42" cy="42" r="35" stroke="#e7b256" stroke-dasharray="219.9" stroke-dashoffset="219.9"/></svg>
+          <div class="num" id="cpu-num">–%</div>
+        </div>
+        <div class="tele-meta">
+          <div class="lbl"><img id="cpu-logo" class="logo-ico" src="" alt="">CPU<span class="trend hide" id="cpu-trend"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 17h6v-6"/><path d="m22 17-8.5-8.5-5 5L2 7"/></svg> 0%</span></div>
+          <div class="d1" id="cpu-d1">– MHz</div>
+          <div class="d2" id="cpu-d2">– threads</div>
+          <svg class="spark" width="110" height="22" viewBox="0 0 110 22"><polyline id="cpu-spark" fill="none" stroke="#e7b256" stroke-width="1.6" opacity=".7"/></svg>
+        </div>
+      </div>
+      <div class="tele-item">
+        <div class="ring">
+          <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="35"/><circle class="val" id="gpu-ring" cx="42" cy="42" r="35" stroke="#2fe3ba" stroke-dasharray="219.9" stroke-dashoffset="219.9"/></svg>
+          <div class="num" id="gpu-num">–%</div>
+        </div>
+        <div class="tele-meta">
+          <div class="lbl"><img id="gpu-logo" class="logo-ico" src="" alt="">GPU<span class="trend hide" id="gpu-trend"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg> 0%</span></div>
+          <div class="d1" id="gpu-d1">No GPU data</div>
+          <div class="d2" id="gpu-d2">– / – MB</div>
+          <svg class="spark" width="110" height="22" viewBox="0 0 110 22"><polyline id="gpu-spark" fill="none" stroke="#2fe3ba" stroke-width="1.6" opacity=".7"/></svg>
+        </div>
+      </div>
+      <div class="tele-item">
+        <div class="ring">
+          <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="35"/><circle class="val" id="ram-ring" cx="42" cy="42" r="35" stroke="#9c86f5" stroke-dasharray="219.9" stroke-dashoffset="219.9"/></svg>
+          <div class="num" id="ram-num">–%</div>
+        </div>
+        <div class="tele-meta">
+          <div class="lbl"><img id="ram-logo" class="logo-ico" src="" alt="">RAM</div>
+          <div class="d1" id="ram-d1">– / – GB</div>
+          <div class="d2" id="ram-d2">allocated</div>
+          <svg class="spark" width="110" height="22" viewBox="0 0 110 22"><polyline id="ram-spark" fill="none" stroke="#9c86f5" stroke-width="1.6" opacity=".7"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Thermal &amp; clock stability</h2>
+      <div class="legend">
+        <div class="leg"><i style="background:#e7b256"></i>Temperature</div>
+        <div class="leg"><i style="background:#2fe3ba"></i>Clock speed</div>
+        <div class="toggles"><button class="tg" data-mode="gpu">GPU</button><button class="tg active" data-mode="cpu">CPU</button></div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div class="yaxis"><span>100°</span><span>75°</span><span>50°</span><span>25°</span><span>0°</span></div>
+      <div class="yaxis-r">
+        <span>3.9G</span><span></span><span>3.7G</span><span></span><span>3.5G</span>
+      </div>
+      <svg viewBox="0 0 1000 180" preserveAspectRatio="none" style="margin:0 44px; width:calc(100% - 88px); height:180px">
+        <defs>
+          <linearGradient id="fillT" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#e7b256" stop-opacity=".18"/><stop offset="100%" stop-color="#e7b256" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="fillC" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2fe3ba" stop-opacity=".18"/><stop offset="100%" stop-color="#2fe3ba" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g stroke="#1a1628" stroke-width="1">
+          <line x1="0" y1="0" x2="1000" y2="0"/><line x1="0" y1="45" x2="1000" y2="45"/>
+          <line x1="0" y1="90" x2="1000" y2="90"/><line x1="0" y1="135" x2="1000" y2="135"/><line x1="0" y1="179" x2="1000" y2="179"/>
+        </g>
+        <line id="chart-guide" x1="0" y1="0" x2="0" y2="180" stroke="#2b2545" stroke-width="1" opacity="0"/>
+        <path id="area-temp" fill="url(#fillT)"/>
+        <path id="line-temp" fill="none" stroke="#e7b256" stroke-width="2.2"/>
+        <path id="area-clock" fill="url(#fillC)"/>
+        <path id="line-clock" fill="none" stroke="#2fe3ba" stroke-width="2.5"/>
+        <circle id="dot-temp" cx="1000" cy="147" r="4" fill="#e7b256" opacity="0"/>
+        <circle id="dot-clock" cx="1000" cy="96" r="4" fill="#2fe3ba" opacity="0"/>
+      </svg>
+      <div class="chart-tip" id="chart-tip"></div>
+      <div class="xaxis"><span>60m</span><span>30m</span><span>now</span></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>System storage</h2>
+        <button class="clean-btn" id="clean-btn">Clean system cache</button>
+      </div>
+      <div class="big-stat"><span id="disk-used">–</span> <span class="of">of – used</span></div>
+      <div class="sub-line" id="disk-free">–</div>
+      <div class="bar">
+        <span id="bar-os" style="width:0%; background:#2fe3ba"></span>
+        <span id="bar-games" style="width:0%; background:#e7b256"></span>
+      </div>
+      <div class="legend-keys">
+        <div class="k"><i style="background:#2fe3ba"></i>OS <b id="k-os">–</b></div>
+        <div class="k"><i style="background:#e7b256"></i>Games <b id="k-games">–</b></div>
+        <div class="k"><i style="background:#2a2640"></i>Free <b id="k-free">–</b></div>
+      </div>
+      <div class="appdata" id="appdata">–</div>
+    </div>
+
+    <div class="panel ultra">
+      <div class="ultra-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#9c86f5" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+      <div class="ultra-tag">ULTRA MODE</div>
+      <h3>Building the max-performance preset</h3>
+      <p>A single-click tuning profile that pushes clocks and fan curves to their tested ceiling. In closed testing now.</p>
+      <div class="ring-progress">
+        <div class="rp-ring">
+          <svg viewBox="0 0 48 48" style="transform:rotate(-90deg)">
+            <circle cx="24" cy="24" r="20" fill="none" stroke="#221d36" stroke-width="5"/>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="#9c86f5" stroke-width="5" stroke-linecap="round" stroke-dasharray="125.7" stroke-dashoffset="45.2"/>
+          </svg>
+          <div class="rp-num">64%</div>
+        </div>
+        <div class="rp-lbl">Rollout progress</div>
+      </div>
+      <button class="join-btn" id="join-btn">Join the waitlist</button>
+      <a class="view-link" id="view-link">View the tweaks →</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Recent activity</h2></div>
+    <div class="activity-row" id="activity">
+      <div class="act"><span class="act-dot" style="background:#544d72"></span><span class="act-name">No activity yet</span><span class="act-cat">—</span><span class="act-time">—</span></div>
+    </div>
+  </div>
+
+<!-- Ultra Mode waitlist modal -->
+  <div class="wl-ov" id="wl-overlay" role="dialog" aria-modal="true" aria-labelledby="wl-title">
+    <div class="wl">
+      <button class="wl-close" id="wl-close" aria-label="Close">&times;</button>
+      <div class="confetti hidden" id="wl-confetti"></div>
+      <div id="wl-form">
+        <div class="wl-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#9c86f5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h2 id="wl-title">Join the Maximum Optimizations Waitlist</h2>
+        <p class="wl-sub">Be the first to know when Ultra Mode is ready for release.</p>
+        <label for="wl-email">Email address</label>
+        <input id="wl-email" type="email" autocomplete="email" spellcheck="false" placeholder="Enter your email">
+        <div class="wl-err" id="wl-err"></div>
+        <button class="wl-send" id="wl-send" type="button">Join Waitlist</button>
+        <p class="wl-note">Launch updates are sent from maxoptimizations@gmail.com. Unsubscribe anytime.</p>
+      </div>
+      <div class="wl-success hidden" id="wl-success">
+        <div class="sx-rocket-wrap">
+          <div class="sx-glow"></div>
+          <div class="sx-ring"></div>
+          <div class="sx-rocket">&#128640;</div>
+        </div>
+        <span class="sx-eyebrow">Waitlist confirmed</span>
+        <h1 id="wl-success-title">You're on the list!</h1>
+        <p class="sx-sub">We'll email you the moment Ultra Mode launches.</p>
+        <div class="sx-divider"></div>
+        <div class="sx-details">
+          <div class="sx-detail"><div class="label">Status</div><div class="value">Confirmed</div></div>
+          <div class="sx-detail"><div class="label">Notify via</div><div class="value">Email</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+(function(){ /* app-wide copy lock (chat page is native Qt, unaffected) */
+  function editable(t){ return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); }
+  document.addEventListener('copy', function(e){ if(!editable(e.target)) e.preventDefault(); }, true);
+  document.addEventListener('cut', function(e){ if(!editable(e.target)) e.preventDefault(); }, true);
+  document.addEventListener('selectstart', function(e){ if(!editable(e.target)) e.preventDefault(); }, true);
+  document.addEventListener('dragstart', function(e){ e.preventDefault(); }, true);
+})();
+const RING_C = 219.9;
+const IMPACT_WORDS = { extreme:'Extreme', high:'High', moderate:'Moderate', low:'Low', verylow:'Very low', 'very low':'Very low' };
+
+let mode = 'cpu';
+let nextTid = null;
+const hist = { tempCpu: [], tempGpu: [], clock: [], cpu: [], gpu: [], ram: [] };
+let prevCpu = null, prevGpu = null;
+
+const $ = id => document.getElementById(id);
+
+function ui(){
+  return (window.pywebview && window.pywebview.api) || null;
+}
+
+/* ---------------- telemetry helpers ---------------- */
+
+function setRing(ring, num, pct){
+  if(pct == null || isNaN(pct)){ num.textContent = '–%'; return; }
+  num.textContent = Math.round(pct) + '%';
+  const off = RING_C * (1 - Math.max(0, Math.min(100, pct)) / 100);
+  ring.setAttribute('stroke-dashoffset', off.toFixed(1));
+}
+
+function sparkPoints(arr, width, height){
+  if(!arr || arr.length < 2) return '';
+  const min = Math.min(...arr), max = Math.max(...arr);
+  const span = (max - min) || 1;
+  return arr.map((v, i) => {
+    const x = (i / (arr.length - 1)) * width;
+    const y = height - 2 - ((v - min) / span) * (height - 4);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+}
+
+const TREND_ICON = {
+  up: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>',
+  down: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 17h6v-6"/><path d="m22 17-8.5-8.5-5 5L2 7"/></svg>'
+};
+
+function setTrend(el, prev, cur){
+  if(prev == null || cur == null){ el.classList.add('hide'); return; }
+  const d = cur - prev;
+  if(Math.abs(d) < 1){ el.classList.add('hide'); return; }
+  el.classList.remove('hide', 'up', 'down');
+  const dir = d > 0 ? 'up' : 'down';
+  el.classList.add(dir);
+  el.innerHTML = TREND_ICON[dir] + Math.abs(Math.round(d)) + '%';
+}
+
+function pushHist(key, value, maxlen){
+  if(value == null) return;
+  const h = hist[key];
+  h.push(value);
+  if(h.length > maxlen) h.shift();
+}
+
+/* ---------------- chart ---------------- */
+
+function fmtClock(mhz){
+  if(mhz == null || isNaN(mhz)) return '–';
+  return (mhz >= 1000 ? (mhz / 1000).toFixed(1) + 'G' : Math.round(mhz) + 'M');
+}
+
+function renderChart(){
+  const temps = (mode === 'cpu' ? hist.tempCpu : hist.tempGpu);
+  const clocks = hist.clock;
+  const n = Math.max(temps.length, clocks.length);
+  if(n < 2){ return; }
+
+  /* clock axis: min/max of the visible clock samples with padding */
+  const valid = clocks.filter(v => v != null);
+  let loC = null, hiC = null;
+  if(valid.length){
+    loC = Math.min(...valid); hiC = Math.max(...valid);
+    const pad = Math.max(200, (hiC - loC) * 0.25);
+    loC -= pad; hiC += pad;
+  }
+  const spanC = (hiC != null && hiC > loC) ? (hiC - loC) : 1000;
+
+  const axis = document.querySelector('.yaxis-r');
+  const labels = axis.querySelectorAll('span');
+  const fracs = [0, 0.5, 1];
+  for(let i = 0; i < 5; i++){
+    const frac = (4 - i) / 4;
+    const mhz = loC != null ? loC + frac * spanC : 0;
+    labels[i].textContent = fmtClock(mhz);
+  }
+  const _ = fracs;
+
+  const yTemp = v => (v == null ? 90 : 180 - Math.max(0, Math.min(100, v)) / 100 * 179);
+  const yClock = mhz => (hiC != null && mhz != null ? 180 - ((mhz - loC) / spanC) * 180 : 90);
+
+  function path(series, yfn, maxlen){
+    const pts = [];
+    for(let i = 0; i < maxlen; i++){
+      const v = series[i] != null ? series[i] : null;
+      pts.push((i / (maxlen - 1) * 1000).toFixed(1) + ',' + yfn(v).toFixed(1));
+    }
+    return 'M' + pts.join(' L');
+  }
+
+  const N = Math.max(temps.length, clocks.length);
+  if(temps.length >= 2){
+    const tp = path(temps, yTemp, temps.length);
+    const area = tp + ' L1000,180 L0,180 Z';
+    $('line-temp').setAttribute('d', tp);
+    $('area-temp').setAttribute('d', area);
+    $('dot-temp').setAttribute('cy', yTemp(temps[temps.length - 1]).toFixed(1));
+    $('dot-temp').setAttribute('opacity', '1');
+  }
+  if(clocks.length >= 2){
+    const cp = path(clocks, yClock, clocks.length);
+    const area = cp + ' L1000,180 L0,180 Z';
+    $('line-clock').setAttribute('d', cp);
+    $('area-clock').setAttribute('d', area);
+    $('dot-clock').setAttribute('cy', yClock(clocks[clocks.length - 1]).toFixed(1));
+    $('dot-clock').setAttribute('opacity', '1');
+  }
+}
+
+/* ---------------- chart hover tooltip ---------------- */
+
+function hoverIndex(clientX){
+  const svg = document.querySelector('.chart-wrap svg');
+  const rect = svg.getBoundingClientRect();
+  const tempSeries = (mode === 'cpu' ? hist.tempCpu : hist.tempGpu);
+  const n = Math.max(tempSeries.length, hist.clock.length);
+  const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const idx = Math.min(n - 1, Math.round(frac * (n - 1)));
+  return { idx, n, tempSeries };
+}
+
+function updateTip(e){
+  const { idx, n, tempSeries } = hoverIndex(e.clientX);
+  if (n < 2 || idx < 0 || idx >= n) { hideTip(); return; }
+  const temp = tempSeries[idx];
+  const clock = hist.clock[idx];
+  const tempTxt = (temp != null && !isNaN(temp)) ? Math.round(temp) + '\u00B0C' : '\u2013';
+  const clockTxt = fmtClock(clock);
+  const name = mode === 'cpu' ? 'CPU' : 'GPU';
+
+  $('chart-guide').setAttribute('x1', (idx / (n - 1) * 1000).toFixed(1));
+  $('chart-guide').setAttribute('x2', (idx / (n - 1) * 1000).toFixed(1));
+  $('chart-guide').setAttribute('opacity', '1');
+
+  const tip = $('chart-tip');
+  tip.innerHTML =
+    '<div class="tt-row"><span class="tt-dot" style="background:#e7b256"></span>' +
+    '<span class="tt-lbl">' + name + '</span><span class="tt-val">' + tempTxt + '</span></div>' +
+    '<div class="tt-row"><span class="tt-dot" style="background:#2fe3ba"></span>' +
+    '<span class="tt-lbl">Clock</span><span class="tt-val">' + clockTxt + '</span></div>';
+
+  const wrap = document.querySelector('.chart-wrap');
+  const wr = wrap.getBoundingClientRect();
+  let left = e.clientX - wr.left;
+  left = Math.max(76, Math.min(wr.width - 76, left));
+  tip.style.left = left + 'px';
+  tip.style.display = 'block';
+}
+
+function hideTip(){
+  $('chart-tip').style.display = 'none';
+  $('chart-guide').setAttribute('opacity', '0');
+}
+
+/* ---------------- disk ---------------- */
+
+function setDisk(m){
+  const used = m.disk_used_gb || 0, total = m.disk_total_gb || 0;
+  const free = m.disk_free_gb || 0, games = m.disk_games_gb || 0;
+  const appdata = m.disk_appdata_gb || 0;
+  const osUsed = Math.max(0, used - games);
+  $('disk-used').textContent = used + ' GB';
+  document.querySelector('.big-stat .of').textContent = 'of ' + total + ' GB used';
+  const label = m.disk_label ? (' · ' + m.disk_label) : '';
+  $('disk-free').textContent = free + ' GB free' + label;
+  if(total > 0){
+    $('bar-os').style.width = (osUsed / total * 100).toFixed(1) + '%';
+    $('bar-games').style.width = (games / total * 100).toFixed(1) + '%';
+  }
+  $('k-os').textContent = Math.round(osUsed) + ' GB';
+  $('k-games').textContent = Math.round(games) + ' GB';
+  $('k-free').textContent = Math.round(free) + ' GB';
+  if(total > 0){
+    $('appdata').textContent = 'Local AppData · ' + appdata.toFixed(1) + ' GB · ' +
+      (appdata / total * 100).toFixed(1) + '% of this drive';
+  }
+}
+
+/* ---------------- data from the app ---------------- */
+
+function fmtUptime(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  if(h >= 1) return h + 'h ' + m + 'm';
+  if(m >= 1) return m + 'm';
+  return sec + 's';
+}
+
+function tickUptime(){
+  if(window.mx._uptimeAt){
+    const el = $('up-val');
+    el.textContent = fmtUptime((Date.now() / 1000) - window.mx._uptimeAt);
+  }
+}
+
+window.mx = {
+  setData: function(d){
+    d = d || {};
+    $('welcome').textContent = (d.welcome || 'Welcome back');
+    $('license-pill').textContent = d.license || 'License active';
+    $('telemetry-pill').textContent = d.telemetry || 'Telemetry live';
+
+    /* real category logos (base64 data URIs from assets/icons) */
+    var _logos = {'#cpu-logo':'cpuLogo', '#gpu-logo':'gpuLogo', '#ram-logo':'ramLogo'};
+    for(var sel in _logos){
+      var _el = document.querySelector(sel);
+      if(_el){ _el.src = d[_logos[sel]] || ''; }
+    }
+
+    const chips = d.chips || [];
+    $('chips').innerHTML = chips.map(c => {
+      const esc = String(c).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      return '<div class="chip">' + esc + '</div>';
+    }).join('');
+
+    /* next best tweak (real recommendation data) */
+    const nb = d.next;
+    if(d.nextReady === false){
+      nextTid = null;
+      $('nb-name').textContent = 'Scanning system\u2026';
+      $('nb-sub').textContent = 'Running hardware detection';
+      $('nb-apply').disabled = true;
+      $('nb-apply').textContent = 'Apply';
+    }else if(nb && nb.tid){
+      nextTid = nb.tid;
+      $('nb-name').textContent = nb.name || '';
+      $('nb-sub').textContent = (d.nextPrefix || 'Highest-impact recommended tweak you haven\'t applied') +
+        ' · ' + (IMPACT_WORDS[nb.impact] || nb.impact || '') + ' impact' +
+        (nb.affects ? ' · ' + nb.affects : '');
+      $('nb-apply').disabled = false;
+      $('nb-apply').textContent = 'Apply';
+    }else{
+      nextTid = null;
+      $('nb-name').textContent = 'All caught up';
+      $('nb-sub').textContent = 'Every recommended tweak is already applied to your system.';
+      $('nb-apply').disabled = true;
+      $('nb-apply').textContent = 'Applied';
+    }
+
+    if(d.uptimeSec != null){
+      window.mx._uptimeAt = (Date.now() / 1000) - d.uptimeSec;
+      $('up-val').textContent = fmtUptime(d.uptimeSec);
+    }
+
+    if(d.applied != null && d.total != null){
+      $('ap-val').textContent = d.applied + ' / ' + d.total;
+      $('ap-sub').textContent = d.remaining + ' recommended remaining';
+    }else if(d.applied != null){
+      $('ap-sub').textContent = '—';
+    }
+  },
+
+  pushMetrics: function(m){
+    m = m || {};
+
+    /* rings + spark + trend */
+    setRing($('cpu-ring'), $('cpu-num'), m.cpu_percent);
+    setTrend($('cpu-trend'), prevCpu, m.cpu_percent);
+    if(m.cpu_percent != null){ prevCpu = m.cpu_percent; pushHist('cpu', m.cpu_percent, 32); }
+
+    if(m.gpu_util == null){
+      $('gpu-num').textContent = '–%';
+      $('gpu-d1').textContent = 'No GPU data';
+    }else{
+      setRing($('gpu-ring'), $('gpu-num'), m.gpu_util);
+      setTrend($('gpu-trend'), prevGpu, m.gpu_util);
+      prevGpu = m.gpu_util;
+      pushHist('gpu', m.gpu_util, 32);
+      let d1 = (m.gpu_name || 'GPU');
+      if(m.gpu_temp != null) d1 += ' · ' + Math.round(m.gpu_temp) + '°C';
+      $('gpu-d1').textContent = d1;
+      $('gpu-d2').textContent = (m.gpu_mem_used != null ? +m.gpu_mem_used : 0) + ' MB' +
+        (m.gpu_mem_total != null ? ' / ' + +m.gpu_mem_total + ' MB' : '');
+    }
+
+    setRing($('ram-ring'), $('ram-num'), m.ram_pct);
+    if(m.ram_pct != null) pushHist('ram', m.ram_pct, 32);
+
+    const freq = m.cpu_freq_mhz;
+    $('cpu-d1').textContent = (freq != null ? Math.round(freq) + ' MHz' : '– MHz');
+    $('cpu-d2').textContent = (m.cpu_threads != null ? m.cpu_threads + ' threads' : '– threads');
+    $('ram-d1').textContent = (m.ram_used_gb != null ? m.ram_used_gb + ' / ' + m.ram_total_gb + ' GB' : '– / – GB');
+
+    $('cpu-spark').setAttribute('points', sparkPoints(hist.cpu, 110, 22));
+    $('gpu-spark').setAttribute('points', sparkPoints(hist.gpu, 110, 22));
+    $('ram-spark').setAttribute('points', sparkPoints(hist.ram, 110, 22));
+
+    /* chart history + redraw */
+    pushHist('tempCpu', m.cpu_temp, 60);
+    pushHist('tempGpu', m.gpu_temp, 60);
+    pushHist('clock', m.cpu_freq_mhz, 60);
+    renderChart();
+
+    /* disk */
+    if(m.disk_total_gb != null) setDisk(m);
+  },
+
+  setActivity: function(rows){
+    rows = rows || [];
+    const host = $('activity');
+    if(!rows.length){
+      host.innerHTML = '<div class="act"><span class="act-dot" style="background:#544d72"></span><span class="act-name">No activity yet</span><span class="act-cat">—</span><span class="act-time">—</span></div>';
+      return;
+    }
+    host.innerHTML = rows.map(r => {
+      const color = r.color || '#544d72';
+      const name = String(r.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      const cat = String(r.cat || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      const time = String(r.time || '');
+      return '<div class="act"><span class="act-dot" style="background:' + color + '"></span>' +
+        '<span class="act-name">' + name + '</span>' +
+        '<span class="act-cat">' + cat + '</span>' +
+        '<span class="act-time">' + time + '</span></div>';
+    }).join('');
+  },
+
+  setUptimeAnchor: function(sec){
+    window.mx._uptimeAt = sec;
+  },
+
+  /* waitlist backend replies into joinResult(r) after bridge.joinEmail */
+  joinResult: function(r){
+    wlResult(r || {});
+  }
+};
+
+setInterval(tickUptime, 1000);
+
+/* ---------------- interactions ---------------- */
+
+document.querySelectorAll('.tg').forEach(btn => {
+  btn.addEventListener('click', () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll('.tg').forEach(b => b.classList.toggle('active', b === btn));
+    renderChart();
+  });
+});
+
+const chartWrap = document.querySelector('.chart-wrap');
+chartWrap.addEventListener('mousemove', updateTip);
+chartWrap.addEventListener('mouseleave', hideTip);
+
+$('nb-apply').addEventListener('click', () => {
+  const a = ui();
+  if(!a || !a.apply || !nextTid) return;
+  $('nb-apply').disabled = true;
+  a.apply(nextTid);
+});
+
+$('clean-btn').addEventListener('click', () => {
+  const a = ui();
+  if(!a || !a.clean) return;
+  $('clean-btn').disabled = true;
+  a.clean();
+});
+
+/* ---------------- Ultra Mode waitlist modal ---------------- */
+
+const WL_EMAIL_RE = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$/;
+const $wl = {
+  ov: $('wl-overlay'), close: $('wl-close'), form: $('wl-form'), success: $('wl-success'),
+  email: $('wl-email'), err: $('wl-err'), send: $('wl-send')
+};
+
+function wlOpen(){
+  $wl.ov.classList.remove('success-mode');
+  $wl.ov.classList.add('open');
+  $wl.ov.setAttribute('aria-labelledby', 'wl-title');
+  var field = $('wl-confetti');
+  field.innerHTML = '';
+  field.classList.add('hidden');
+  document.querySelector('.wl').classList.remove('success-mode');
+  $wl.err.textContent = '';
+  $wl.success.classList.add('hidden');
+  $wl.form.classList.remove('hidden');
+  $wl.send.disabled = false;
+  $wl.send.textContent = 'Join Waitlist';
+  $wl.email.disabled = false;
+  setTimeout(function(){ try{ $wl.email.focus(); }catch(e){} }, 40);
+}
+
+function wlClose(){
+  $wl.ov.classList.remove('open');
+}
+
+function wlSubmit(){
+  const a = ui();
+  const email = ($wl.email.value || '').trim().toLowerCase();
+  if(!email){ $wl.err.textContent = 'Please enter your email address.'; return; }
+  if(!WL_EMAIL_RE.test(email)){
+    $wl.err.textContent = 'That doesn\'t look like a valid email address.';
+    return;
+  }
+  $wl.err.textContent = '';
+  $wl.send.disabled = true;
+  $wl.send.textContent = 'Joining…';
+  $wl.email.disabled = true;
+  if(!a || !a.joinEmail){
+    wlResult({ok:false, status:'error',
+              message:'The waitlist service isn\'t ready yet — try again in a moment.'});
+    return;
+  }
+  a.joinEmail(email);
+}
+
+function wlResult(r){
+  if(!r) r = {};
+  $wl.send.disabled = false;
+  $wl.email.disabled = false;
+  if(r.ok){
+    $wl.ov.classList.add('success-mode');
+    $wl.ov.setAttribute('aria-labelledby', 'wl-success-title');
+    document.querySelector('.wl').classList.add('success-mode');
+    $wl.form.classList.add('hidden');
+    $wl.success.classList.remove('hidden');
+    wlConfetti();
+    return;
+  }
+  $wl.send.textContent = 'Join Waitlist';
+  $wl.err.textContent = r.message || 'Something went wrong — please try again.';
+}
+
+/* fires once when the success state first shows; dots drift upward from a
+   random start, staggered, no loop */
+function wlConfetti(){
+  var field = $('wl-confetti');
+  field.innerHTML = '';
+  field.classList.remove('hidden');
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduced) return;
+  var colors = ['#a78bfa', '#8b6ef2', '#c7b8ff'];
+  for(var i = 0; i < 14; i++){
+    var dot = document.createElement('span');
+    var size = (3 + Math.random() * 4).toFixed(1);
+    dot.style.width = size + 'px';
+    dot.style.height = size + 'px';
+    dot.style.background = colors[i % colors.length];
+    dot.style.left = (10 + Math.random() * 80).toFixed(1) + '%';
+    dot.style.top = (30 + Math.random() * 40).toFixed(1) + '%';
+    dot.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+    field.appendChild(dot);
+  }
+}
+
+$('join-btn').addEventListener('click', wlOpen);
+$wl.close.addEventListener('click', wlClose);
+$wl.ov.addEventListener('click', e => { if(e.target === $wl.ov) wlClose(); });
+$wl.send.addEventListener('click', wlSubmit);
+$wl.email.addEventListener('keydown', e => { if(e.key === 'Enter') wlSubmit(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && $wl.ov.classList.contains('open')) wlClose(); });
+
+$('view-link').addEventListener('click', () => {
+  const a = ui();
+  if(a && a.navigate) a.navigate('tweak:cpu');
+});
+
+/* Bridge bootstrap: inside the app the page runs in QtWebEngine and the api
+   object arrives through QWebChannel; window.mx then calls it. */
+(function(){
+  if(window.qt && window.qt.webChannelTransport && window.QWebChannel){
+    new QWebChannel(window.qt.webChannelTransport, function(ch){
+      window.pywebview = window.pywebview || {};
+      window.pywebview.api = ch.objects.api;
+    });
+  }
+  window.pywebview = window.pywebview || {};
+})();
+</script>
+
+</body>
+</html>
