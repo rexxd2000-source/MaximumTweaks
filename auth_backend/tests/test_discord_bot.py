@@ -140,7 +140,9 @@ class TestSelfCheckIpBlock:
         assert r["in_guild"] is True, "membership proven by guild list"
         assert r["network_restricted"] is True
         joined = " ".join(r["problems"])
-        assert "blocked" in joined.lower()
+        # 403/40333 is an edge refusal, not a permissions fault
+        assert "edge" in joined.lower()
+        assert "blocked this ip" not in joined.lower()
         assert "missing: " not in joined, \
             "an IP block must not be reported as missing permissions"
 

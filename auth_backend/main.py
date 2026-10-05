@@ -462,6 +462,14 @@ _DISCORD_LOCK = threading.Lock()
 _DISCORD_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
+# Bot REST calls (guild add, channel post) must NOT reuse that browser UA.
+# Discord's edge answers a browser-spoofing UA with 403 code 40333
+# ("internal network error") on every guild-scoped endpoint while
+# /users/@me and /users/@me/guilds still return 200 - which looks exactly
+# like an IP block and sent us chasing the wrong cause for days. With a
+# DiscordBot UA the same calls succeed (a channel post returned 200).
+_DISCORD_BOT_UA = "DiscordBot (https://maximumtweaks.onrender.com, 1.0)"
+
 
 def _discord_http_error(e: "urllib.error.HTTPError") -> str:
     try:
@@ -1890,6 +1898,7 @@ def auth_discord_session(discord_id: str = ""):
 #   * Post the audit line       -> requires Send Messages in the target
 #     channel. "View Channel" alone is NOT enough.
 # Bitfield used for the invite URL below.
+DISCORD_PERM_ADMINISTRATOR = 1 << 3        # 8
 DISCORD_PERM_VIEW_CHANNEL = 1 << 10        # 1024
 DISCORD_PERM_SEND_MESSAGES = 1 << 11      # 2048
 DISCORD_PERM_READ_HISTORY = 1 << 16       # 65536 (nice-to-have)
@@ -1915,7 +1924,7 @@ def _discord_bot_headers():
         return None
     return {"Authorization": f"Bot {DISCORD_BOT_TOKEN}",
             "Content-Type": "application/json",
-            "User-Agent": _DISCORD_UA}
+            "User-Agent": _DISCORD_BOT_UA}
 
 
 def _discord_bot_call(method: str, url: str, body: dict | None = None):
@@ -1932,12 +1941,13 @@ def _discord_bot_call(method: str, url: str, body: dict | None = None):
             return r.getcode() in (200, 201, 204), r.getcode(), ""
     except urllib.error.HTTPError as e:
         detail = _discord_http_error(e)
-        # An IP/edge block is NOT a permissions problem. Reporting it as one
+        # An edge refusal is NOT a permissions problem. Reporting it as one
         # sent us chasing the wrong fix, so detect it first.
         if _discord_is_ip_block(detail):
-            hint = ("Discord blocked this machine's IP (code "
-                    f"{e.code}); not a permission issue - retry from the "
-                    "deployed host")
+            hint = ("Discord refused the request at its edge (code "
+                    f"{e.code}); not a permission issue - the usual cause is "
+                    "a browser User-Agent on a bot call (we send "
+                    "_DISCORD_BOT_UA), or the token lacking the bot scope")
         else:
             hint = {
                 401: "bot token invalid or revoked",
@@ -1988,14 +1998,50 @@ def discord_bot_send_message(channel_id: str, content: str) -> bool:
 
 
 #: Discord answers 403 with code 40333 ("internal network error") or 1010
-#: (Cloudflare fingerprint block) for some endpoints depending on the egress
-#: IP. Those are NOT permission failures, so they must not be reported as one.
+#: (Cloudflare fingerprint block) for some endpoints depending on the request
+#: identity. For our bot calls the proven cause was the browser User-Agent -
+#: /users/@me stayed 200 while every guild endpoint returned 40333 from two
+#: unrelated networks, and a DiscordBot UA fixed all of them. Treat these as
+#: "the request was refused at the edge", never as a permissions problem.
 _DISCORD_IP_BLOCK_CODES = ("40333", "1010")
 
 
 def _discord_is_ip_block(detail: str) -> bool:
     d = (detail or "").lower()
     return any(c in d for c in _DISCORD_IP_BLOCK_CODES) or "internal network error" in d
+
+
+def _discord_channel_overwrite_grants(channel_id: str, bot_id: str,
+                                       wanted: int) -> int:
+    """Permission bits a channel's overwrite list grants the bot directly.
+
+    Guild role permissions can be 0 while a channel-specific overwrite still
+    allows everything the flow needs, so the self-check has to look here
+    before reporting a missing permission. Returns 0 on any failure."""
+    if not channel_id or not bot_id:
+        return 0
+    headers = _discord_bot_headers()
+    if not headers:
+        return 0
+    req = urllib.request.Request(
+        f"{_DISCORD_API}/v10/channels/{channel_id}", headers=headers,
+        method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            ch = json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001
+        return 0
+    if not isinstance(ch, dict):
+        return 0
+    granted = 0
+    everyone = str(ch.get("guild_id") or "")
+    for ow in (ch.get("permission_overwrites") or []):
+        if str(ow.get("id")) != str(bot_id):
+            continue
+        allow = int(ow.get("allow") or 0)
+        deny = int(ow.get("deny") or 0)
+        granted |= allow & wanted & ~deny
+    return granted
 
 
 def discord_bot_self_check() -> dict:
@@ -2046,8 +2092,9 @@ def discord_bot_self_check() -> dict:
         if _discord_is_ip_block(detail):
             out["network_restricted"] = True
             out["problems"].append(
-                "Discord is blocking this machine's IP (code %s). The token may "
-                "still be valid - retry from the deployed host." % e.code)
+                "Discord refused this request at its edge (code %s). The token "
+                "is valid (users/@me answered); check that bot calls send the "
+                "DiscordBot User-Agent and not a browser one." % e.code)
         else:
             out["problems"].append(
                 f"bot token rejected by Discord (HTTP {e.code}): {detail[:120]}")
@@ -2075,15 +2122,16 @@ def discord_bot_self_check() -> dict:
             if _discord_is_ip_block(detail):
                 out["network_restricted"] = True
                 out["problems"].append(
-                    "could not list the bot's guilds - Discord blocked this IP "
-                    f"(code {e.code}). Membership is unverified.")
+                    "could not list the bot's guilds - Discord refused the "
+                    f"request at its edge (code {e.code}). Membership is "
+                    "unverified.")
             else:
                 out["problems"].append(
                     f"guild list failed (HTTP {e.code}): {detail[:120]}")
         except Exception as e:  # noqa: BLE001
             out["problems"].append(f"guild list failed: {str(e)[:120]}")
 
-    # Permission bits come from the member object; treat an IP block as
+    # Permission bits come from the member object; treat an edge refusal as
     # "unknown" rather than "missing permissions".
     if out["in_guild"] and out.get("bot_username"):
         try:
@@ -2091,10 +2139,23 @@ def discord_bot_self_check() -> dict:
             perms = int(member.get("permissions") or 0)
             out["bot_permission_bits"] = perms
             missing = []
-            if not perms & DISCORD_PERM_VIEW_CHANNEL:
-                missing.append("View Channel")
-            if not perms & DISCORD_PERM_SEND_MESSAGES:
-                missing.append("Send Messages")
+            if perms & DISCORD_PERM_ADMINISTRATOR:
+                # Administrator overrides every channel-level bit.
+                missing = []
+            else:
+                # A channel overwrite can grant what the guild role cannot.
+                # The bot here has guild perms 0 yet posts fine, because
+                # account-registrations allows 3072 directly to its user id -
+                # so consult the target channel before crying "missing".
+                granted = _discord_channel_overwrite_grants(
+                    DISCORD_REGISTRATION_CHANNEL_ID, str(me["id"]),
+                    DISCORD_PERM_VIEW_CHANNEL | DISCORD_PERM_SEND_MESSAGES)
+                out["channel_overwrite_grants"] = granted
+                need = DISCORD_PERM_VIEW_CHANNEL | DISCORD_PERM_SEND_MESSAGES
+                if not perms & DISCORD_PERM_VIEW_CHANNEL and not granted & DISCORD_PERM_VIEW_CHANNEL:
+                    missing.append("View Channel")
+                if not perms & DISCORD_PERM_SEND_MESSAGES and not granted & DISCORD_PERM_SEND_MESSAGES:
+                    missing.append("Send Messages")
             if missing:
                 out["problems"].append(
                     "bot is in the guild but missing: " + ", ".join(missing)
@@ -2104,8 +2165,8 @@ def discord_bot_self_check() -> dict:
             if _discord_is_ip_block(detail):
                 out["network_restricted"] = True
                 out["problems"].append(
-                    "permissions could not be read - Discord blocked this IP "
-                    f"(code {e.code}). Verify from the deployed host.")
+                    "permissions could not be read - Discord refused the "
+                    f"request at its edge (code {e.code}).")
             elif e.code == 404:
                 out["problems"].append(
                     "bot member record not found for this guild.")
@@ -2125,8 +2186,8 @@ def discord_bot_self_check() -> dict:
             if _discord_is_ip_block(detail):
                 out["network_restricted"] = True
                 out["problems"].append(
-                    "channel visibility unverified - Discord blocked this IP "
-                    f"(code {e.code}).")
+                    "channel visibility unverified - Discord refused the "
+                    f"request at its edge (code {e.code}).")
             elif e.code == 404:
                 out["problems"].append(
                     "registration channel not found. Check "
