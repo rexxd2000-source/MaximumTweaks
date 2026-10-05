@@ -512,7 +512,11 @@ class LicenseDiscordWorker(QThread):
             import urllib.parse
             import json
             import os
-            base = os.environ.get("AUTH_API_URL") or "http://127.0.0.1:8000"
+            from config.app_config import AUTH_API_URL
+            # A frozen build has no AUTH_API_URL in its environment, and the
+            # old hardcoded "http://127.0.0.1:8000" sent every Discord
+            # sign-in to a server that does not exist on the user's machine.
+            base = os.environ.get("AUTH_API_URL") or AUTH_API_URL
             print(f"[DISCORD AUTH] Using base: {base}")
             if base:
                 base = base.rstrip("/")

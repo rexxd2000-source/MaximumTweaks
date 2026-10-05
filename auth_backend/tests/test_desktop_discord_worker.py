@@ -17,6 +17,8 @@ executing it against stubs, so PyQt is not needed to run the suite.
 """
 import ast
 import json
+import os
+import sys
 import textwrap
 import types
 
@@ -152,6 +154,41 @@ class _Harness:
 OK_POLL = {"ok": True, "status": "ok",
            "discord_id": "1545177212255346784",
            "username": "rex2yd.", "account_id": "MO-1D887C"}
+
+
+class TestApiBase:
+    """The frozen EXE must reach the hosted backend.
+
+    The worker used to fall back to the literal "http://127.0.0.1:8000",
+    which exists only on a developer machine -- every Discord sign-in from a
+    packaged build pointed at a dead local server.
+    """
+
+    def test_no_localhost_fallback(self):
+        src = _worker_source()
+        # Ignore comments: the explanation of what the old code did mentions
+        # the address. Only live code matters.
+        code_only = "\n".join(
+            line for line in src.splitlines()
+            if line.strip() and not line.strip().startswith("#"))
+        assert "127.0.0.1" not in code_only, (
+            "a packaged build has no local auth server; the fallback must "
+            "come from config.app_config.AUTH_API_URL")
+
+    def test_uses_configured_api_base(self):
+        src = _worker_source()
+        assert "AUTH_API_URL" in src
+
+    def test_configured_base_is_the_production_host(self):
+        root = os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))
+        sys.path.insert(0, root)
+        try:
+            from config.app_config import AUTH_API_URL
+        finally:
+            sys.path.pop(0)
+        assert AUTH_API_URL.startswith("https://")
+        assert "onrender.com" in AUTH_API_URL or "localhost" not in AUTH_API_URL
 
 
 class TestSessionEntitlement:
