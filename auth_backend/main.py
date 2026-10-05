@@ -614,17 +614,65 @@ def _discord_user(access_token: str) -> dict:
         return {}
 
 
-def _discord_page(title: str, body: str, link_url: str = "",
-                  link_label: str = "") -> HTMLResponse:
-    """Tiny brand-consistent page shown in the browser at the end of login.
-    Auto-redirects back to the web admin panel (the SPA at /) so the login
-    cookie takes effect without the user touching anything.
+#: Discord OAuth2 error codes -> what the user is actually told. A single flat
+#: "Discord authentication failed" for every case made real faults
+#: (expired link, wrong app credentials, already-used code) indistinguishable.
+_DISCORD_ERROR_REASONS = (
+    ("invalid_grant",
+     "This sign-in link has already been used or has expired. Close this "
+     "window and start again from the app."),
+    ("unauthorized_client",
+     "The server's Discord app is not allowed to complete sign-in. This is a "
+     "server setup problem - please contact support."),
+    ("invalid_client",
+     "The server's Discord app credentials are incorrect. This is a server "
+     "setup problem - please contact support."),
+    ("access_denied",
+     "You cancelled the authorization, so nothing was changed."),
+    ("unsupported_grant_type",
+     "The server sent an unsupported request to Discord. Please contact "
+     "support."),
+    ("invalid_request",
+     "Discord rejected the sign-in request. Please start again from the app."),
+)
 
-    When ``link_url`` is given the redirect is suppressed - a 1.4s bounce to
-    "/" would hide the link before the user could click it."""
+
+def _discord_failure_reason(token_body: dict) -> str:
+    """Plain-English reason from the token exchange result.
+
+    ``_discord_exchange_user`` puts the raw failure in ``__error__``; the
+    callback used to throw that away and always said "authentication failed".
+    """
+    err = str((token_body or {}).get("__error__") or "").strip()
+    if not err:
+        return "Discord did not return a sign-in token. Please try again."
+    low = err.lower()
+    for code, reason in _DISCORD_ERROR_REASONS:
+        if code in low:
+            return reason
+    if "timed out" in low or "connection" in low or "getaddrinfo" in low \
+            or "urlopen" in low or "ssl" in low:
+        return ("Could not reach Discord from the server. Check the server's "
+                "internet connection and try again.")
+    return "Discord refused the sign-in. Please try again."
+
+
+def _discord_page(title: str, body: str, link_url: str = "",
+                  link_label: str = "", auto_redirect: bool = True) -> HTMLResponse:
+    """Tiny brand-consistent page shown in the browser at the end of login.
+
+    ``auto_redirect`` bounces to the web admin panel after 1.4s so an admin
+    login cookie takes effect without touching anything. End-user sign-in from
+    the desktop app must pass False: the bounce dragged users out of the
+    result screen and into Max Manager, so a "Connected" or "Failed" verdict
+    was gone before it could be read.
+
+    When ``link_url`` is given the redirect is suppressed regardless - a 1.4s
+    bounce would hide the link before the user could click it."""
     e_title = html.escape(title)
     e_body = html.escape(body)
     link_html = ""
+    script = ""
     if link_url and link_label:
         link_html = (
             '<p><a href="%s" target="_blank" rel="noopener" '
@@ -632,9 +680,14 @@ def _discord_page(title: str, body: str, link_url: str = "",
             'background:#e6cc92;color:#061a1d;text-decoration:none;'
             'font-weight:600">%s</a></p>'
             % (html.escape(link_url, quote=True), html.escape(link_label)))
-    else:
+    elif auto_redirect:
         link_html = ('<p><span class="sub">'
                      '\u2192 taking you back to the admin panel\u2026</span></p>')
+        script = ("<script>setTimeout(function(){location.href='/'},1400)"
+                  "</script>")
+    else:
+        link_html = ('<p><span class="sub">You can close this window and '
+                     'return to the app.</span></p>')
     return HTMLResponse(f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{e_title}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -648,7 +701,7 @@ p{{color:#8ea3a0;line-height:1.6}}
 .sub{{font-size:12px;color:#8ea3a0;margin-top:24px}}
 </style></head><body><div class="card">
 <h1>{e_title}</h1><p>{e_body}</p>{link_html}
-</div><script>setTimeout(function(){{location.href='/'}},1400);</script>
+</div>{script}
 </body></html>""")
 
 
@@ -1732,22 +1785,34 @@ def auth_discord_start(request: Request):
 def auth_discord_callback(request: Request, code: str = "", state: str = ""):
     entry = _discord_user_state_get(state)
     if entry is None:
-        return _discord_page("Link expired", "This link is no longer valid.")
+        return _discord_page("Link expired",
+                             "This sign-in link is no longer valid. Close "
+                             "this window and start again from the app.",
+                             auto_redirect=False)
     if not code:
         _discord_user_state_set(state, status="denied")
-        return _discord_page("Cancelled", "Discord authorization was cancelled.")
+        return _discord_page("Cancelled",
+                             "Discord authorization was cancelled, so nothing "
+                             "was changed.", auto_redirect=False)
     redirect_uri = DISCORD_REDIRECT_USER or (str(request.base_url).rstrip("/") + "/auth/discord/callback")
     token_body = _discord_exchange_user(code, redirect_uri)
     access_token = token_body.get("access_token")
     if not access_token:
-        _discord_user_state_set(state, status="denied")
-        return _discord_page("Failed", "Discord authentication failed.")
+        reason = _discord_failure_reason(token_body)
+        logger.warning("discord: sign-in rejected uid-unknown %s | raw=%s",
+                       reason, str(token_body.get("__error__"))[:200])
+        _discord_user_state_set(state, status="error", reason=reason)
+        return _discord_page("Sign-in failed", reason, auto_redirect=False)
     user = _discord_user(access_token)
     uid = str(user.get("id") or "")
     username = user.get("username") or uid or "Unknown"
     if not uid:
-        _discord_user_state_set(state, status="denied")
-        return _discord_page("Failed", "Could not verify Discord identity.")
+        reason = ("Discord accepted the sign-in but returned no account id, "
+                  "so the identity could not be verified. Please try again.")
+        logger.warning("discord: /users/@me returned no id | raw=%s",
+                       str(user)[:200])
+        _discord_user_state_set(state, status="error", reason=reason)
+        return _discord_page("Sign-in failed", reason, auto_redirect=False)
     # Find or create account. Everything from here is wrapped so a database or
     # bot hiccup can never leak a raw server_error to the desktop app.
     try:
@@ -1774,6 +1839,7 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
             account_id = existing.get("account_id") or ""
             region = existing.get("region") or ""
             status = existing.get("status") or "active"
+            already_linked = bool(license_key)
             event_type = "DISCORD_LINKED"
             _DB.log_discord_registration(uid, username, account_id, region, current_tier, license_key, event_type=event_type, server_membership=server_membership, discord_verified=1)
             _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=account_id)
@@ -1784,6 +1850,7 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
             region = acc.get("region") or ""
             status = acc.get("status") or "active"
             current_tier = acc.get("current_tier") or "foundation"
+            already_linked = False
             event_type = "ACCOUNT_CREATED"
             _DB.log_discord_registration(uid, username, account_id, "", "foundation", None, event_type=event_type, server_membership=server_membership, discord_verified=1)
             _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=account_id)
@@ -1799,19 +1866,31 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
                     uid, username, account_id, current_tier,
                     server_membership, staff_notified)
         if server_membership != "CONFIRMED":
-            # Do not let a failed join look like a completed signup: hand the
-            # user the invite so they can finish it themselves.
+            # Membership is a hard requirement, so never let this look like a
+            # finished signup. Hand over the invite and say plainly that they
+            # are not in the server yet.
             invite = discord_bot_invite_url()
-            body = ("Discord is connected, but we could not add you to the "
-                    "server automatically. Use the button below to join.")
-            return _discord_page("Connected", body,
-                                 link_url=invite,
-                                 link_label="Join the Maximum Optimizations server")
-        return _discord_page("Connected", "Discord successfully connected. You can close this window.")
+            body = ("Your account is connected, but you are NOT in the "
+                    "Maximum Optimizations server yet. Join with the button "
+                    "below, then return to the app.")
+            return _discord_page("Join required", body, link_url=invite,
+                                 link_label="Join the Maximum Optimizations server",
+                                 auto_redirect=False)
+        if already_linked:
+            body = ("You are already signed in. Your %s access is active and "
+                    "you are in the Maximum Optimizations server."
+                    % current_tier.upper())
+            return _discord_page("Already connected", body, auto_redirect=False)
+        body = ("You are connected and have been added to the Maximum "
+                "Optimizations server. You can close this window.")
+        return _discord_page("Connected", body, auto_redirect=False)
     except Exception:  # noqa: BLE001
         logger.exception("discord: user callback failed after identity verification")
         _discord_user_state_set(state, status="error")
-        return _discord_page("Failed", "We could not finish setting up your account. Please try again.")
+        return _discord_page("Sign-in failed",
+                             "We could not finish setting up your account "
+                             "after verifying your Discord identity. Please "
+                             "try again.", auto_redirect=False)
 
 @app.get("/auth/discord/poll/{state}")
 def auth_discord_poll(state: str):
@@ -1820,6 +1899,11 @@ def auth_discord_poll(state: str):
         return {"ok": True, "status": "expired"}
     if entry.get("status") == "ok":
         return {"ok": True, "status": "ok", "discord_id": entry.get("discord_id"), "username": entry.get("username"), "account_id": entry.get("account_id")}
+    if entry.get("status") == "error":
+        # Carry the real reason so the app can say why, not just "failed".
+        return {"ok": True, "status": "error",
+                "reason": entry.get("reason")
+                or "Sign-in could not be completed."}
     if entry.get("status") == "denied":
         return {"ok": True, "status": "denied"}
     return {"ok": True, "status": "waiting"}
