@@ -192,8 +192,10 @@ class TestBotCallErrorHandling:
         m.DISCORD_BOT_TOKEN = "t"
 
         class R:
-            def __init__(self, code): self.code = code
+            def __init__(self, code, payload=b""):
+                self.code, self.payload = code, payload
             def getcode(self): return self.code
+            def read(self): return self.payload
             def __enter__(self): return self
             def __exit__(self, *a): return False
 
@@ -202,7 +204,9 @@ class TestBotCallErrorHandling:
             seen["method"] = req.get_method()
             seen["url"] = req.full_url
             seen["body"] = req.data.decode()
-            return R(201)
+            r = R(201)
+            r.payload = b'{"user":{"id":"U1"},"joined_at":"now"}'
+            return r
         monkeypatch.setattr(m.urllib.request, "urlopen", ok)
         assert m.discord_bot_add_member("G1", "U1", "user_token") is True
         assert seen["method"] == "PUT"
@@ -210,9 +214,141 @@ class TestBotCallErrorHandling:
         # the user's access token must be forwarded for guilds.join
         assert "user_token" in seen["body"]
 
-        monkeypatch.setattr(m.urllib.request, "urlopen", lambda req, timeout=None: R(204))
+        # 204 is "already a member" and carries no body, so membership has to
+        # be confirmed with a follow-up lookup rather than assumed.
+        def already(req, timeout=None):
+            r = R(204)
+            r.payload = b""
+            return r
+        monkeypatch.setattr(m.urllib.request, "urlopen", already)
+        monkeypatch.setattr(m, "discord_bot_is_member",
+                            lambda g, u: True)
         assert m.discord_bot_add_member("G1", "U1", "user_token") is True, \
-            "204 means already a member - still success"
+            "204 plus a confirmed member lookup is success"
+
+
+class TestMembershipIsVerifiedNotAssumed:
+    """A 2xx from add-to-server is not proof the user joined the guild.
+
+    Discord answers 204 with an empty body when the member already existed,
+    and a silent no-op is indistinguishable from success at the status level.
+    Treating "no exception raised" as joined made the staff card print
+    ``Server Membership: CONFIRMED`` for a user who was never added.
+    """
+
+    def _bot(self):
+        m = _load()
+        m.DISCORD_BOT_TOKEN = "t"
+        return m
+
+    def test_201_with_member_body_needs_no_lookup(self, monkeypatch):
+        m = self._bot()
+
+        class R:
+            def __init__(self, code, payload):
+                self.code, self.payload = code, payload
+
+            def getcode(self): return self.code
+
+            def read(self): return self.payload
+
+            def __enter__(self): return self
+
+            def __exit__(self, *a): return False
+
+        calls = []
+        monkeypatch.setattr(m.urllib.request, "urlopen",
+                            lambda req, timeout=None: calls.append(req.get_method())
+                            or R(201, b'{"user":{"id":"U1"}}'))
+        monkeypatch.setattr(m, "discord_bot_is_member",
+                            lambda g, u: pytest.fail("must trust a 201 body"))
+        assert m.discord_bot_add_member("G1", "U1", "tok") is True
+        assert calls == ["PUT"]
+
+    def test_204_but_user_not_in_guild_is_a_failure(self, monkeypatch):
+        m = self._bot()
+
+        class R:
+            def __init__(self, code, payload):
+                self.code, self.payload = code, payload
+
+            def getcode(self): return self.code
+
+            def read(self): return self.payload
+
+            def __enter__(self): return self
+
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(m.urllib.request, "urlopen",
+                            lambda req, timeout=None: R(204, b""))
+        monkeypatch.setattr(m, "discord_bot_is_member", lambda g, u: False)
+        assert m.discord_bot_add_member("G1", "U1", "tok") is False, \
+            "204 with Discord saying 404 means the join did not happen"
+
+    def test_unverifiable_membership_is_not_claimed(self, monkeypatch):
+        m = self._bot()
+
+        class R:
+            def __init__(self, code, payload):
+                self.code, self.payload = code, payload
+
+            def getcode(self): return self.code
+
+            def read(self): return self.payload
+
+            def __enter__(self): return self
+
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(m.urllib.request, "urlopen",
+                            lambda req, timeout=None: R(204, b""))
+        monkeypatch.setattr(m, "discord_bot_is_member", lambda g, u: None)
+        assert m.discord_bot_add_member("G1", "U1", "tok") is False, \
+            "we could not check, so we must not report CONFIRMED"
+
+
+class TestIsMemberLookup:
+    def test_200_means_member(self, monkeypatch):
+        m = _load()
+        m.DISCORD_BOT_TOKEN = "t"
+
+        class R:
+            def getcode(self): return 200
+
+            def __enter__(self): return self
+
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(m.urllib.request, "urlopen",
+                            lambda req, timeout=None: R())
+        assert m.discord_bot_is_member("G1", "U1") is True
+
+    def test_404_means_not_a_member(self, monkeypatch):
+        m = _load()
+        m.DISCORD_BOT_TOKEN = "t"
+
+        def raise404(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {},
+                                         io.BytesIO(b'{"message":"Unknown Member"}'))
+        monkeypatch.setattr(m.urllib.request, "urlopen", raise404)
+        assert m.discord_bot_is_member("G1", "U1") is False
+
+    def test_other_errors_are_unknown_not_false(self, monkeypatch):
+        m = _load()
+        m.DISCORD_BOT_TOKEN = "t"
+
+        def raise500(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 500, "Server Error", {},
+                                         io.BytesIO(b'{"message":"boom"}'))
+        monkeypatch.setattr(m.urllib.request, "urlopen", raise500)
+        assert m.discord_bot_is_member("G1", "U1") is None, \
+            "a server error must not be reported as 'not in the guild'"
+
+    def test_no_token_is_unknown(self):
+        m = _load()
+        m.DISCORD_BOT_TOKEN = ""
+        assert m.discord_bot_is_member("G1", "U1") is None
 
     def test_add_member_logs_and_fails_loudly_on_403(self, monkeypatch, caplog):
         m = _load()
@@ -236,6 +372,7 @@ class TestBotCallErrorHandling:
 
         class R:
             def getcode(self): return 200
+            def read(self): return b'{"id":"1"}'
             def __enter__(self): return self
             def __exit__(self, *a): return False
 

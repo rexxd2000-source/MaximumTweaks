@@ -96,11 +96,14 @@ class TestBotUserAgent:
         seen = {}
 
         class FakeResp:
+            def __init__(self, body=b""):
+                self.body = body
+
             def getcode(self):
                 return 201
 
             def read(self):
-                return b""
+                return self.body
 
             def __enter__(self):
                 return self
@@ -110,12 +113,15 @@ class TestBotUserAgent:
 
         def fake_urlopen(req, timeout=None):
             seen["ua"] = req.get_header("User-agent")
-            return FakeResp()
+            # A 201 whose body carries the member object is trusted directly,
+            # so add_member skips the membership lookup this test does not stub.
+            return FakeResp(b'{"user":{"id":"111"}}')
 
         real = m.urllib.request.urlopen
         m.urllib.request.urlopen = fake_urlopen
         try:
             m.DISCORD_BOT_TOKEN = "token-for-test"
+
             assert m.discord_bot_add_member("999", "111", "tok") is True
         finally:
             m.urllib.request.urlopen = real

@@ -2073,7 +2073,11 @@ def _discord_bot_headers():
 
 def _discord_bot_call(method: str, url: str, body: dict | None = None):
     """Shared bot REST call. Returns (ok, status, detail) and always logs the
-    reason on failure - silent ``False`` returns were impossible to debug."""
+    reason on failure - silent ``False`` returns were impossible to debug.
+
+    ``detail`` is the parsed JSON body on success (or ``None`` for an empty
+    204) and an error string on failure, so callers that need to inspect the
+    response can, instead of inferring the outcome from the status alone."""
     headers = _discord_bot_headers()
     if not headers:
         logger.warning("discord: bot call skipped, DISCORD_BOT_TOKEN not set")
@@ -2082,7 +2086,17 @@ def _discord_bot_call(method: str, url: str, body: dict | None = None):
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
-            return r.getcode() in (200, 201, 204), r.getcode(), ""
+            # The body matters: PUT /guilds/{id}/members/{user} answers 201
+            # when the member was added and 204 when they were already there.
+            # Discarding it made every 2xx look like a successful join.
+            raw = r.read().decode("utf-8", "replace")
+            parsed = None
+            if raw.strip():
+                try:
+                    parsed = json.loads(raw)
+                except ValueError:
+                    parsed = None
+            return r.getcode() in (200, 201, 204), r.getcode(), parsed
     except urllib.error.HTTPError as e:
         detail = _discord_http_error(e)
         # An edge refusal is NOT a permissions problem. Reporting it as one
@@ -2106,13 +2120,52 @@ def _discord_bot_call(method: str, url: str, body: dict | None = None):
         return False, 0, str(e)[:200]
 
 
+def discord_bot_is_member(guild_id: str, user_id: str) -> bool | None:
+    """Ask Discord directly whether a user is in the guild.
+
+    Returns True/False, or None when the question could not be answered
+    (no bot token, bad ids, or Discord unreachable). None is deliberately
+    distinct from False: "we could not check" must never be reported to
+    staff as "not in the server".
+    """
+    if not DISCORD_BOT_TOKEN or not guild_id or not user_id:
+        return None
+    headers = _discord_bot_headers()
+    if not headers:
+        return None
+    req = urllib.request.Request(
+        f"{_DISCORD_API}/v10/guilds/{guild_id}/members/{user_id}",
+        headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            if r.getcode() == 200:
+                return True
+            return None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # Discord's authoritative "this user is not in the guild".
+            return False
+        logger.warning("discord: membership check for %s failed (HTTP %s): %s",
+                       user_id, e.code, _discord_http_error(e)[:150])
+        return None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("discord: membership check for %s errored: %s",
+                       user_id, str(e)[:150])
+        return None
+
+
 def discord_bot_add_member(guild_id: str, user_id: str,
                            access_token: str = "") -> bool:
-    """Add an authorized user to our guild.
+    """Add an authorized user to our guild, then verify they are actually in it.
 
-    Discord returns 201 when the member was added and 204 when they were
-    already present - both count as success. 403 usually means the bot is not
-    in the guild or the token was not granted the ``guilds.join`` scope.
+    A 2xx from PUT /guilds/{id}/members/{user} is NOT proof of membership.
+    Discord answers 201 when it added the member and 204 when the user was
+    already present, and a 204 with an empty body gives us nothing to inspect.
+    Treating "no exception" as success made the staff card claim
+    ``Server Membership: CONFIRMED`` for a user who was never added.
+
+    So: attempt the add, then ask Discord whether the member exists. Only a
+    confirmed membership returns True.
     """
     if not DISCORD_BOT_TOKEN or not guild_id or not user_id:
         return False
@@ -2124,7 +2177,27 @@ def discord_bot_add_member(guild_id: str, user_id: str,
     if not ok:
         logger.warning("discord: add-to-server failed for user %s (%s)",
                        user_id, detail or status)
-    return ok
+        return False
+
+    # The add was accepted. A 201 carries the member object; a 204 means
+    # "already a member", which is also fine but must be verified because an
+    # empty 204 is indistinguishable from a silent no-op at the status level.
+    if status == 201 and isinstance(detail, dict) and detail.get("user"):
+        logger.info("discord: added user %s to guild %s", user_id, guild_id)
+        return True
+
+    verified = discord_bot_is_member(guild_id, user_id)
+    if verified is True:
+        logger.info("discord: user %s is a member of guild %s", user_id, guild_id)
+        return True
+    if verified is False:
+        logger.error("discord: add-to-server reported success for user %s but "
+                     "Discord says they are NOT in guild %s", user_id, guild_id)
+        return False
+    # Could not verify. Do not claim membership we could not confirm.
+    logger.warning("discord: could not verify membership for user %s after a "
+                   "%s from add-to-server; reporting unconfirmed", user_id, status)
+    return False
 
 
 def discord_bot_send_message(channel_id: str, content: str) -> bool:
