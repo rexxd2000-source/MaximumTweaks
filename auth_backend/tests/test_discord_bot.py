@@ -271,3 +271,42 @@ class TestBotCallErrorHandling:
 
 
 import urllib.error  # noqa: E402  (used by the 403 test)
+
+class TestClientIdMismatchIsVisible:
+    """A stale DISCORD_CLIENT_ID sends admin login to a different Discord
+    application, which fails as "invalid redirect_uri" and looks unrelated."""
+
+    def _check(self, m, admin_id, user_id, monkeypatch=None):
+        if monkeypatch is not None:
+            monkeypatch.setenv("DISCORD_CLIENT_ID", admin_id)
+            monkeypatch.delenv("DISCORD_CLIENT_ID", raising=False) \
+                if admin_id == "" else None
+        m.DISCORD_CLIENT_ID_USER = user_id
+        m.DISCORD_BOT_TOKEN = ""
+        return m.discord_bot_self_check()
+
+    def test_reports_both_client_ids(self, monkeypatch):
+        m = _load()
+        out = self._check(m, "111", "222", monkeypatch)
+        assert out["admin_login_client_id"] == "111"
+        assert out["user_login_client_id"] == "222"
+
+    def test_mismatch_is_flagged_as_a_problem(self, monkeypatch):
+        m = _load()
+        out = self._check(m, "111", "222", monkeypatch)
+        joined = " ".join(out["problems"])
+        assert "does not match" in joined
+        assert "222" in joined
+
+    def test_matching_ids_are_not_flagged(self, monkeypatch):
+        m = _load()
+        out = self._check(m, "222", "222", monkeypatch)
+        assert not [p for p in out["problems"] if "does not match" in p]
+
+    def test_unset_admin_id_is_not_flagged(self, monkeypatch):
+        """DISCORD_CLIENT_ID is optional - the admin flow falls back to the
+        request host, so its absence is not a mismatch."""
+        m = _load()
+        out = self._check(m, "", "222", monkeypatch)
+        assert out["admin_login_client_id"] == ""
+        assert not [p for p in out["problems"] if "does not match" in p]

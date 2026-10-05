@@ -2197,6 +2197,10 @@ def discord_bot_self_check() -> dict:
         "channel_id_configured": bool(DISCORD_REGISTRATION_CHANNEL_ID),
         "user_client_configured": bool(DISCORD_CLIENT_ID_USER
                                        and DISCORD_CLIENT_SECRET_USER),
+        # Surfaced so a stale DISCORD_CLIENT_ID is visible instead of
+        # silently sending admin login to a different Discord application.
+        "user_login_client_id": DISCORD_CLIENT_ID_USER or "",
+        "admin_login_client_id": _discord_config()["client_id"],
         "permissions_decimal": DISCORD_BOT_PERMISSIONS,
         "invite_url": discord_bot_invite_url(),
         "bot_reachable": False,
@@ -2216,6 +2220,18 @@ def discord_bot_self_check() -> dict:
     if not out["user_client_configured"]:
         out["problems"].append("DISCORD_CLIENT_ID_USER / "
                                "DISCORD_CLIENT_SECRET_USER are not set.")
+    # The admin panel and the end-user sign-in should authorise through the
+    # same Discord application. When they do not, admin login breaks with
+    # "invalid redirect_uri" for reasons that look nothing like the cause.
+    if (out["user_login_client_id"] and out["admin_login_client_id"]
+            and out["user_login_client_id"] != out["admin_login_client_id"]):
+        out["problems"].append(
+            "DISCORD_CLIENT_ID (%s) does not match DISCORD_CLIENT_ID_USER "
+            "(%s) - admin login is pointed at a different Discord "
+            "application. Set DISCORD_CLIENT_ID to %s and restart the "
+            "service."
+            % (out["admin_login_client_id"], out["user_login_client_id"],
+               out["user_login_client_id"]))
     if not out["token_configured"]:
         return out
 
