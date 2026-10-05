@@ -606,12 +606,27 @@ def _discord_user(access_token: str) -> dict:
         return {}
 
 
-def _discord_page(title: str, body: str) -> HTMLResponse:
+def _discord_page(title: str, body: str, link_url: str = "",
+                  link_label: str = "") -> HTMLResponse:
     """Tiny brand-consistent page shown in the browser at the end of login.
     Auto-redirects back to the web admin panel (the SPA at /) so the login
-    cookie takes effect without the user touching anything."""
+    cookie takes effect without the user touching anything.
+
+    When ``link_url`` is given the redirect is suppressed - a 1.4s bounce to
+    "/" would hide the link before the user could click it."""
     e_title = html.escape(title)
     e_body = html.escape(body)
+    link_html = ""
+    if link_url and link_label:
+        link_html = (
+            '<p><a href="%s" target="_blank" rel="noopener" '
+            'style="display:inline-block;padding:12px 24px;border-radius:8px;'
+            'background:#e6cc92;color:#061a1d;text-decoration:none;'
+            'font-weight:600">%s</a></p>'
+            % (html.escape(link_url, quote=True), html.escape(link_label)))
+    else:
+        link_html = ('<p><span class="sub">'
+                     '\u2192 taking you back to the admin panel\u2026</span></p>')
     return HTMLResponse(f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{e_title}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -624,10 +639,57 @@ h1{{font-family:Georgia,serif;font-weight:400;color:#e6cc92;margin:0 0 12px}}
 p{{color:#8ea3a0;line-height:1.6}}
 .sub{{font-size:12px;color:#8ea3a0;margin-top:24px}}
 </style></head><body><div class="card">
-<h1>{e_title}</h1><p>{e_body}<br><span class="sub">
-\u2192 taking you back to the admin panel\u2026</span></p>
+<h1>{e_title}</h1><p>{e_body}</p>{link_html}
 </div><script>setTimeout(function(){{location.href='/'}},1400);</script>
 </body></html>""")
+
+
+def _discord_registration_message(*, event_type: str, username: str,
+                                 discord_id: str, account_id: str,
+                                 region: str = "", tier: str = "foundation",
+                                 status: str = "",
+                                 server_membership: str = "UNKNOWN") -> str:
+    """Single source of truth for the staff-channel audit line.
+
+    The end-user callback and /auth/discord/register-event both post through
+    this so the two paths cannot drift apart."""
+    return ("\u2501" * 20 + "\n"
+            "MAXIMUM OPTIMIZATIONS\n"
+            f"{event_type}\n"
+            + "\u2501" * 20 + "\n\n"
+            f"Username: {username or 'Unknown'}\n"
+            f"Discord ID: {discord_id}\n"
+            f"Region: {region or 'N/A'}\n"
+            f"Account ID: {account_id or 'N/A'}\n"
+            f"Tier: {(tier or 'foundation').upper()}\n"
+            f"Status: {status or 'UNKNOWN'}\n\n"
+            "Discord: Verified\n"
+            f"Server Membership: {server_membership or 'UNKNOWN'}\n\n"
+            + "\u2501" * 20)
+
+
+def _discord_notify_staff(*, event_type: str, username: str, discord_id: str,
+                          account_id: str, region: str = "",
+                          tier: str = "foundation", status: str = "",
+                          server_membership: str = "UNKNOWN") -> bool:
+    """Post the audit line. Never raises - a failed staff ping must not turn a
+    successful login into an error page."""
+    if not DISCORD_REGISTRATION_CHANNEL_ID or not DISCORD_BOT_TOKEN:
+        logger.warning("discord: staff channel not configured, skipped ping "
+                       "for %s (channel=%s token=%s)", discord_id,
+                       bool(DISCORD_REGISTRATION_CHANNEL_ID),
+                       bool(DISCORD_BOT_TOKEN))
+        return False
+    sent = discord_bot_send_message(
+        DISCORD_REGISTRATION_CHANNEL_ID,
+        _discord_registration_message(
+            event_type=event_type, username=username,
+            discord_id=discord_id, account_id=account_id, region=region,
+            tier=tier, status=status, server_membership=server_membership))
+    if not sent:
+        logger.warning("discord: staff notification not delivered for %s",
+                       discord_id)
+    return sent
 
 
 @app.post("/admin/discord/start")
@@ -1687,6 +1749,11 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
         if DISCORD_GUILD_ID:
             joined = discord_bot_add_member(DISCORD_GUILD_ID, uid, access_token)
             server_membership = "CONFIRMED" if joined else "PENDING"
+            logger.info("discord: join attempt uid=%s username=%s -> %s",
+                        uid, username, server_membership)
+        else:
+            logger.warning("discord: DISCORD_GUILD_ID not set, uid=%s was "
+                           "not added to any server", uid)
         if existing:
             # Already known: keep the paid entitlement we already granted.
             license_key = existing.get("license_key")
@@ -1696,14 +1763,42 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
                 if lic:
                     lt = lic.get("tier") or current_tier
                     current_tier = lt
-            _DB.log_discord_registration(uid, username, existing.get("account_id"), existing.get("region") or "", current_tier, license_key, event_type="DISCORD_LINKED", server_membership=server_membership, discord_verified=1)
-            _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=existing.get("account_id"))
+            account_id = existing.get("account_id") or ""
+            region = existing.get("region") or ""
+            status = existing.get("status") or "active"
+            event_type = "DISCORD_LINKED"
+            _DB.log_discord_registration(uid, username, account_id, region, current_tier, license_key, event_type=event_type, server_membership=server_membership, discord_verified=1)
+            _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=account_id)
         else:
             # Brand new verified Discord user -> Foundation entitlement.
             acc = _DB.create_discord_account(discord_id=uid, discord_username=username, region="", tier="foundation")
             account_id = acc.get("account_id") or ("MO-" + secrets.token_hex(3).upper())
-            _DB.log_discord_registration(uid, username, account_id, "", "foundation", None, event_type="ACCOUNT_CREATED", server_membership=server_membership, discord_verified=1)
+            region = acc.get("region") or ""
+            status = acc.get("status") or "active"
+            current_tier = acc.get("current_tier") or "foundation"
+            event_type = "ACCOUNT_CREATED"
+            _DB.log_discord_registration(uid, username, account_id, "", "foundation", None, event_type=event_type, server_membership=server_membership, discord_verified=1)
             _discord_user_state_set(state, status="ok", discord_id=uid, username=username, account_id=account_id)
+        # The audit line goes out from here too, not only from
+        # /register-event: that is why staff chat stayed empty after a
+        # successful "Connected" login.
+        staff_notified = _discord_notify_staff(
+            event_type=event_type, username=username, discord_id=uid,
+            account_id=account_id, region=region, tier=current_tier,
+            status=status, server_membership=server_membership)
+        logger.info("discord: login complete uid=%s username=%s account=%s "
+                    "tier=%s membership=%s staff_notified=%s",
+                    uid, username, account_id, current_tier,
+                    server_membership, staff_notified)
+        if server_membership != "CONFIRMED":
+            # Do not let a failed join look like a completed signup: hand the
+            # user the invite so they can finish it themselves.
+            invite = discord_bot_invite_url()
+            body = ("Discord is connected, but we could not add you to the "
+                    "server automatically. Use the button below to join.")
+            return _discord_page("Connected", body,
+                                 link_url=invite,
+                                 link_label="Join the Maximum Optimizations server")
         return _discord_page("Connected", "Discord successfully connected. You can close this window.")
     except Exception:  # noqa: BLE001
         logger.exception("discord: user callback failed after identity verification")
@@ -1759,11 +1854,16 @@ def auth_discord_register_event(payload: dict = Body(default={})):
         reg = acc.get("region") if acc else ""
         tier = acc.get("current_tier") if acc else "foundation"
         status = acc.get("status") if acc else "UNKNOWN"
-        msg = f"━━━━━━━━━━━━━━━━━━━━\nMAXIMUM OPTIMIZATIONS\n{event_type}\n━━━━━━━━━━━━━━━━━━━━\n\nUsername: {uname}\nDiscord ID: {discord_id}\nRegion: {reg or 'N/A'}\nAccount ID: {acc_id}\nTier: {tier.upper()}\nStatus: {status}\n\nDiscord: Verified\nServer Membership: {payload.get('server_membership','Unknown')}\n\n━━━━━━━━━━━━━━━━━━━━"
-        sent = discord_bot_send_message(DISCORD_REGISTRATION_CHANNEL_ID, msg)
-        if not sent:
-            logger.warning("discord: staff notification not delivered for %s",
-                           discord_id)
+        sent = _discord_notify_staff(
+            event_type=event_type, username=uname or "Unknown",
+            discord_id=discord_id, account_id=acc_id or "N/A", region=reg or "",
+            tier=tier, status=status,
+            server_membership=str(payload.get("server_membership") or "Unknown"))
+        msg = _discord_registration_message(
+            event_type=event_type, username=uname or "Unknown",
+            discord_id=discord_id, account_id=acc_id or "N/A", region=reg or "",
+            tier=tier, status=status,
+            server_membership=str(payload.get("server_membership") or "Unknown"))
     return {"ok": True, "logged": bool(log), "notified": sent}
 
 @app.get("/auth/discord/session")
@@ -1795,7 +1895,7 @@ DISCORD_PERM_SEND_MESSAGES = 1 << 11      # 2048
 DISCORD_PERM_READ_HISTORY = 1 << 16       # 65536 (nice-to-have)
 DISCORD_BOT_PERMISSIONS = (DISCORD_PERM_VIEW_CHANNEL
                            | DISCORD_PERM_SEND_MESSAGES
-                           | DISCORD_PERM_READ_HISTORY)   # = 77824
+                           | DISCORD_PERM_READ_HISTORY)   # = 68608
 
 
 def discord_bot_invite_url() -> str:
