@@ -527,23 +527,58 @@ class LicenseDiscordWorker(QThread):
             webbrowser.open(d["url"])
             state = d["state"]
             # poll
-            for _ in range(60):  # ~30 seconds
-                time.sleep(0.5)
+            #
+            # 30s was far too short: picking an account, 2FA and the redirect
+            # can take minutes, and bailing early showed a bare "timed out"
+            # that looked like a broken button.
+            deadline = time.monotonic() + 600  # 10 minutes
+            while time.monotonic() < deadline:
+                time.sleep(1.0)
                 try:
                     preq = urllib.request.Request(base + f"/auth/discord/poll/{urllib.parse.quote(state)}")
-                    with urllib.request.urlopen(preq, timeout=5) as presp:
+                    with urllib.request.urlopen(preq, timeout=10) as presp:
                         pd = json.loads(presp.read().decode("utf-8"))
                     if pd.get("status") == "ok":
-                        # get session
-                        sess = {"license": "FOUNDATION-DISCORD", "owner": pd.get("username") or "Discord User", "plan": "foundation", "tier": "foundation", "customer": pd.get("username") or ""}
+                        # The heartbeat validates this entitlement against
+                        # the server every minute, so it has to be something
+                        # the server can resolve. The old literal
+                        # "FOUNDATION-DISCORD" came back invalid_license,
+                        # which cleared the session and relocked the app about
+                        # a minute after a good sign-in.
+                        discord_id = str(pd.get("discord_id") or "").strip()
+                        sess = {
+                            "license": f"DISCORD:{discord_id}",
+                            "discord_id": discord_id,
+                            "account_id": pd.get("account_id") or "",
+                            "owner": pd.get("username") or "Discord User",
+                            "plan": "discord",
+                            "tier": "foundation",
+                            "customer": pd.get("username") or "",
+                        }
                         license_mgr.set_session(sess)
                         self.done.emit("ok", "", sess)
                         return
+                    # The server sends a specific reason; surface it instead
+                    # of flattening every failure into "cancelled/expired".
+                    reason = pd.get("reason") or ""
+                    if pd.get("status") == "error":
+                        self.done.emit(
+                            "error",
+                            reason or "Discord sign-in could not be completed.",
+                            None)
+                        return
                     if pd.get("status") in ("denied", "expired"):
-                        self.done.emit("error", "Discord login cancelled/expired", None)
+                        self.done.emit(
+                            "error",
+                            "Discord login was cancelled or the link expired. "
+                            "Please try again.",
+                            None)
                         return
                 except Exception:
                     pass
-            self.done.emit("error", "Discord login timed out", None)
+            self.done.emit(
+                "error",
+                "Discord login timed out after 10 minutes. Please try again.",
+                None)
         except Exception as e:
             self.done.emit("error", str(e), None)

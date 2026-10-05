@@ -1193,6 +1193,60 @@ def deactivate(payload: DeactivateRequest):
 CHECKIN_INTERVAL_S = 300
 
 
+#: Discord-authenticated sessions check in with a synthetic entitlement of the
+#: form ``DISCORD:<discord_id>`` instead of a licence key. Without this the
+#: minute-by-minute heartbeat posted the literal placeholder string the
+#: desktop client used to store, the server answered ``invalid_license``, and
+#: the client cleared the session and relocked about a minute after a
+#: perfectly good sign-in.
+_DISCORD_ENTITLEMENT_PREFIX = "DISCORD:"
+
+
+def _discord_checkin(raw_key: str, payload: "CheckinRequest") -> dict:
+    """Heartbeat for a Discord-backed session. The account row is the
+    entitlement, so a suspension there locks the app on the next check-in."""
+    discord_id = raw_key.split(":", 1)[-1].strip()
+    if not discord_id.isdigit():
+        raise _err("invalid_license", "Malformed Discord entitlement.")
+    device_id = (payload.device_id or "").strip()
+    if len(device_id) < 16:
+        raise _err("invalid_device",
+                   "Device fingerprint is missing or invalid.")
+
+    acc = _DB.get_discord_account_by_discord_id(discord_id)
+    if not acc:
+        raise _err("invalid_license",
+                   "This Discord account is no longer registered.", 403)
+    status = (acc.get("status") or "active").lower()
+    if status in ("banned", "suspended", "revoked"):
+        raise _err("license_" + status,
+                   "This Discord account is %s." % status, 403)
+
+    tier = normalize_tier(acc.get("current_tier"))
+    return {
+        "success": True, "valid": True, "message": "OK",
+        "interval_s": CHECKIN_INTERVAL_S,
+        "source": "discord",
+        "discord_id": discord_id,
+        "account_id": acc.get("account_id"),
+        "license": {
+            "key": raw_key,
+            "status": status,
+            "plan": "discord",
+            "tier": tier,
+            "owner": acc.get("discord_username") or "Discord User",
+            "customer": acc.get("discord_username") or "",
+            "discord_id": discord_id,
+            "account_id": acc.get("account_id"),
+            "activated_at": acc.get("registered_at"),
+            # Explicitly null: a Discord entitlement never expires, and the
+            # client reads this key to decide whether to relock.
+            "expires_at": None,
+            "last_validation": _utc_now_iso(),
+        },
+    }
+
+
 @app.post("/api/license/checkin")
 def checkin(payload: CheckinRequest):
     """Heartbeat from a previously-activated device. Records per-PC/day
@@ -1201,7 +1255,13 @@ def checkin(payload: CheckinRequest):
     * a NEW PC beyond ``max_pcs`` is refused (and logged) instead of kicking
       an existing PC out, so over-limit attempts surface in the admin panel as
       "X blocked attempts this week" rather than silently displacing a user.
+
+    Discord-signed-in clients send ``DISCORD:<discord_id>`` and are validated
+    against their account row instead of the licences table.
     """
+    raw = (payload.key or "").strip()
+    if raw.upper().startswith(_DISCORD_ENTITLEMENT_PREFIX):
+        return _discord_checkin(raw, payload)
     key = normalize_key(payload.key)
     if not key:
         raise _err("invalid_license", "Invalid license key format.")
