@@ -1838,6 +1838,12 @@ def auth_discord_start(request: Request):
         "response_type": "code",
         "scope": "identify guilds.join",
         "state": state,
+        # Without this Discord silently re-authorises anyone who approved the
+        # app before, handing back a token carrying only the scopes of that
+        # first approval. A user who once granted just "identify" therefore
+        # receives an identify-only token forever, guilds.join is absent, and
+        # the bot cannot add them - with no error anywhere on screen.
+        "prompt": "consent",
     })
     return {"ok": True, "url": "https://discord.com/oauth2/authorize?" + params, "state": state}
 
@@ -1866,6 +1872,23 @@ def auth_discord_callback(request: Request, code: str = "", state: str = ""):
     user = _discord_user(access_token)
     uid = str(user.get("id") or "")
     username = user.get("username") or uid or "Unknown"
+    # Discord reports what it actually granted, which is not necessarily what
+    # we asked for. A token without guilds.join cannot add the user to the
+    # server, and without this check the only symptom is a silent no-op.
+    granted = str(token_body.get("scope") or "")
+    granted_set = set(granted.split())
+    if granted and "guilds.join" not in granted_set:
+        logger.warning("discord: token for uid=%s lacks guilds.join "
+                       "(granted=%r) - the bot cannot add them to the server",
+                       uid, granted[:200])
+        reason = ("Discord signed you in but did not grant permission to add "
+                  "you to the server. Open Settings > Authorized Apps, remove "
+                  "Maximum Tweaks, then sign in again.")
+        _discord_user_state_set(state, status="error", reason=reason)
+        return _discord_page("Server access not granted", reason,
+                             auto_redirect=False)
+    logger.info("discord: token for uid=%s granted scope=%r",
+                uid, granted[:200])
     if not uid:
         reason = ("Discord accepted the sign-in but returned no account id, "
                   "so the identity could not be verified. Please try again.")

@@ -60,6 +60,84 @@ class TestDiscordUserOAuth:
         assert "scope=identify+guilds.join" in r["url"]
         assert r["state"]
 
+    def test_start_url_forces_consent_prompt(self, tmp_path, monkeypatch):
+        """guilds.join must not be silently downgraded by a prior approval.
+
+        Anyone who authorised the app before it asked for guilds.join
+        receives an identify-only token on every later sign-in unless
+        consent is re-prompted. That left guilds.join permanently missing
+        from the token, so add-member silently no-op'd.
+        """
+        main = self._fixture(tmp_path)
+        r = main.auth_discord_start(request=type("R", (), {"base_url": "http://x/"})())
+        assert "prompt=consent" in r["url"]
+
+    def test_callback_rejects_token_without_guilds_join(self, tmp_path):
+        """A token whose granted scope lacks guilds.join must be refused, not
+        passed onward to a doomed add-member call."""
+        import json
+        import urllib.error
+        import urllib.parse
+
+        main, _ = _load_main(str(tmp_path / "t2.db"))
+        main.DISCORD_CLIENT_ID_USER = "user-client-id"
+        main.DISCORD_CLIENT_SECRET_USER = "user-secret"
+        main.DISCORD_GUILD_ID = "guild-id"
+        state = main._discord_user_state_new()
+
+        seen = {}
+
+        def fake_token(req, timeout=None):
+            seen["body"] = req.data.decode()
+            class R:
+                def read(self):
+                    return (b'{"access_token":"t","scope":"identify"}')
+                def __enter__(self):
+                    return self
+                def __exit__(self, *a):
+                    return False
+            return R()
+
+        def fake_get_user(access_token):
+            return {"id": "992", "username": "noscope"}
+
+        monkeypatch = __import__("pytest").MonkeyPatch()
+        monkeypatch.setattr(main.urllib.request, "urlopen", fake_token)
+        monkeypatch.setattr(main, "_discord_user", fake_get_user)
+        res = main.auth_discord_callback(request=object(), code="c", state=state)
+        html = res.body.decode()
+        assert "Server access not granted" in html
+        assert "Authorized Apps" in html
+        entry = main._discord_user_state_get(state)
+        assert entry["status"] == "error"
+        assert "guilds.join" not in " ".join(entry.get("reason", ""))
+
+    def test_callback_accepts_token_with_guilds_join(self, tmp_path, monkeypatch):
+        import json
+
+        main, _ = _load_main(str(tmp_path / "t3.db"))
+        main.DISCORD_CLIENT_ID_USER = "user-client-id"
+        main.DISCORD_CLIENT_SECRET_USER = "user-secret"
+        main.DISCORD_GUILD_ID = ""
+        state = main._discord_user_state_new()
+
+        def fake_token(req, timeout=None):
+            class R:
+                def read(self):
+                    return (b'{"access_token":"t","scope":"identify guilds.join"}')
+                def __enter__(self):
+                    return self
+                def __exit__(self, *a):
+                    return False
+            return R()
+
+        monkeypatch.setattr(main.urllib.request, "urlopen", fake_token)
+        monkeypatch.setattr(main, "_discord_user",
+                            lambda at: {"id": "993", "username": "withscope"})
+        assert main.auth_discord_callback(request=object(), code="c", state=state)
+        assert main._discord_user_state_get(state)[
+            "status"] in ("ok", "completed")
+
     def test_exchange_uses_user_credentials_not_bot(self, tmp_path, monkeypatch):
         """The code MUST be redeemed with DISCORD_CLIENT_ID_USER."""
         main = self._fixture(tmp_path)
