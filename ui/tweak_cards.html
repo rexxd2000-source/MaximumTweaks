@@ -662,7 +662,7 @@
     </button>
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input id="q" placeholder="Search tweaksâ€¦">
+      <input id="q" placeholder="Search tweaks…">
     </div>
     <div class="chip on" id="rec">Recommended first
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -1264,14 +1264,14 @@ window.mxBeginLoad = function(run, count, title, gated){
   }
   statusOn(true);
   lockControls(true);
-  setPill('Loading databaseâ€¦', '');
+  setPill('Loading database…', '');
   showBar(true);
   setBar(0);
   /* The delay only paces the reveal - it must never be the only thing that
      can start it. A view that is occluded or whose renderer is saturated
      (158 cards still settling from the previous category) can swallow a
      timeout outright, which used to leave the page reading "Loading
-     databaseâ€¦" with every card covered forever. So the reveal also starts
+     database…" with every card covered forever. So the reveal also starts
      from the real payload arriving: every push asks maybeStartReveal(). */
   revealStarted = false;
   revCount = count || 0;
@@ -1328,7 +1328,7 @@ function startReveal(count, step, revealMs){
       i++;
     }
     setBar(15 + (i / n) * 70);
-    if(i < n) setMsg('Loading tweaksâ€¦ ' + i + ' of ' + n);
+    if(i < n) setMsg('Loading tweaks… ' + i + ' of ' + n);
     else checking();
   };
   pump();
@@ -1350,7 +1350,7 @@ function checking(){
   /* Deliberately no settleCards() here: by now every card has been handed
      over and its placeholder is mid fade-out. Stripping the skeletons in
      this frame would pop them instead of letting them finish. */
-  setMsg('Checking whatâ€™s appliedâ€¦');
+  setMsg('Checking what’s applied…');
   showBar(false);
   checkT = performance.now();
   const go = function(){
@@ -1403,7 +1403,7 @@ function finishLoad(){
    Every clock in here is a renderer timer, and a renderer that is busy
    enough will not run them: a bare 450ms setTimeout was measured not
    firing at all while a large category was still settling and the next one
-   was picked. That left the page reading "Loading databaseâ€¦" with every
+   was picked. That left the page reading "Loading database…" with every
    card covered and nothing scheduled to uncover it. The app owns a clock
    Chromium cannot stall, so it drives the hand-over - and nothing is lost,
    because the audit results keep streaming in afterwards regardless. */
@@ -1422,7 +1422,7 @@ window.mxLoadError = function(run, msg){
   settleCards();
   statusOn(true);
   lockControls(false);
-  setPill('Couldnâ€™t load tweaks', 'err');
+  setPill('Couldn’t load tweaks', 'err');
   /* A full mint bar beside a red pill reads as success. Retry re-shows it. */
   showBar(false);
   const m = document.getElementById('msg');

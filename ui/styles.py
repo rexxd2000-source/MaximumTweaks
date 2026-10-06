@@ -1,4 +1,4 @@
-"""Maximum Tweaks QSS â€” one consistent deep-space + neon-violet design system.
+"""Maximum Tweaks QSS — one consistent deep-space + neon-violet design system.
 
 Tokens live in config.app_config.THEME. Surfaces are built from dark
 indigo-obsidian neutrals (translucent cards, muted text) with the neon

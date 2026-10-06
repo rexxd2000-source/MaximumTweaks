@@ -3,14 +3,14 @@
 Port of the four reference HTML screens (01-boot-activation, 02-banned,
 03-timeout, 04-key-revoked) into the PySide6 app. Shown at every launch until
 a valid license session exists, and re-shown the instant the heartbeat learns
-the key was banned / revoked / suspended mid-session â€” no restart required.
+the key was banned / revoked / suspended mid-session — no restart required.
 
 Pages (QStackedWidget):
-  * activation â€” key entry + "reconnect to verify" flows.
-  * banned     â€” the operator permanently banned this account (red).
-  * timeout    â€” temporary suspension with a live countdown that auto-unlocks
+  * activation — key entry + "reconnect to verify" flows.
+  * banned     — the operator permanently banned this account (red).
+  * timeout    — temporary suspension with a live countdown that auto-unlocks
                  when the timer reaches zero (amber).
-  * revoked    â€” a staff member revoked this key (magenta).
+  * revoked    — a staff member revoked this key (magenta).
 
 The page is chosen from the structured ``payload`` returned by the server when
 it refuses a key (see engine.license.last_refusal()).
@@ -367,7 +367,7 @@ class _StrikeLabel(QLabel):
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         rect = self.contentsRect()
         fm = QFontMetrics(p.font())
-        text = fm.elidedText(self.text() or "â€”", Qt.ElideMiddle, rect.width())
+        text = fm.elidedText(self.text() or "—", Qt.ElideMiddle, rect.width())
         pen = QPen(QColor("#988aa3"))
         p.setPen(pen)
         p.drawText(rect, Qt.AlignCenter, text)
@@ -396,7 +396,7 @@ class _Field(QFrame):
     every resize (see _WrapLabel), so a long reason can never be cut off.
     """
 
-    def __init__(self, key_text: str, value_text: str = "â€”",
+    def __init__(self, key_text: str, value_text: str = "—",
                  key_color="#524d6b", value_color="#eae7f8",
                  border="rgba(139,124,246,.18)", wrap_width: int = 0,
                  boxed: bool = True, center: bool = False,
@@ -427,13 +427,13 @@ class _Field(QFrame):
         lay.addWidget(self.value)
 
     def set_value(self, text: str):
-        self.value.setText(text or "â€”")
+        self.value.setText(text or "—")
 
 
 class _MetaField(_Field):
     """Half-width field used in the BAN ID / ISSUED / REVOKED-BY rows."""
 
-    def __init__(self, key_text: str, value_text: str = "â€”",
+    def __init__(self, key_text: str, value_text: str = "—",
                  key_color="#524d6b", value_color="#eae7f8",
                  border="rgba(139,124,246,.18)", wrap_width: int = 0,
                  boxed: bool = True, center: bool = False,
@@ -793,13 +793,13 @@ class _TimeoutPage(QWidget):
         cl.addWidget(self.bar)
         cl.addSpacing(16)
 
-        self.reason_field = _Field("REASON", "â€”", key_color="#5c5142",
+        self.reason_field = _Field("REASON", "—", key_color="#5c5142",
                                    value_color="#ffd699", border=BORDER,
                                    wrap_width=368)
         cl.addWidget(self.reason_field)
         cl.addSpacing(10)
 
-        self.key_field = _Field("KEY", "â€”", key_color="#5c5142",
+        self.key_field = _Field("KEY", "—", key_color="#5c5142",
                                 value_color="#f6efe6", border=BORDER,
                                 wrap_width=368)
         cl.addWidget(self.key_field)
@@ -902,7 +902,7 @@ class _BannedPage(QWidget):
         cl.addWidget(sub)
         cl.addSpacing(26)
 
-        self.reason_field = _Field("REASON", "â€”", key_color="#5c4a4e",
+        self.reason_field = _Field("REASON", "—", key_color="#5c4a4e",
                                    value_color="#ffb3bd", border=BORDER,
                                    wrap_width=card.width() - 72)
         cl.addWidget(self.reason_field)
@@ -910,9 +910,9 @@ class _BannedPage(QWidget):
 
         meta = QHBoxLayout()
         meta.setSpacing(12)
-        self.ban_id_field = _MetaField("BAN ID", "â€”", border=BORDER,
+        self.ban_id_field = _MetaField("BAN ID", "—", border=BORDER,
                                        wrap_width=(card.width() - 84) // 2)
-        self.ban_date_field = _MetaField("BANNED", "â€”", border=BORDER,
+        self.ban_date_field = _MetaField("BANNED", "—", border=BORDER,
                                          wrap_width=(card.width() - 84) // 2)
         meta.addWidget(self.ban_id_field)
         meta.addWidget(self.ban_date_field)
@@ -977,13 +977,13 @@ class _BannedPage(QWidget):
         if revoked_at:
             digest = revoked_at.replace("-", "").replace(" ", "")[:8]
             return f"BAN-{digest.upper()}"
-        return "â€”"
+        return "—"
 
     @staticmethod
     def _issued(payload: dict) -> str:
         revoked_at = payload.get("revoked_at") or ""
         if not revoked_at:
-            return "â€”"
+            return "—"
         try:
             dt = datetime.strptime(revoked_at, "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%b %d, %Y")
@@ -1063,13 +1063,13 @@ class _RevokedPage(QWidget):
             f"font-family: {MONO}; font-size: 10px;"
             f" letter-spacing: .14em; color: #524a5c;")
         kl.addWidget(kk)
-        self.revoked_key = _StrikeLabel("â€”")
+        self.revoked_key = _StrikeLabel("—")
         self.revoked_key.setAlignment(Qt.AlignCenter)
         kl.addWidget(self.revoked_key)
         cl.addWidget(self.key_display)
         cl.addSpacing(12)
 
-        self.reason_field = _Field("REASON", "â€”", key_color="#524a5c",
+        self.reason_field = _Field("REASON", "—", key_color="#524a5c",
                                    value_color="#e6bfff", border=BORDER,
                                    boxed=False, center=True)
         cl.addWidget(self.reason_field)
@@ -1082,7 +1082,7 @@ class _RevokedPage(QWidget):
                                            value_color="#efe7f8",
                                            border=BORDER,
                                            boxed=False, center=True)
-        self.revoked_on_field = _MetaField("REVOKED ON", "â€”",
+        self.revoked_on_field = _MetaField("REVOKED ON", "—",
                                            key_color="#524a5c",
                                            value_color="#efe7f8",
                                            border=BORDER,
@@ -1151,7 +1151,7 @@ class _RevokedPage(QWidget):
     def _date(payload: dict) -> str:
         revoked_at = payload.get("revoked_at") or ""
         if not revoked_at:
-            return "â€”"
+            return "—"
         try:
             dt = datetime.strptime(revoked_at, "%Y-%m-%d %H:%M:%S")
             return dt.strftime("%b %d, %Y")
@@ -1175,7 +1175,7 @@ class GateWindow(QWidget):
 
     def __init__(self, parent=None, payload=None):
         # Plain top-level window: it may overlap the screen but NEVER stays
-        # on top â€” the user must be able to tab out and reach support pages.
+        # on top — the user must be able to tab out and reach support pages.
         super().__init__(parent, Qt.FramelessWindowHint | Qt.Window)
         self.setObjectName("GateWindow")
         self.setStyleSheet(
@@ -1402,7 +1402,7 @@ class GateWindow(QWidget):
             self.unlocked.emit(sess)
             return
         if status == "refused":
-            # The key is genuinely gone / paused server-side â€” reroute to the
+            # The key is genuinely gone / paused server-side — reroute to the
             # matching status screen from the refusal payload.
             license_mgr.set_session(None)
             publish_identity()
@@ -1410,7 +1410,7 @@ class GateWindow(QWidget):
             self.page_activation.hide_feedback()
             self._route_from_payload()
             return
-        # offline / transient â€” keep the session (offline grace), report.
+        # offline / transient — keep the session (offline grace), report.
         self.page_activation.reconnect_status.setText(
             message or "Couldn't reach the license server. Check your "
                        "internet connection and try again.")
@@ -1499,7 +1499,7 @@ class GateWindow(QWidget):
             self._current_payload = dict(license_mgr.last_refusal() or {})
             self._route_from_payload()
             return
-        # offline / suspended again â€” keep counting from the fresh payload.
+        # offline / suspended again — keep counting from the fresh payload.
         self._current_payload = dict(license_mgr.last_refusal() or {}) \
             if license_mgr.last_refusal() else self._current_payload
         if self._remaining_seconds() > 0:
