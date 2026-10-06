@@ -58,27 +58,3 @@ https://github.com/simple-icons/simple-icons, path data reused verbatim):
 
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
 icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
-
-Dock logos (added 2026-10-06)
------------------------------
-assets/icons/dock/*.png are pure-white (monochrome) silhouettes used only by
-the bottom dock (ui/dock_nav.py + ui/dock_nav.html). The dock's orbs already
-carry the per-category colour, so the artwork on top is white. Rendered at
-512px from their source SVGs and downscaled to 128px:
-
-- Material Design Icons (Apache-2.0,
-  https://github.com/Templarian/MaterialDesign, MIT license)
-  speedometer (FPS boost), cog (Settings), tools, chip (CPU),
-  video-input-component (GPU), memory (RAM), gamepad-variant (Games /
-  Controller overclock), harddisk (Storage), volume-high (Audio), wifi
-  (Network), timer-sand (Network QoS), keyboard, mouse,
-  cursor-default-click (Pointer & Input), account-card (Game profiles),
-  timer-off (Delay Destroyer), application (App Optimizers), broom
-  (Smart debloater), map-marker-path (Route analyzer), chart-line
-  (Diagnostics), bullseye (Fortnite), message-processing (AI assistant).
-- Windows 11 4-pane mark (public-domain simple geometric shape; mirrored
-  from devicon "windows11-original.svg", MIT license) for the Windows/System
-  orb and tile.
-- Source SVGs fetched live from
-  raw.githubusercontent.com/Templarian/MaterialDesign/master/svg and
-  cdn.jsdelivr.net/gh/devicons/devicon.

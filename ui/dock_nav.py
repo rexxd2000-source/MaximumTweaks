@@ -117,11 +117,11 @@ def _icon_uri(kind: str, color: str) -> str:
 
 @lru_cache(maxsize=128)
 def _logo_uri(stem: str) -> str:
-    """The real bundled dock logo PNG (assets/icons/dock/<stem>.png) as a
+    """The original bundled category-logo PNG (assets/icons/<stem>.png) as a
     base64 data URI, or "" if it does not exist. The dock is drawn with these
-    actual white logos where they exist and only falls back to lucide line
-    glyphs for keys that have no artwork."""
-    p = _asset(f"assets/icons/dock/{stem}.png")
+    original glossy sidebar logos -- the same set the category pages use --
+    and only falls back to lucide line glyphs for keys that have no artwork."""
+    p = _asset(f"assets/icons/{stem}.png")
     if not p.is_file():
         return ""
     try:
@@ -177,21 +177,20 @@ _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio
               "settings")
 _TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
 
-# Dock drawing key -> white dock logo PNG stem (assets/icons/dock/<stem>.png).
-# These are bold, filled, monochrome logos (Material Design Icons, Apache-2.0,
-# plus the official Windows 11 mark, public-domain geometry) rendered as pure
-# white silhouettes: the dock's orbs already carry the per-category colour, so
-# the artwork on top stays white. Keys without an entry (or with no file on
-# disk) keep the crisp lucide line-glyph fallback. "gauge" and "monitor" are
-# the FPS and System categories' orb keys; both now have their own white files.
+# Dock drawing key -> original glossy category-logo PNG stem
+# (assets/icons/<stem>.png) - the same recolored glossy artwork the sidebar and
+# category pages use. Keys without a PNG on disk (or without an entry here as a
+# redirect to their category's logo) keep the crisp lucide line-glyph fallback.
+# "monitor" and "gauge" are the System and FPS categories' orb keys; "activity"
+# is the Performance category's key. All map to their real glossy logo file.
 _DOCK_LOGO_FILES = {
     "fpsboost": "fpsboost",
-    "monitor": "monitor",
+    "monitor": "system",
     "input": "input",
     "tools": "tools",
     "profiles": "profiles",
     "settings": "settings",
-    "gauge": "gauge",
+    "gauge": "fpsboost",
     "system": "system",
     "cpu": "cpu",
     "gpu": "gpu",
@@ -200,15 +199,13 @@ _DOCK_LOGO_FILES = {
     "storage": "storage",
     "audio": "audio",
     "network": "network",
-    "hourglass": "hourglass",
     "keyboard": "keyboard",
     "mouse": "mouse",
     "delay_destroyer": "delay_destroyer",
     "controller": "controller",
-    "app_optimizers": "app_optimizers",
     "debloat": "debloat",
     "route_analyzer": "route_analyzer",
-    "activity": "activity",
+    "activity": "performance",
     "fortnite": "fortnite",
     "chat": "chat",
 }
@@ -217,9 +214,10 @@ _DOCK_LOGO_FILES = {
 def _assets_json() -> str:
     """Build the JS object literal of ``key -> data URI`` handed to the page.
 
-    Keys that have a real white dock logo render it as-is (pure-white artwork
-    shown unmasked on the coloured orb). Keys with no artwork keep the lucide
-    line glyph, rendered as a white CSS mask the page tints per category.
+    Keys that have a real glossy category logo render it as-is (the original
+    colourful artwork, shown unmasked on the coloured orb/tile). Keys with no
+    artwork keep the lucide line glyph, rendered as a white CSS mask the page
+    tints per category.
     """
     out = {"brand": _brand_uri(), "__img": []}
     for k in _ORB_KEYS:
