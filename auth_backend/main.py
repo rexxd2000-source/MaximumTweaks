@@ -2261,6 +2261,40 @@ def _discord_channel_overwrite_grants(channel_id: str, bot_id: str,
     return granted
 
 
+def _db_identity() -> dict:
+    """Where this process stores data, plus the Discord row counts.
+
+    Deliberately reports only a host label and counts - never a password,
+    never a full DSN. Render and a local shell can then be compared in one
+    glance, which is the only way to tell "nothing was written" apart from
+    "we are looking at two different databases".
+    """
+    out = {"engine": "sqlite", "target": "", "accounts": None,
+           "registrations": None}
+    try:
+        dsn = (os.environ.get("DATABASE_URL") or "").strip()
+        if not dsn:
+            out["target"] = os.environ.get("LICENSE_DB_PATH", "") or "licenses.db"
+            return out
+        # psycopg://user:pass@host/db?params -> host/db, with the password gone.
+        host = dsn.split("@")[-1]
+        out["engine"] = "postgres"
+        out["target"] = host.split("?")[0]
+        import psycopg
+        with psycopg.connect(dsn, autocommit=True, connect_timeout=10) as pg:
+            with pg.cursor() as cur:
+                for key, table in (("accounts", "discord_accounts"),
+                                   ("registrations", "discord_registrations")):
+                    try:
+                        cur.execute(f"SELECT count(*) FROM {table}")
+                        out[key] = cur.fetchone()[0]
+                    except Exception:  # noqa: BLE001
+                        out[key] = None
+    except Exception as e:  # noqa: BLE001
+        out["error"] = str(e)[:120]
+    return out
+
+
 def discord_bot_self_check() -> dict:
     """Report whether the bot pieces are configured and the bot is in the
     guild. Safe to call from /admin; never returns the token itself."""
@@ -2276,6 +2310,11 @@ def discord_bot_self_check() -> dict:
         "admin_login_client_id": _discord_config()["client_id"],
         "permissions_decimal": DISCORD_BOT_PERMISSIONS,
         "invite_url": discord_bot_invite_url(),
+        # Which database this process is actually writing to, and how much it
+        # holds. Without this, an empty table is indistinguishable between
+        # "no sign-ins happened" and "I am querying a different database than
+        # production" - which is exactly how a lost registration gets missed.
+        "db_engine": _db_identity(),
         "bot_reachable": False,
         "in_guild": False,
         "guild_name": "",
