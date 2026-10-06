@@ -115,6 +115,22 @@ def _icon_uri(kind: str, color: str) -> str:
     return _png_uri(pm) if not pm.isNull() else ""
 
 
+@lru_cache(maxsize=128)
+def _logo_uri(stem: str) -> str:
+    """The real bundled category-logo PNG (assets/icons/<stem>.png) as a
+    base64 data URI, or "" if it does not exist. The dock is drawn with these
+    actual logos where they exist and only falls back to lucide line glyphs
+    for keys that have no artwork."""
+    p = _asset(f"assets/icons/{stem}.png")
+    if not p.is_file():
+        return ""
+    try:
+        raw = p.read_bytes()
+    except OSError:
+        return ""
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
+
 @lru_cache(maxsize=1)
 def _brand_uri() -> str:
     """The brand mark for the dock's 44px Dashboard home button.
@@ -161,13 +177,61 @@ _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio
               "settings")
 _TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
 
+# Dock drawing key -> real logo PNG stem. Keys without an entry (or with no
+# file on disk) keep the crisp lucide line-glyph fallback. "gauge"/"fpsboost"
+# and "monitor"/"system" are the FPS and System categories; their real artwork
+# lives under the category stem.
+_LOGO_STEMS = {
+    "fpsboost": "fpsboost",
+    "monitor": "system",
+    "input": "input",
+    "tools": "tools",
+    "profiles": "profiles",
+    "settings": "settings",
+    "gauge": "fpsboost",
+    "system": "system",
+    "cpu": "cpu",
+    "gpu": "gpu",
+    "ram": "ram",
+    "games": "games",
+    "storage": "storage",
+    "audio": "audio",
+    "network": "network",
+    "keyboard": "keyboard",
+    "mouse": "mouse",
+    "delay_destroyer": "delay_destroyer",
+    "controller": "controller",
+    "debloat": "debloat",
+    "route_analyzer": "route_analyzer",
+    "activity": "performance",
+    "fortnite": "fortnite",
+    "chat": "chat",
+}
+
 
 def _assets_json() -> str:
-    """Build the JS object literal of ``key -> data URI`` handed to the page."""
-    out = {"brand": _brand_uri()}
+    """Build the JS object literal of ``key -> data URI`` handed to the page.
+
+    Keys that have a real bundled logo PNG are given the artwork itself
+    (lossless, shown unmasked). Keys with no artwork keep the lucide line
+    glyph, rendered as a white CSS mask the page tints per category.
+    """
+    out = {"brand": _brand_uri(), "__img": []}
     for k in _ORB_KEYS:
+        stem = _LOGO_STEMS.get(k, k)
+        uri = _logo_uri(stem)
+        if uri:
+            out[k] = uri
+            out["__img"].append(k)
+            continue
         out[k] = _icon_uri(k, "#ffffff")
     for k in _TILE_KEYS:
+        stem = _LOGO_STEMS.get(k, k)
+        uri = _logo_uri(stem)
+        if uri:
+            out[k] = uri
+            out["__img"].append(k)
+            continue
         # A tile glyph is a CSS mask (see .ic in dock_nav.html): only its alpha
         # is used and the visible colour comes from var(--c) in CSS. So one
         # white glyph per key covers every category tint, which is what the
@@ -176,7 +240,10 @@ def _assets_json() -> str:
         out[k] = _icon_uri(k, "#ffffff")
         for c in _TILE_COLORS:
             out[f"{k}|{c}"] = _icon_uri(k, c)
-    return "{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) + "}"
+    img_list = "[" + ",".join(f'"{k}"' for k in out["__img"]) + "]"
+    out.pop("__img")
+    return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) +
+            ",\"__img\":" + img_list + "}")
 
 
 class _DockPage(QWebEnginePage):
