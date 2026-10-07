@@ -37,7 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QByteArray, QObject, QRect, QTimer, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QRegion
+from PySide6.QtGui import QColor, QImage, QPainter, QRegion
 from PySide6.QtWebChannel import QWebChannel  # noqa: F401 - registers qtwebchannel.js
 from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -90,13 +90,6 @@ def _html_path() -> Path:
     return _asset(HTML_REL)
 
 
-def _png_uri(pixmap) -> str:
-    buf = QBuffer()
-    buf.open(QBuffer.OpenModeFlag.WriteOnly)
-    pixmap.save(buf, "PNG")
-    return "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode("ascii")
-
-
 def _image_uri(img) -> str:
     """base64 PNG for a QImage, lossless by construction.
 
@@ -108,11 +101,58 @@ def _image_uri(img) -> str:
     return "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode("ascii")
 
 
+# lucide art sits at different places inside its 24-unit viewBox - the gauge
+# hugs the bottom, the pulse spans the full height - so centering a mask on
+# its canvas left the dock's logos on different baselines. Each glyph's
+# painted ink is measured once and re-laid so the ink, not the viewBox, is
+# centered on the canvas and scaled to this fraction of it.
+_INK_FILL = 0.78
+
+
+def _fit_ink(img: QImage) -> QImage:
+    """Return *img* with its painted ink centered and scaled to _INK_FILL.
+
+    The canvas stays square (ICON_PX), which is what keeps the page's
+    mask-size:contain boxes on one line; only the ink inside them moves."""
+    img = img.convertToFormat(QImage.Format.Format_ARGB32)
+    w, h = img.width(), img.height()
+    x0, y0, x1, y1 = w, h, -1, -1
+    for y in range(h):
+        for x in range(w):
+            if (img.pixel(x, y) >> 24) & 0xFF:
+                if x < x0:
+                    x0 = x
+                if x > x1:
+                    x1 = x
+                if y < y0:
+                    y0 = y
+                if y > y1:
+                    y1 = y
+    if x1 < 0:
+        return img
+    bw, bh = x1 - x0 + 1, y1 - y0 + 1
+    ink = img.copy(x0, y0, bw, bh)
+    scale = (w * _INK_FILL) / max(bw, bh)
+    tw, th = max(1, round(bw * scale)), max(1, round(bh * scale))
+    if (tw, th) != (bw, bh):
+        ink = ink.scaled(tw, th, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+    out = QImage(w, h, QImage.Format.Format_ARGB32)
+    out.fill(QColor(0, 0, 0, 0))
+    p = QPainter(out)
+    p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+    p.drawImage((w - ink.width()) // 2, (h - ink.height()) // 2, ink)
+    p.end()
+    return out
+
+
 @lru_cache(maxsize=512)
 def _icon_uri(kind: str, color: str) -> str:
-    """Cached base64 mask for one lucide glyph tinted to ``color``."""
+    """Cached base64 mask for one lucide glyph, ink-centered (see _fit_ink)."""
     pm = nav_icon_pixmap(kind, color, ICON_PX)
-    return _png_uri(pm) if not pm.isNull() else ""
+    if pm.isNull():
+        return ""
+    return _image_uri(_fit_ink(pm.toImage()))
 
 
 @lru_cache(maxsize=1)
@@ -128,11 +168,9 @@ def _brand_uri() -> str:
     * Composited onto BRAND_FIELD, so the result is fully opaque. The source
       carries an alpha channel, and the dock's glass behind the button is a
       blurred JPEG; that halo would otherwise let the JPEG's noise show through
-      the edge of the ring as speckles. Opaque edges make that impossible.
+      the     edge of the ring as speckles. Opaque edges make that impossible.
     * Always a lossless PNG. This is never re-encoded as JPEG.
     """
-    from PySide6.QtGui import QColor, QImage, QPainter
-
     img = QImage()
     for rel in (BRAND_REL, LOGO_REL):
         candidate = QImage(str(_asset(rel)))

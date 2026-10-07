@@ -130,8 +130,14 @@ NAV_LUCIDE = {
                   '<circle cx="16" cy="11.5" r=".8"/><circle cx="18" cy="13.5" r=".8"/>',
     "fortnite": '<path d="M6 3v18M6 3h10l-3 4 3 4H6"/>',
     "chat": '<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',
+    # Full 4-lug gear. The bottom half of this path was missing upstream (it
+    # stopped at "A7 7 0 005 12"), which rendered as a half-gear with no
+    # bottom ring; the second half below is the vertical mirror of the first.
     "settings": '<circle cx="12" cy="12" r="3"/>'
-                '<path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12"/>',
+                '<path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2'
+                'L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12'
+                'a7 7 0 00.3 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2l.4 2.6h4'
+                'l.6-2.6a7 7 0 002-1.2l2.3-.9 2 3.4-2-1.5a7 7 0 00.1-1.2z"/>',
     # Added for the bottom dock, which needs a few glyphs the old sidebar
     # never drew. Same lucide geometry, same stroke-width, same family.
     # "monitor" is the dock's Windows/System category orb (distinct from the
