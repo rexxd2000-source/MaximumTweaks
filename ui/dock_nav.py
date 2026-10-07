@@ -171,10 +171,10 @@ _ORB_GLYPHS = {
 
 # Flyout tile key -> Fluent glyph file. Every tile gets a matching glyph.
 _TILE_GLYPHS = {
-    "cpu": "developer_board",
-    "gpu": "video_clip",
-    "ram": "storage",
-    "games": "games",
+    "cpu": "server",
+    "gpu": "tv",
+    "ram": "database",
+    "games": "headset",
     "gauge": "rocket",            # FPS boost
     "system": "window_dev_tools",
     "storage": "hard_drive",
@@ -182,16 +182,16 @@ _TILE_GLYPHS = {
     "network": "wifi_1",
     "hourglass": "data_trending",  # Network QoS
     "keyboard": "keyboard",
-    "mouse": "cursor_hover",
+    "mouse": "cursor",
     "input": "cursor_click",
     "delay_destroyer": "flash",
     "tools": "wrench",
     "controller": "xbox_controller",
     "app_optimizers": "apps",
     "debloat": "broom",
-    "route_analyzer": "map",
+    "route_analyzer": "globe",
     "activity": "pulse",           # Diagnostics
-    "profiles": "xbox_controller",
+    "profiles": "medal",
     "fortnite": "options",
     "chat": "bot",
     "settings": "settings",
