@@ -44,57 +44,42 @@ body.ready{opacity:1}
 
 /* LAYERS: each category slides in from the side you are moving toward, the old one slides out the other way.
    --ix / --ox are set from JS per switch (0 on first open so it simply rises). */
-.pg{position:absolute;inset:0;padding:20px 16px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-content:center;justify-content:center;
+.pg{position:absolute;inset:0;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:center;
   opacity:0;visibility:hidden;pointer-events:none;filter:blur(5px);
   transform:translateX(var(--ix,0px)) translateY(14px) scale(.97)}
 .pg.on{opacity:1;visibility:visible;pointer-events:auto;filter:blur(0);transform:none;z-index:2;
   transition:opacity .34s ease-out .05s,transform .55s cubic-bezier(.22,1.15,.3,1) .05s,filter .34s ease-out .05s}
 .pg.exit{opacity:0;visibility:hidden;filter:blur(5px);z-index:1;transform:translateX(var(--ox,0px)) translateY(-4px) scale(.97);
   transition:opacity .2s ease-in,transform .3s cubic-bezier(.4,0,.6,1),filter .2s ease-in,visibility 0s linear .3s}
-.pg h3{grid-column:1/-1;margin:0 2px 6px;font:700 11px ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--c);display:flex;align-items:center;gap:8px}
+.pg h3{grid-column:1/-1;margin:2px 4px 2px;font:700 11px ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--c);display:flex;align-items:center;gap:8px}
 .pg.on h3{animation:fu .5s cubic-bezier(.22,1,.36,1) .14s backwards}
 @keyframes fu{from{opacity:0;transform:translateY(8px)}}
 .pg h3:before{content:"";width:22px;height:2px;background:var(--c);box-shadow:0 0 10px var(--c);border-radius:2px}
 
-/* Flyout tile: dark glass button with a subtle violet gradient and a 1px
-   low-opacity violet border, echoing the dock bar. The Phosphor duotone icon
-   lives in .tic, a glossy sphere that reuses the orb's exact gradient +
-   specular highlight + inner shade, so the flyout looks like the same panel
-   of glass as the dock below it. Icon leads, text supports: 48px sphere,
-   26px glyph, 13px label, 10px between them. */
-.t{position:relative;min-height:92px;padding:12px 8px 11px;border-radius:16px;text-align:center;font-size:13px;font-weight:400;line-height:1.2;cursor:pointer;color:#e9e4fb;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  background:linear-gradient(180deg,rgba(139,107,255,.13),rgba(92,66,196,.03)),rgba(24,14,52,.30);
-  border:1px solid rgba(201,192,255,.14);
-  box-shadow:inset 0 1px 0 rgba(214,205,255,.10),0 2px 8px rgba(10,3,28,.22);
-  backdrop-filter:blur(10px) saturate(1.1);-webkit-backdrop-filter:blur(10px) saturate(1.1);
+/* Flyout tile: a dark-glass button with a subtle violet gradient and a 1px
+   low-opacity violet border, echoing the dock bar. The Fluent filled icon
+   sits flat above the label (22px, same color as the old icons), with no
+   circular orb/tile behind it, no glow and no drop-shadow. */
+.t{position:relative;padding:12px 8px 11px;border-radius:16px;text-align:center;font-size:12.5px;cursor:pointer;color:#d8d1f5;
+  background:linear-gradient(180deg,rgba(139,107,255,.11),rgba(139,107,255,.03));border:1px solid rgba(201,192,255,.12);
   transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s ease-out,border-color .22s ease-out,background .22s ease-out,color .22s ease-out}
 .pg.on .t{animation:cin .5s cubic-bezier(.22,1.25,.3,1) backwards;animation-delay:var(--dl,0s)}
 @keyframes cin{from{opacity:0;transform:translateY(12px) scale(.93)}}
-.t:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--c) 55%,#e6e0ff);
-  background:linear-gradient(180deg,rgba(139,107,255,.22),rgba(92,66,196,.07)),rgba(24,14,52,.40);
-  box-shadow:0 10px 24px color-mix(in srgb,var(--c) 30%,transparent),inset 0 1px 0 rgba(214,205,255,.16)}
+.t:hover{transform:translateY(-3px);border-color:var(--c);box-shadow:0 10px 24px color-mix(in srgb,var(--c) 30%,transparent)}
 .t:active{transform:translateY(-1px) scale(.965);transition-duration:.08s}
-.t.on{color:#fff;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 42%,transparent),color-mix(in srgb,var(--c) 8%,transparent)),rgba(24,14,52,.34);
-  border-color:var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c) 40%,transparent),inset 0 1px 0 rgba(214,205,255,.22)}
+.t.on{color:#fff;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 45%,transparent),color-mix(in srgb,var(--c) 10%,transparent));border-color:var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c) 40%,transparent),inset 0 1px 0 rgba(255,255,255,.3)}
 .tag{position:absolute;top:6px;right:6px;font:700 8px ui-monospace,monospace;letter-spacing:.1em;padding:2px 6px;border-radius:99px;color:#2fe3ba;background:rgba(47,227,186,.15);border:1px solid rgba(47,227,186,.45)}
-/* Icon tile: the dock orb itself, shrunk -- same radial gradient, specular
-   top-left highlight, inner-shade and gold-glow. The Phosphor duotone svg is
-   white/light-lavender with a soft violet glow; hover/active brighten it like
-   the active orb. */
-.tic{width:48px;height:48px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
-  background:radial-gradient(circle at 32% 25%,rgba(255,255,255,.45),transparent 40%),linear-gradient(160deg,color-mix(in srgb,var(--c) 78%,#fff 5%),color-mix(in srgb,var(--c) 36%,#000));
-  box-shadow:0 6px 16px color-mix(in srgb,var(--c) 22%,transparent),inset 0 -6px 10px rgba(0,0,0,.3);
-  border:1px solid rgba(214,205,255,.30);
-  transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s ease-out,border-color .22s ease-out}
-.tic svg{width:26px;height:26px;display:block;color:#f4f0ff;filter:drop-shadow(0 0 6px rgba(167,139,250,.6));transition:color .2s ease-out,filter .2s ease-out}
-.t:hover .tic{transform:translateY(-2px) scale(1.06);border-color:color-mix(in srgb,var(--c) 55%,#e6e0ff);box-shadow:0 8px 20px color-mix(in srgb,var(--c) 34%,transparent),inset 0 -6px 10px rgba(0,0,0,.3)}
-.t:hover .tic svg,.t.on .tic svg{color:#fff;filter:drop-shadow(0 0 8px color-mix(in srgb,var(--c) 80%,#e6e0ff))}
-.t.on .tic{box-shadow:0 0 24px color-mix(in srgb,var(--c) 50%,transparent),inset 0 -6px 10px rgba(0,0,0,.3)}
+/* Icon slot: flat light-violet glyph, same size and color as the old icons.
+   The Fluent SVG is inlined with currentColor, so CSS color tints it. No
+   background, no glow, no drop-shadow. */
+.tic{width:22px;height:22px;flex:0 0 auto;margin:0 auto 7px;display:grid;place-items:center;color:var(--c);
+  transition:color .2s ease-out}
+.tic svg{width:22px;height:22px;display:block;color:var(--c);transition:color .2s ease-out}
+.t:hover .tic,.t.on .tic{color:#fff}
+.t:hover .tic svg,.t.on .tic svg{color:#fff}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .dock{background:linear-gradient(180deg,rgba(139,107,255,.28),rgba(92,66,196,.12));background-color:rgba(24,14,52,.55)}
   .pop{background:linear-gradient(180deg,rgba(139,107,255,.24),rgba(92,66,196,.10));background-color:rgba(24,14,52,.55)}
-  .t{background:linear-gradient(180deg,rgba(139,107,255,.18),rgba(92,66,196,.06));background-color:rgba(24,14,52,.55)}
 }
 /* gap + tile padding fund the 52px orbs: at 44px the dock fit 6 orbs at gap 5 /
    6px tile padding, but a 52px orb leaves the bar ~49px over its 560px client
@@ -178,16 +163,16 @@ body.ready{opacity:1}
 .ver .tier-badge.foundation{ --tb:#2fe3ba; --tbg:rgba(47,227,186,.4); }
 .ver .tier-badge.performance{ --tb:#4cc9f0; --tbg:rgba(76,201,240,.4); }
 .ver .tier-badge.maximum{ --tb:#ffb547; --tbg:rgba(255,181,71,.45); }
-/* ORBS (the dock bar itself): glossy violet spheres carrying the SAME Phosphor
-   duotone glyph family as the flyout tiles -- orbs are keyed orb:<key> so a
+/* ORBS (the dock bar itself): glossy violet spheres carrying the SAME Fluent
+   filled glyph family as the flyout tiles -- orbs are keyed orb:<key> so a
    category glyph never collides with a same-named tile. The .tic inside is
    just a non-drawing slot: the orb shape, gradient and glow belong to .orb,
-   and the glyph (28px in a 52px orb, ~55%) is white/lavender with the violet
-   glow. Flyout tiles reuse the identical .tic markup at 48px / 26-28px. */
+   and the glyph (28px in a 52px orb, ~55%) is white/lavender. The flyout
+   tiles use the same .tic markup at their flat 22px icon size. */
 .orb{width:52px;height:52px}
 .orb .tic{width:100%;height:100%;margin:0;flex:none;background:none;border:0;box-shadow:none;border-radius:50%
   ;place-items:center;transition:none}
-.orb .tic svg{width:28px;height:28px}
+.orb .tic svg{width:28px;height:28px;color:#f4f0ff;filter:drop-shadow(0 0 6px rgba(167,139,250,.6));transition:color .2s ease-out,filter .2s ease-out}
 .c:hover .orb .tic svg,.c.on .orb .tic svg{color:#fff}
 .c:focus-visible,.t:focus-visible,.logo:focus-visible{outline:2px solid var(--c,#8b6bff);outline-offset:2px}
 .c:focus-visible{outline-offset:3px}
@@ -222,7 +207,7 @@ function paint(){
   if(s&&el.innerHTML!==s)el.innerHTML=s;
  }
  /* The brand logo is a real PNG data-URI (<img data-k="brand">). Everything
-    else is Phosphor duotone now -- no masked glyphs remain. */
+    else is Fluent filled now -- no masked glyphs remain. */
  for(const el of document.querySelectorAll('img[data-k]')){
   const u=(ASSETS&&ASSETS[el.dataset.k])||'';
   if(u)el.src=u;
@@ -298,7 +283,7 @@ function build(){
   `</div><div class="sep"></div><div class="ver"><span class="ver-num" id="verNum">v--</span><span class="tier-badge foundation" id="tierBadge"><span class="tb-lbl">…</span></span></div>`;
  $('pop').innerHTML='<div class="glow" id="glow"></div>'+D.map(([cn,cc,,items],i)=>
   `<div class="pg" data-cat="${i}" style="--c:${cc}"><h3>${cn}</h3>`+
-  items.map(([k,n,x,r],j)=>`<div class="t" style="--dl:${(0.24+j*0.05).toFixed(2)}s" data-n="${n}" data-r="${r}" tabindex="0" role="button" title="${n}">${x?`<b class="tag">${x}</b>`:''}<span class="tic" data-svg="${k}"></span><span class="tl">${n}</span></div>`).join('')+
+  items.map(([k,n,x,r],j)=>`<div class="t" style="--dl:${(0.24+j*0.05).toFixed(2)}s" data-n="${n}" data-r="${r}" tabindex="0" role="button">${x?`<b class="tag">${x}</b>`:''}<span class="tic" data-svg="${k}"></span><span class="tl">${n}</span></div>`).join('')+
   `</div>`).join('');
  layers=[...$('pop').querySelectorAll('.pg')];
 }

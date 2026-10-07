@@ -62,28 +62,31 @@ icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
 Dock icons (updated 2026-10-07)
 -------------------------------
 The bottom dock (ui/dock_nav.py + ui/dock_nav.html) and every flyout use ONE
-icon set: Phosphor Icons, duotone weight (MIT, https://phosphoricons.com,
-https://github.com/phosphor-icons/core, @phosphor-icons/core@2.1.1, files
-fetched from cdn.jsdelivr.net). Bundled verbatim as local SVG files (the
-shipped app performs no network fetch at runtime) and recolored via CSS
-currentColor to the dock's neon-violet accent so every orb and flyout tile
-matches the glossy dock. The earlier monochrome PNG logo set
-(assets/icons/dock/*.png) was retired with this restyle and is gone.
+icon set: Microsoft Fluent UI System Icons, filled weight (MIT,
+https://github.com/microsoft/fluentui-system-icons, @fluentui/svg-icons, files
+fetched from cdn.jsdelivr.net/npm/@fluentui/svg-icons and flipped to
+fill="currentColor"). Bundled verbatim as local SVG files (the shipped app
+performs no network fetch at runtime) and recolored via CSS currentColor to
+the dock's neon-violet accent so every orb and flyout tile matches the glossy
+dock. The flyout icons render as flat light-violet glyphs (no tile, glow or
+drop-shadow); the dock orbs keep their glossy sphere with the Fluent filled
+glyph inside. The earlier Phosphor icons were retired with this swap and are
+gone.
 
-assets/icons/phosphor/*.svg, 26 files (glyph name = file name):
+assets/icons/fluent/*.svg, 27 files (glyph name = file name):
 
-  speedometer (FPS boost orb + FPS-boost tile), desktop (System orb),
-  crosshair (Input orb), wrench (Tools orb + Tools tile),
-  identification-card (Profiles orb), gear-six (Settings orb + Settings tile),
-  cpu, graphics-card (GPU), memory (RAM), game-controller (Games + Game
-  profiles), windows-logo (Windows/system), hard-drives (Storage),
-  speaker-high (Audio), globe-simple (Network), chart-line-up (Network QoS),
-  keyboard, mouse-simple (Mouse), cursor-click (Input), lightning
-  (Delay Destroyer), joystick (Controller overclock), squares-four
-  (App Optimizers), broom (Smart debloater), map-trifold (Route analyzer),
-  pulse (Diagnostics), sliders-horizontal (Fortnite settings), sparkle
-  (AI assistant).
+  gauge (FPS boost orb + FPS-boost tile), desktop (System orb),
+  cursor (Input orb), wrench (Tools orb + Tools tile),
+  contact_card (Profiles orb), settings (Settings orb + Settings tile),
+  developer_board (CPU), video_clip (GPU), storage (RAM), games (Games),
+  rocket (FPS boost), window_dev_tools (Windows/system), hard_drive
+  (Storage), speaker_2 (Audio), wifi_1 (Network), data_trending (Network QoS),
+  keyboard, cursor_hover (Mouse), cursor_click (Input), flash
+  (Delay Destroyer), xbox_controller (Controller overclock + Game profiles),
+  apps (App Optimizers), broom (Smart debloater), map (Route analyzer),
+  pulse (Diagnostics), options (Fortnite settings), bot (AI assistant).
 
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
 icon-runtime notes added 2026-09-24; brand logos added 2026-09-24;
-dock flyouts added / dock restyled to Phosphor 2026-10-07).
+dock flyouts added / dock restyled to Phosphor 2026-10-07;
+flyouts reverted + icons swapped to Fluent filled 2026-10-07).

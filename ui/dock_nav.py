@@ -99,16 +99,16 @@ def _image_uri(img) -> str:
 
 
 @lru_cache(maxsize=64)
-def _phosphor_svg(key: str) -> str:
-    """One Phosphor duotone icon (assets/icons/phosphor/<key>.svg) as raw SVG
-    markup, or "" if the file is missing.
+def _fluent_svg(key: str) -> str:
+    """One Microsoft Fluent filled icon (assets/icons/fluent/<key>.svg) as raw
+    SVG markup, or "" if the file is missing.
 
-    Phosphor duotone SVGs render with ``fill="currentColor"`` at the root (the
-    duotone layer is a second path at 0.2 opacity) so the dock's orb/tile
-    markup is inlined into the page and recolored by CSS ``color`` -- a plain
-    <img> cannot re-tint a currentColor icon. Keeping the raw file text allows
-    the page to own the colour, matching the dock's violet family exactly."""
-    p = _asset(f"assets/icons/phosphor/{key}.svg")
+    The fluent set is downloaded from @fluentui/svg-icons (MIT) with its fill
+    normalized to ``fill="currentColor"`` so the dock's orb/tile markup is
+    inlined into the page and recolored by CSS ``color`` -- a plain <img>
+    cannot re-tint a currentColor icon. Keeping the raw file text allows the
+    page to own the colour, matching the dock's violet family exactly."""
+    p = _asset(f"assets/icons/fluent/{key}.svg")
     if not p.is_file():
         return ""
     try:
@@ -153,47 +153,48 @@ def _brand_uri() -> str:
     return _image_uri(out)
 
 
-# ONE icon set everywhere: Phosphor Icons, duotone weight (MIT), bundles of
-# raw inline SVG markup that use `currentColor`, so the page recolors them
-# with CSS to the dock's violet family. The same glyph can serve both a dock
-# orb and a flyout tile (docked as keys "orb:<...>" to keep namespaces apart).
+# ONE icon set everywhere: Microsoft Fluent System Icons, filled weight
+# (MIT, from @fluentui/svg-icons), bundled as raw inline SVG markup that uses
+# `currentColor`, so the page recolors them with CSS to the dock's violet
+# family. The same glyph can serve both a dock orb and a flyout tile (docked
+# as keys "orb:<...>" to keep namespaces apart).
 
-# Category orb key -> Phosphor glyph file (assets/icons/phosphor/<glyph>.svg).
+# Category orb key -> Fluent glyph file (assets/icons/fluent/<glyph>.svg).
 _ORB_GLYPHS = {
-    "fpsboost": "speedometer",
+    "fpsboost": "gauge",
     "monitor": "desktop",
-    "input": "crosshair",
+    "input": "cursor",
     "tools": "wrench",
-    "profiles": "identification-card",
-    "settings": "gear-six",
+    "profiles": "contact_card",
+    "settings": "settings",
 }
 
-# Flyout tile key -> Phosphor glyph file. Every tile gets a matching glyph.
+# Flyout tile key -> Fluent glyph file. Every tile gets a matching glyph.
 _TILE_GLYPHS = {
-    "cpu": "cpu",
-    "gpu": "graphics-card",
-    "ram": "memory",
-    "games": "game-controller",
-    "gauge": "speedometer",          # FPS boost
-    "system": "windows-logo",
-    "storage": "hard-drives",
-    "audio": "speaker-high",
-    "network": "globe-simple",
-    "hourglass": "chart-line-up",    # Network QoS
+    "cpu": "developer_board",
+    "gpu": "video_clip",
+    "ram": "storage",
+    "games": "games",
+    "gauge": "rocket",            # FPS boost
+    "system": "window_dev_tools",
+    "storage": "hard_drive",
+    "audio": "speaker_2",
+    "network": "wifi_1",
+    "hourglass": "data_trending",  # Network QoS
     "keyboard": "keyboard",
-    "mouse": "mouse-simple",
-    "input": "cursor-click",
-    "delay_destroyer": "lightning",
+    "mouse": "cursor_hover",
+    "input": "cursor_click",
+    "delay_destroyer": "flash",
     "tools": "wrench",
-    "controller": "joystick",
-    "app_optimizers": "squares-four",
+    "controller": "xbox_controller",
+    "app_optimizers": "apps",
     "debloat": "broom",
-    "route_analyzer": "map-trifold",
-    "activity": "pulse",             # Diagnostics
-    "profiles": "game-controller",
-    "fortnite": "sliders-horizontal",
-    "chat": "sparkle",
-    "settings": "gear-six",
+    "route_analyzer": "map",
+    "activity": "pulse",           # Diagnostics
+    "profiles": "xbox_controller",
+    "fortnite": "options",
+    "chat": "bot",
+    "settings": "settings",
 }
 
 
@@ -201,7 +202,7 @@ def _assets_json() -> str:
     """Build the JS object literal of ``key -> data URI / svg markup`` handed
     to the page.
 
-    Everything is Phosphor duotone inline SVG under ``__svg`` -- dock orbs are
+    Everything is Fluent filled inline SVG under ``__svg`` -- dock orbs are
     keyed ``orb:fpsboost`` etc. so they never collide with same-named tiles
     (tools/profiles/settings), tiles use their plain key. The page recolors the
     inlined currentColor markup via CSS. The brand lockup is a real PNG
@@ -210,11 +211,11 @@ def _assets_json() -> str:
     out = {"brand": _brand_uri()}
     svg_map: dict[str, str] = {}
     for orb_key, glyph in _ORB_GLYPHS.items():
-        markup = _phosphor_svg(glyph)
+        markup = _fluent_svg(glyph)
         if markup:
             svg_map["orb:" + orb_key] = markup
     for tile_key, glyph in _TILE_GLYPHS.items():
-        markup = _phosphor_svg(glyph)
+        markup = _fluent_svg(glyph)
         if markup:
             svg_map[tile_key] = markup
     svg_json = json.dumps(svg_map, separators=(",", ":"))
