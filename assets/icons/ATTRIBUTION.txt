@@ -59,29 +59,8 @@ https://github.com/simple-icons/simple-icons, path data reused verbatim):
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
 icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
 
-Dock logos (added 2026-10-06; recolored 2026-10-07)
-----------------------------------------------------
-assets/icons/dock/*.png are monochrome silhouettes used only by the bottom
-dock (ui/dock_nav.py + ui/dock_nav.html). The dock's orbs already carry the
-per-category colour, so the artwork on top is tinted to the app's neon-violet
-accent rather than a second competing colour. Every category has its own
-distinct glyph -- no two keys share the same silhouette. Rendered at
-512px from their source SVGs and downscaled to 128px:
-
-- Font Awesome 6 Free Solid (CC BY 4.0, https://fontawesome.com/license,
-  https://github.com/FortAwesome/Font-Awesome) glyphs, tinted to the app's
-  neon-violet accent (#C484FF, the light member of the THEME accent pair
-  #8B6BFF/#C484FF):
-    gauge-high (FPS boost / gauge), display (Windows / System & monitor),
-    crosshairs (Pointer & Input), wrench (Tools), id-card (Game profiles),
-    gear (Settings), microchip (CPU), memory (RAM), gamepad (Games),
-    hard-drive (Storage), volume-high (Audio), wifi (Network), hourglass
-    (Network QoS), keyboard, computer-mouse, stopwatch (Delay Destroyer),
-    broom (Smart debloater), route (Route analyzer), chart-line
-    (Diagnostics), bullseye (Fortnite), message (AI assistant).
-- Bootstrap Icons (MIT, https://icons.getbootstrap.com,
-  https://github.com/twbs/icons) glyphs, same neon-violet tint:
-    gpu-card (GPU), joystick (Controller overclock), grid (App Optimizers).
-- Source SVGs fetched live from
-  raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid and
-  raw.githubusercontent.com/twbs/icons/main/icons.
+Dock logos (2026-10-07)
+-----------------------
+The bottom dock (ui/dock_nav.py + ui/dock_nav.html) reuses the same colorful
+glossy category PNGs from this folder for its orbs and tiles; keys with no
+PNG fall back to the runtime lucide line glyphs noted above.
