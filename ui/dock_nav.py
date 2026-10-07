@@ -32,7 +32,6 @@ fits, so no clamping is needed.
 from __future__ import annotations
 
 import base64
-import json
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +44,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from config.app_config import ROOT
 from ui.pages._web import make_webview
+from ui.widgets import nav_icon_pixmap
 
 HTML_REL = "ui/dock_nav.html"
 # The mark shown on the Dashboard's home button. logo-64.png is the current
@@ -75,6 +75,9 @@ DOCK_H = 340
 # so the page underneath stays reachable. The extra 20px over DOCK_BAR_H keeps
 # the lifted/hovered orbs inside the interactive area.
 CLOSED_MASK_H = DOCK_BAR_H + 20
+# Icons are drawn at 4x their largest on-screen size (22px) so they stay crisp
+# on HiDPI displays when the browser scales the mask down.
+ICON_PX = 88
 
 
 def _asset(rel: str) -> Path:
@@ -85,6 +88,13 @@ def _asset(rel: str) -> Path:
 
 def _html_path() -> Path:
     return _asset(HTML_REL)
+
+
+def _png_uri(pixmap) -> str:
+    buf = QBuffer()
+    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+    pixmap.save(buf, "PNG")
+    return "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode("ascii")
 
 
 def _image_uri(img) -> str:
@@ -98,23 +108,28 @@ def _image_uri(img) -> str:
     return "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode("ascii")
 
 
-@lru_cache(maxsize=64)
-def _fluent_svg(key: str) -> str:
-    """One Microsoft Fluent filled icon (assets/icons/fluent/<key>.svg) as raw
-    SVG markup, or "" if the file is missing.
+@lru_cache(maxsize=512)
+def _icon_uri(kind: str, color: str) -> str:
+    """Cached base64 mask for one lucide glyph tinted to ``color``."""
+    pm = nav_icon_pixmap(kind, color, ICON_PX)
+    return _png_uri(pm) if not pm.isNull() else ""
 
-    The fluent set is downloaded from @fluentui/svg-icons (MIT) with its fill
-    normalized to ``fill="currentColor"`` so the dock's orb/tile markup is
-    inlined into the page and recolored by CSS ``color`` -- a plain <img>
-    cannot re-tint a currentColor icon. Keeping the raw file text allows the
-    page to own the colour, matching the dock's violet family exactly."""
-    p = _asset(f"assets/icons/fluent/{key}.svg")
+
+@lru_cache(maxsize=128)
+def _logo_uri(stem: str) -> str:
+    """The dock's monochrome category-logo PNG (assets/icons/dock/<stem>.png)
+    as a base64 data URI, or "" if it does not exist. The dock draws these
+    pure-white silhouettes -- each key has its own distinct glyph -- unmasked
+    on the coloured orb/tile. Keys with no artwork fall back to lucide line
+    glyphs."""
+    p = _asset(f"assets/icons/dock/{stem}.png")
     if not p.is_file():
         return ""
     try:
-        return p.read_text(encoding="utf-8").strip()
+        raw = p.read_bytes()
     except OSError:
         return ""
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
 
 
 @lru_cache(maxsize=1)
@@ -153,74 +168,86 @@ def _brand_uri() -> str:
     return _image_uri(out)
 
 
-# ONE icon set everywhere: Microsoft Fluent System Icons, filled weight
-# (MIT, from @fluentui/svg-icons), bundled as raw inline SVG markup that uses
-# `currentColor`, so the page recolors them with CSS to the dock's violet
-# family. The same glyph can serve both a dock orb and a flyout tile (docked
-# as keys "orb:<...>" to keep namespaces apart).
+# Every glyph the dock draws: category orbs in white, tiles in the colour of
+# the category they belong to. One set, one source (ui.widgets.NAV_LUCIDE).
+_ORB_KEYS = ("fpsboost", "monitor", "input", "tools", "profiles", "settings")
+_TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio",
+              "network", "hourglass", "keyboard", "mouse", "input",
+              "delay_destroyer", "tools", "controller", "app_optimizers", "debloat",
+              "route_analyzer", "activity", "profiles", "fortnite", "chat",
+              "settings")
+_TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
 
-# Category orb key -> Fluent glyph file (assets/icons/fluent/<glyph>.svg).
-_ORB_GLYPHS = {
-    "fpsboost": "gauge",
-    "monitor": "desktop",
-    "input": "cursor",
-    "tools": "wrench",
-    "profiles": "contact_card",
+# Dock drawing key -> monochrome logo PNG stem (assets/icons/dock/<stem>.png).
+# Pure-white silhouettes (Material Design Icons, Apache-2.0/MIT, plus the
+# official Windows 11 mark, public-domain geometry). Every category has its OWN
+# distinct glyph -- no two keys share artwork -- because the orbs already carry
+# the per-category colour and the white shapes must stay distinguishable.
+# Keys without an entry (or with no file on disk) keep the lucide fallback.
+# "gauge" and "monitor" are the FPS and System categories' orb keys.
+_DOCK_LOGO_FILES = {
+    "fpsboost": "fpsboost",
+    "monitor": "system",
+    "input": "input",
+    "tools": "tools",
+    "profiles": "profiles",
     "settings": "settings",
-}
-
-# Flyout tile key -> Fluent glyph file. Every tile gets a matching glyph.
-_TILE_GLYPHS = {
-    "cpu": "server",
-    "gpu": "tv",
-    "ram": "database",
-    "games": "headset",
-    "gauge": "rocket",            # FPS boost
-    "system": "window_dev_tools",
-    "storage": "hard_drive",
-    "audio": "speaker_2",
-    "network": "wifi_1",
-    "hourglass": "data_trending",  # Network QoS
+    "gauge": "fpsboost",
+    "system": "system",
+    "cpu": "cpu",
+    "gpu": "gpu",
+    "ram": "ram",
+    "games": "games",
+    "storage": "storage",
+    "audio": "audio",
+    "network": "network",
     "keyboard": "keyboard",
-    "mouse": "cursor",
-    "input": "cursor_click",
-    "delay_destroyer": "flash",
-    "tools": "wrench",
-    "controller": "xbox_controller",
-    "app_optimizers": "apps",
-    "debloat": "broom",
-    "route_analyzer": "globe",
-    "activity": "pulse",           # Diagnostics
-    "profiles": "medal",
-    "fortnite": "options",
-    "chat": "bot",
-    "settings": "settings",
+    "mouse": "mouse",
+    "delay_destroyer": "delay_destroyer",
+    "controller": "controller",
+    "debloat": "debloat",
+    "route_analyzer": "route_analyzer",
+    "activity": "performance",
+    "fortnite": "fortnite",
+    "chat": "chat",
 }
 
 
 def _assets_json() -> str:
-    """Build the JS object literal of ``key -> data URI / svg markup`` handed
-    to the page.
+    """Build the JS object literal of ``key -> data URI`` handed to the page.
 
-    Everything is Fluent filled inline SVG under ``__svg`` -- dock orbs are
-    keyed ``orb:fpsboost`` etc. so they never collide with same-named tiles
-    (tools/profiles/settings), tiles use their plain key. The page recolors the
-    inlined currentColor markup via CSS. The brand lockup is a real PNG
-    data-URI under ``brand`` (drawn as an <img>, not tintable and not masked).
+    Keys that have a real monochrome dock logo render it as-is (pure-white
+    artwork shown unmasked on the coloured orb). Keys with no artwork keep the
+    lucide line glyph, rendered as a white CSS mask the page tints per category.
     """
-    out = {"brand": _brand_uri()}
-    svg_map: dict[str, str] = {}
-    for orb_key, glyph in _ORB_GLYPHS.items():
-        markup = _fluent_svg(glyph)
-        if markup:
-            svg_map["orb:" + orb_key] = markup
-    for tile_key, glyph in _TILE_GLYPHS.items():
-        markup = _fluent_svg(glyph)
-        if markup:
-            svg_map[tile_key] = markup
-    svg_json = json.dumps(svg_map, separators=(",", ":"))
+    out = {"brand": _brand_uri(), "__img": []}
+    for k in _ORB_KEYS:
+        stem = _DOCK_LOGO_FILES.get(k)
+        uri = _logo_uri(stem) if stem else ""
+        if uri:
+            out[k] = uri
+            out["__img"].append(k)
+            continue
+        out[k] = _icon_uri(k, "#ffffff")
+    for k in _TILE_KEYS:
+        stem = _DOCK_LOGO_FILES.get(k)
+        uri = _logo_uri(stem) if stem else ""
+        if uri:
+            out[k] = uri
+            out["__img"].append(k)
+            continue
+        # A tile glyph is a CSS mask (see .ic in dock_nav.html): only its alpha
+        # is used and the visible colour comes from var(--c) in CSS. So one
+        # white glyph per key covers every category tint, which is what the
+        # page looks up first. Keep the coloured variants too for any caller
+        # that still asks for a specific tint.
+        out[k] = _icon_uri(k, "#ffffff")
+        for c in _TILE_COLORS:
+            out[f"{k}|{c}"] = _icon_uri(k, c)
+    img_list = "[" + ",".join(f'"{k}"' for k in out["__img"]) + "]"
+    out.pop("__img")
     return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) +
-            ",\"__svg\":" + svg_json + "}")
+            ",\"__img\":" + img_list + "}")
 
 
 class _DockPage(QWebEnginePage):

@@ -59,37 +59,29 @@ https://github.com/simple-icons/simple-icons, path data reused verbatim):
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
 icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
 
-Dock icons (updated 2026-10-07)
--------------------------------
-The bottom dock (ui/dock_nav.py + ui/dock_nav.html) and every flyout use ONE
-icon set: Microsoft Fluent UI System Icons, filled weight (MIT,
-https://github.com/microsoft/fluentui-system-icons, @fluentui/svg-icons, files
-fetched from cdn.jsdelivr.net/npm/@fluentui/svg-icons and flipped to
-fill="currentColor"). Bundled verbatim as local SVG files (the shipped app
-performs no network fetch at runtime) and recolored via CSS currentColor so
-every orb and flyout tile matches the glossy dock. Icons render see-through
-(translucent pale lavender with the dock's soft violet glow, solid white on
-hover/active); the dock orbs keep their glossy sphere with the glowing Fluent
-filled glyph inside. The earlier Phosphor icons were retired with this swap and
-are gone; the glyphs were refined on 2026-10-07 (CPU=server, GPU=tv, RAM=database,
-Games=headset, Mouse=cursor, Route analyzer=globe, Game profiles=medal).
+Dock logos (added 2026-10-06; recolored 2026-10-07)
+----------------------------------------------------
+assets/icons/dock/*.png are monochrome silhouettes used only by the bottom
+dock (ui/dock_nav.py + ui/dock_nav.html). The dock's orbs already carry the
+per-category colour, so the artwork on top is tinted to the app's neon-violet
+accent rather than a second competing colour. Every category has its own
+distinct glyph -- no two keys share the same silhouette. Rendered at
+512px from their source SVGs and downscaled to 128px:
 
-assets/icons/fluent/*.svg, 27 files (glyph name = file name):
-
-  gauge (FPS boost orb + FPS-boost tile), desktop (System orb),
-  cursor (Input orb + Mouse), wrench (Tools orb + Tools tile),
-  contact_card (Profiles orb), settings (Settings orb + Settings tile),
-  server (CPU), tv (GPU), database (RAM), headset (Games),
-  rocket (FPS boost), window_dev_tools (Windows/system), hard_drive
-  (Storage), speaker_2 (Audio), wifi_1 (Network), data_trending (Network QoS),
-  keyboard, cursor_click (Input), flash
-  (Delay Destroyer), xbox_controller (Controller overclock),
-  apps (App Optimizers), broom (Smart debloater), globe (Route analyzer),
-  pulse (Diagnostics), options (Fortnite settings), bot (AI assistant),
-  medal (Game profiles).
-
-Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
-icon-runtime notes added 2026-09-24; brand logos added 2026-09-24;
-dock flyouts added / dock restyled to Phosphor 2026-10-07;
-flyouts reverted + icons swapped to Fluent filled 2026-10-07;
-see-through tint + glyph refinements 2026-10-07).
+- Font Awesome 6 Free Solid (CC BY 4.0, https://fontawesome.com/license,
+  https://github.com/FortAwesome/Font-Awesome) glyphs, tinted to the app's
+  neon-violet accent (#C484FF, the light member of the THEME accent pair
+  #8B6BFF/#C484FF):
+    gauge-high (FPS boost / gauge), display (Windows / System & monitor),
+    crosshairs (Pointer & Input), wrench (Tools), id-card (Game profiles),
+    gear (Settings), microchip (CPU), memory (RAM), gamepad (Games),
+    hard-drive (Storage), volume-high (Audio), wifi (Network), hourglass
+    (Network QoS), keyboard, computer-mouse, stopwatch (Delay Destroyer),
+    broom (Smart debloater), route (Route analyzer), chart-line
+    (Diagnostics), bullseye (Fortnite), message (AI assistant).
+- Bootstrap Icons (MIT, https://icons.getbootstrap.com,
+  https://github.com/twbs/icons) glyphs, same neon-violet tint:
+    gpu-card (GPU), joystick (Controller overclock), grid (App Optimizers).
+- Source SVGs fetched live from
+  raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid and
+  raw.githubusercontent.com/twbs/icons/main/icons.
