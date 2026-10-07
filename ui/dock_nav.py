@@ -117,11 +117,12 @@ def _icon_uri(kind: str, color: str) -> str:
 
 @lru_cache(maxsize=128)
 def _logo_uri(stem: str) -> str:
-    """The original bundled category-logo PNG (assets/icons/<stem>.png) as a
-    base64 data URI, or "" if it does not exist. The dock is drawn with these
-    original glossy sidebar logos -- the same set the category pages use --
-    and only falls back to lucide line glyphs for keys that have no artwork."""
-    p = _asset(f"assets/icons/{stem}.png")
+    """The dock's monochrome category-logo PNG (assets/icons/dock/<stem>.png)
+    as a base64 data URI, or "" if it does not exist. The dock draws these
+    pure-white silhouettes -- each key has its own distinct glyph -- unmasked
+    on the coloured orb/tile. Keys with no artwork fall back to lucide line
+    glyphs."""
+    p = _asset(f"assets/icons/dock/{stem}.png")
     if not p.is_file():
         return ""
     try:
@@ -177,12 +178,13 @@ _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio
               "settings")
 _TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
 
-# Dock drawing key -> original glossy category-logo PNG stem
-# (assets/icons/<stem>.png) - the same recolored glossy artwork the sidebar and
-# category pages use. Keys without a PNG on disk (or without an entry here as a
-# redirect to their category's logo) keep the crisp lucide line-glyph fallback.
-# "monitor" and "gauge" are the System and FPS categories' orb keys; "activity"
-# is the Performance category's key. All map to their real glossy logo file.
+# Dock drawing key -> monochrome logo PNG stem (assets/icons/dock/<stem>.png).
+# Pure-white silhouettes (Material Design Icons, Apache-2.0/MIT, plus the
+# official Windows 11 mark, public-domain geometry). Every category has its OWN
+# distinct glyph -- no two keys share artwork -- because the orbs already carry
+# the per-category colour and the white shapes must stay distinguishable.
+# Keys without an entry (or with no file on disk) keep the lucide fallback.
+# "gauge" and "monitor" are the FPS and System categories' orb keys.
 _DOCK_LOGO_FILES = {
     "fpsboost": "fpsboost",
     "monitor": "system",
@@ -214,10 +216,9 @@ _DOCK_LOGO_FILES = {
 def _assets_json() -> str:
     """Build the JS object literal of ``key -> data URI`` handed to the page.
 
-    Keys that have a real glossy category logo render it as-is (the original
-    colourful artwork, shown unmasked on the coloured orb/tile). Keys with no
-    artwork keep the lucide line glyph, rendered as a white CSS mask the page
-    tints per category.
+    Keys that have a real monochrome dock logo render it as-is (pure-white
+    artwork shown unmasked on the coloured orb). Keys with no artwork keep the
+    lucide line glyph, rendered as a white CSS mask the page tints per category.
     """
     out = {"brand": _brand_uri(), "__img": []}
     for k in _ORB_KEYS:
