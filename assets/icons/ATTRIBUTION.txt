@@ -59,51 +59,31 @@ https://github.com/simple-icons/simple-icons, path data reused verbatim):
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
 icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
 
-Dock logos (added 2026-10-06; recolored 2026-10-07)
-----------------------------------------------------
-assets/icons/dock/*.png are monochrome silhouettes used only by the bottom
-dock (ui/dock_nav.py + ui/dock_nav.html). The dock's orbs already carry the
-per-category colour, so the artwork on top is tinted to the app's neon-violet
-accent rather than a second competing colour. Every category has its own
-distinct glyph -- no two keys share the same silhouette. Rendered at
-512px from their source SVGs and downscaled to 128px:
-
-- Font Awesome 6 Free Solid (CC BY 4.0, https://fontawesome.com/license,
-  https://github.com/FortAwesome/Font-Awesome) glyphs, tinted to the app's
-  neon-violet accent (#C484FF, the light member of the THEME accent pair
-  #8B6BFF/#C484FF):
-    gauge-high (FPS boost / gauge), display (Windows / System & monitor),
-    crosshairs (Pointer & Input), wrench (Tools), id-card (Game profiles),
-    gear (Settings), microchip (CPU), memory (RAM), gamepad (Games),
-    hard-drive (Storage), volume-high (Audio), wifi (Network), hourglass
-    (Network QoS), keyboard, computer-mouse, stopwatch (Delay Destroyer),
-    broom (Smart debloater), route (Route analyzer), chart-line
-    (Diagnostics), bullseye (Fortnite), message (AI assistant).
-- Bootstrap Icons (MIT, https://icons.getbootstrap.com,
-  https://github.com/twbs/icons) glyphs, same neon-violet tint:
-    gpu-card (GPU), joystick (Controller overclock), grid (App Optimizers).
-- Source SVGs fetched live from
-  raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid and
-  raw.githubusercontent.com/twbs/icons/main/icons.
-
-Dock flyout icons (added 2026-10-07)
-------------------------------------
-assets/icons/phosphor/*.svg are the flyout-tile icon set: Phosphor Icons,
-duotone weight (MIT, https://phosphoricons.com,
+Dock icons (updated 2026-10-07)
+-------------------------------
+The bottom dock (ui/dock_nav.py + ui/dock_nav.html) and every flyout use ONE
+icon set: Phosphor Icons, duotone weight (MIT, https://phosphoricons.com,
 https://github.com/phosphor-icons/core, @phosphor-icons/core@2.1.1, files
 fetched from cdn.jsdelivr.net). Bundled verbatim as local SVG files (the
 shipped app performs no network fetch at runtime) and recolored via CSS
-currentColor to the dock's neon-violet accent so every flyout item matches
-the glossy dock. One key per tile, 24 files:
+currentColor to the dock's neon-violet accent so every orb and flyout tile
+matches the glossy dock. The earlier monochrome PNG logo set
+(assets/icons/dock/*.png) was retired with this restyle and is gone.
 
-  cpu, gpu (graphics-card), ram (memory), games (game-controller),
-  gauge (speedometer), system (windows-logo), storage (hard-drives),
-  audio (speaker-high), network (wifi-high), hourglass (chart-line-up),
-  keyboard, mouse (mouse-simple), input (cursor-click),
-  delay_destroyer (lightning), tools (wrench), controller (joystick),
-  app_optimizers (squares-four), debloat (broom), route_analyzer
-  (map-trifold), activity (pulse), profiles (game-controller),
-  fortnite (sliders-horizontal), chat (sparkle), settings (gear-six).
+assets/icons/phosphor/*.svg, 26 files (glyph name = file name):
+
+  speedometer (FPS boost orb + FPS-boost tile), desktop (System orb),
+  crosshair (Input orb), wrench (Tools orb + Tools tile),
+  identification-card (Profiles orb), gear-six (Settings orb + Settings tile),
+  cpu, graphics-card (GPU), memory (RAM), game-controller (Games + Game
+  profiles), windows-logo (Windows/system), hard-drives (Storage),
+  speaker-high (Audio), globe-simple (Network), chart-line-up (Network QoS),
+  keyboard, mouse-simple (Mouse), cursor-click (Input), lightning
+  (Delay Destroyer), joystick (Controller overclock), squares-four
+  (App Optimizers), broom (Smart debloater), map-trifold (Route analyzer),
+  pulse (Diagnostics), sliders-horizontal (Fortnite settings), sparkle
+  (AI assistant).
 
 Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
-icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
+icon-runtime notes added 2026-09-24; brand logos added 2026-09-24;
+dock flyouts added / dock restyled to Phosphor 2026-10-07).
