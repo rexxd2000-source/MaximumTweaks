@@ -62,47 +62,156 @@ _ALIAS_GUIDS = {
 _ALIAS_NAMES = {"ultimate": "ultimate performance"}
 
 # Named power settings used by ("power", ...) actions -> (subgroup, setting).
+#
+# SINGLE SOURCE OF TRUTH: database/executor.py aliases this table as
+# POWER_SETTINGS, so apply and detect can never disagree on a GUID. Every
+# setting GUID below was verified against this machine's own
+# HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerSettings registry
+# FriendlyName entries (and powercfg /query where the plan exposes them).
 POWER_NAMES = {
-    "processor_max": ("54533251-82be-4824-96c1-47b60b740d00",
-                      "bc5038f7-23e0-4960-96da-33abaf5935ec"),
-    "processor_min": ("54533251-82be-4824-96c1-47b60b740d00",
-                      "893dee8e-2bef-41e0-89c6-b55d0929964c"),
-    "boost_mode": ("54533251-82be-4824-96c1-47b60b740d00",
-                   "be337238-0d82-4146-a960-4f3749d470c7"),
-    "perf_increase_threshold": ("54533251-82be-4824-96c1-47b60b740d00",
-                                "06cadf0e-64ed-448a-8927-ce7bf90eb35d"),
-    "perf_decrease_threshold": ("54533251-82be-4824-96c1-47b60b740d00",
-                                "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6"),
-    "idle_disable": ("54533251-82be-4824-96c1-47b60b740d00",
-                     "5d76a2ca-e8c0-402f-a133-2158312c3406"),
-    "time_check": ("54533251-82be-4824-96c1-47b60b740d00",
-                   "18a7d39f-c168-4f6f-b3c4-bbf17f66a4c9"),
-    "parking_min": ("54533251-82be-4824-96c1-47b60b740d00",
-                    "0cc5b647-c1df-4637-891a-dec35c318583"),
-    "parking_max": ("54533251-82be-4824-96c1-47b60b740d00",
-                    "ea062031-0e34-4ff1-9b6d-eb1059334028"),
-    "perf_increase_policy": ("54533251-82be-4824-96c1-47b60b740d00",
-                             "465e1f50-b610-473a-ab58-00d1077dc418"),
-    "perf_decrease_policy": ("54533251-82be-4824-96c1-47b60b740d00",
-                             "8baa4a8a-14c6-4451-8e8b-14bdbd197537"),
-    "boost_policy": ("54533251-82be-4824-96c1-47b60b740d00",
-                     "45bcc044-d885-43a2-8605-ee0ec6e96b59"),
-    "epp": ("54533251-82be-4824-96c1-47b60b740d00",
-            "36687f9e-e3a5-4dbf-b1dc-15eb381c6863"),
-    "display_timeout": ("7516b95f-f776-4464-8c53-06167f40cc99",
-                        "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"),
-    "adaptive_brightness": ("7516b95f-f776-4464-8c53-06167f40cc99",
-                            "fbd9aa66-9553-4097-ba44-ed6e9d65eab8"),
-    "hdd_timeout": ("0012ee47-9041-4b5d-9b77-535fba8b1442",
-                    "6738e2c4-e8a5-4a42-b16a-e040e769756e"),
-    "sleep_timeout": ("238c9fa8-0aad-41ed-83f4-97be242c8f20",
-                      "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"),
-    "hibernate_timeout": ("238c9fa8-0aad-41ed-83f4-97be242c8f20",
-                          "9d7815a6-7ee4-497e-8888-515a05f02364"),
-    "lid_action": ("4f971e89-eebd-4455-a8de-9e59040e7347",
-                   "5ca83367-6e45-459f-a27b-476b1d01c936"),
-    "usb_selective": ("2a737441-1930-4402-8d77-b2bebba308a3",
-                      "48e6b7a6-50f5-4782-a5d4-53bb8f07e226"),
+    # Display subgroup (7516b95f-f776-4464-8c53-06167f40cc99)
+    "adaptive_brightness": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
+        "fbd9aa66-9553-4097-ba44-ed6e9d65eab8",          # Adaptive display brightness
+    ),
+    "display_brightness": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",
+        "aded5e82-b909-4619-9949-f5d71dac0bcb",          # Display brightness
+    ),
+    "display_brightness_dim": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",
+        "f1fbfde2-a960-4165-9f88-50667911ce96",          # Dimmed display brightness
+    ),
+    "display_timeout": (
+        "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
+        "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",          # Turn off display after
+    ),
+    # Disk subgroup (0012ee47-9041-4b5d-9b77-535fba8b1442)
+    "hdd_timeout": (
+        "0012ee47-9041-4b5d-9b77-535fba8b1442",          # Disk subgroup
+        "6738e2c4-e8a5-4a42-b16a-e040e769756e",          # Turn off hard disk after
+    ),
+    # Sleep subgroup (238c9fa8-0aad-41ed-83f4-97be242c8f20)
+    "sleep_timeout": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "29f6c1db-86da-48c5-9fdb-f2b67b1f44da",          # Sleep after
+    ),
+    "away_mode": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "25dfa149-5dd1-4736-b5ab-e8a37b5b8187",          # Allow away mode policy
+    ),
+    "hybrid_sleep": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "94ac6d29-73ce-41a6-809f-6363ba21b47e",          # Allow hybrid sleep
+    ),
+    "wake_timers": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d",          # Allow wake timers
+    ),
+    "hibernate_timeout": (
+        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
+        "9d7815a6-7ee4-497e-8888-515a05f02364",          # Hibernate after
+    ),
+    # Power buttons subgroup (4f971e89-eebd-4455-a8de-9e59040e7347)
+    "lid_action": (
+        "4f971e89-eebd-4455-a8de-9e59040e7347",          # Power buttons subgroup
+        "5ca83367-6e45-459f-a27b-476b1d01c936",          # Lid close action
+    ),
+    # PCI Express subgroup (501a4d13-42af-4429-9fd1-a8218c268e20)
+    "pcie_aspm": (
+        "501a4d13-42af-4429-9fd1-a8218c268e20",          # PCI Express subgroup
+        "ee12f906-d277-404b-b6da-e5fa1a576df5",          # Link State Power Management
+    ),
+    # USB settings subgroup (2a737441-1930-4402-8d77-b2bebba308a3)
+    "usb_selective": (
+        "2a737441-1930-4402-8d77-b2bebba308a3",          # USB settings subgroup
+        "48e6b7a6-50f5-4782-a5d4-53bb8f07e226",          # USB selective suspend
+    ),
+    # Processor subgroup (54533251-82be-4824-96c1-47b60b740d00)
+    "processor_max": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "bc5038f7-23e0-4960-96da-33abaf5935ec",          # Maximum processor state
+    ),
+    "processor_min": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "893dee8e-2bef-41e0-89c6-b55d0929964c",          # Minimum processor state
+    ),
+    "boost_mode": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "be337238-0d82-4146-a960-4f3749d470c7",          # Processor performance boost mode
+    ),
+    "boost_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "45bcc044-d885-43e2-8605-ee0ec6e96b59",          # Processor performance boost policy
+    ),
+    "perf_increase_threshold": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "06cadf0e-64ed-448a-8927-ce7bf90eb35d",          # Perf increase threshold
+    ),
+    "perf_decrease_threshold": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6",          # Perf decrease threshold
+    ),
+    "perf_increase_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "465e1f50-b610-473a-ab58-00d1077dc418",          # Perf increase policy
+    ),
+    "perf_decrease_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "40fbefc7-2e9d-4d25-a185-0cfd8574bac6",          # Perf decrease policy
+    ),
+    "proc_freq_max": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "75b0ae3f-bce0-45a7-8c89-c9611c25e100",          # Maximum processor frequency
+    ),
+    "sys_cooling_pol": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "94d3a615-a899-4ac5-ae2b-e4d8f634367f",          # System cooling policy
+    ),
+    "parking_min": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "0cc5b647-c1df-4637-891a-dec35c318583",          # Core parking min cores
+    ),
+    "parking_max": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "ea062031-0e34-4ff1-9b6d-eb1059334028",          # Core parking max cores
+    ),
+    "epp": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "36687f9e-e3a5-4dbf-b1dc-15eb381c6863",          # Energy perf preference
+    ),
+    # Heterogeneous (P-core / E-core) scheduling. Only meaningful on hybrid
+    # parts; 0=All, 1=Performant, 2=Prefer performant, 3=Efficient,
+    # 4=Prefer efficient, 5=Automatic. Both default to 5/2 on a desktop.
+    "sched_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "93b8b6dc-0698-4d1c-9ee4-0644e900c85d",          # Heterogeneous thread scheduling
+    ),
+    "short_sched_policy": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "bae08b81-2d5e-4688-ad6a-13243356654b",          # Short running thread scheduling
+    ),
+    # Processor idle disable is an ENUM, not a percentage:
+    # 0 = Enable idle, 1 = Disable idle.
+    "idle_disable": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "5d76a2ca-e8c0-402f-a133-2158492d58ad",          # Processor idle disable
+    ),
+    # Processor idle demote threshold (percentage used by the idle
+    # demotion heuristic); promote threshold kept for symmetry.
+    "processor_idle_demote_threshold": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "4b92d758-5a24-4851-a470-815d78aee119",          # Processor idle demote threshold
+    ),
+    "processor_idle_promote_threshold": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "7b224883-b3cc-4d79-819f-8374152cbe7c",          # Processor idle promote threshold
+    ),
+    # Processor performance time check interval, in milliseconds.
+    "time_check": (
+        "54533251-82be-4824-96c1-47b60b740d00",
+        "4d2b0152-7d5c-498b-88e2-34345392a2c5",          # Idle time check
+    ),
 }
 
 # `powercfg /change <name>-timeout-ac N` -> (subgroup, setting).

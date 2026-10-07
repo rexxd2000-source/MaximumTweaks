@@ -1,6 +1,6 @@
 # Optimization tweaks (applyable only)
 
-Total: 516 entries. Diagnostics and System Tools are excluded.
+Total: 515 entries. Diagnostics and System Tools are excluded.
 
 | # | ID | Name | Category | Tier | Class | Description |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -241,282 +241,281 @@ Total: 516 entries. Diagnostics and System Tools are excluded.
 | 235 | `lap-043` | High Refresh on AC | Laptop | foundation | FREE | Ensure the display uses its highest refresh rate when plugged in. |
 | 236 | `lap-044` | Restrict Background Apps on Battery | Laptop | foundation | FREE | Restrict UWP background app activity when on battery power. |
 | 237 | `lap-045` | Disable Game Mode on Battery | Laptop | foundation | FREE | Disable Windows Game Mode when on battery to save power. |
-| 238 | `lap-046` | Deep CPU Idle on Battery | Laptop | performance | FOUNDATION | Allow the CPU to enter deeper idle states on battery. |
-| 239 | `lap-047` | Disable Hybrid Sleep on Battery | Laptop | foundation | FREE | Disable hybrid sleep on battery to prevent disk writes. |
-| 240 | `lap-048` | Disable Wake Timers on Battery | Laptop | foundation | FREE | Prevent scheduled tasks from waking the laptop on battery. |
-| 241 | `lap-049` | Disable Adaptive Brightness | Laptop | foundation | FREE | Disable ambient light sensor-based brightness adjustment. |
-| 242 | `lap-050` | Moderate C-States on Battery | Laptop | performance | FOUNDATION | Allow moderate CPU C-states on battery for power savings. |
-| 243 | `lap-052` | Standard Timer on Battery | Laptop | performance | FOUNDATION | Use standard timer resolution on battery to save power. |
-| 244 | `lap-053` | Disable DWM Effects on Battery | Laptop | foundation | FREE | Disable DWM visual effects on battery to reduce GPU power draw. |
-| 245 | `mon-001` | Disable Monitor Auto-Detect Sleep | Monitor | foundation | FREE | Prevents the display from entering power save during long play sessions. |
-| 246 | `mon-006` | Disable Adaptive Brightness | Monitor | foundation | FREE | Turns off display adaptive brightness in the power plan. |
-| 247 | `mouse-002` | Disable Cursor Suppression | Mouse | foundation | FREE | Stops Windows from hiding the cursor during typing in games. |
-| 248 | `mouse-004` | Instant Hover Time | Mouse | foundation | FREE | Sets the pointer hover activation time to its minimum. |
-| 249 | `mouse-014` | Fast Double-Click | Mouse | foundation | FREE | Lowers the double-click speed threshold so rapid clicks register faster. |
-| 250 | `mouse-015` | Compact Double-Click Zone | Mouse | foundation | FREE | Shrinks the vertical double-click hit zone for precise rapid clicking. |
-| 251 | `mouse-016` | Compact Double-Click Zone Width | Mouse | foundation | FREE | Shrinks the horizontal double-click hit zone for rapid clicking. |
-| 252 | `mouse-017` | Disable Pointer Trails | Mouse | foundation | FREE | Turns off cursor motion trails for a clean, precise pointer. |
-| 253 | `mouse-018` | Disable Snap-To | Mouse | foundation | FREE | Prevents the pointer from jumping to the default button in dialogs. |
-| 254 | `mouse-019` | Linear Pointer Curve | Mouse | foundation | FREE | Replaces the Windows acceleration curves with a flat 1:1 pointer response. |
-| 255 | `mouse-020` | Tight Hover Zone | Mouse | foundation | FREE | Narrows the horizontal pointer hover zone for faster hover activation. |
-| 256 | `mouse-021` | Tight Hover Zone Height | Mouse | foundation | FREE | Narrows the vertical pointer hover zone for faster hover activation. |
-| 257 | `mouse-022` | Disable Click Lock | Mouse | foundation | FREE | Turns off Click Lock so dragging never sticks after a long press. |
-| 258 | `mouse-023` | Faster Click Lock Engage | Mouse | foundation | FREE | Shortens the hold time before Click Lock engages when it is enabled. |
-| 259 | `mouse-024` | Disable Cursor Blink | Mouse | foundation | FREE | Stops the text cursor from blinking. |
-| 260 | `mouse-027` | Horizontal Wheel Chars | Mouse | foundation | FREE | Sets how many characters a horizontal wheel tilt scrolls. |
-| 261 | `mouse-028` | Snappy Window Drag | Mouse | foundation | FREE | Lowers the vertical threshold before a window switches to full-window drag. |
-| 262 | `mouse-029` | Snappy Window Drag Width | Mouse | foundation | FREE | Lowers the horizontal threshold before a window switches to full-window drag. |
-| 263 | `mouse-030` | Activate Window on Hover | Mouse | performance | FOUNDATION | Makes windows activate as soon as the pointer passes over them. |
-| 264 | `mouse-031` | Disable Snap Layouts | Mouse | foundation | FREE | Turns off the Win11 Snap Layouts popup when dragging a window to an edge. |
-| 265 | `mouse-032` | Minimize Flash Count | Mouse | foundation | FREE | Sets the number of flashes a background window makes when it steals attention. |
-| 266 | `mouse-047` | Scroll Inactive Windows on Hover | Mouse | foundation | FREE | Lets the wheel scroll windows under the pointer without activating them. |
-| 267 | `mouse-048` | Disable Snap Assist | Mouse | foundation | FREE | Disables the Snap Assist layout buttons shown when dragging a window to an edge. |
-| 268 | `mouse-049` | Disable Snap Fill | Mouse | foundation | FREE | Prevents windows from auto-filling available space when snapped. |
-| 269 | `mouse-050` | Drag Maximized Windows | Mouse | foundation | FREE | Allows dragging a maximized window off the top edge to restore and move it. |
-| 270 | `mouse-051` | Disable MouseKeys | Mouse | foundation | FREE | Turns off the numpad-based MouseKeys pointer control. |
-| 271 | `mouse-052` | Faster MouseKeys Speed | Mouse | foundation | FREE | Raises the top pointer speed for the numpad MouseKeys control. |
-| 272 | `mouse-053` | Faster MouseKeys Acceleration | Mouse | foundation | FREE | Shortens the time MouseKeys takes to reach its top pointer speed. |
-| 273 | `nv-001` | Enable Persistence Mode | NVIDIA | performance | FOUNDATION | Keeps the NVIDIA driver resident to lower launch stalls. |
-| 274 | `nv-002` | Reset Auto Boost Defaults | NVIDIA | performance | FOUNDATION | Returns GPU boost clocks to driver defaults. |
-| 275 | `nv-018` | Disable NVIDIA Logging Services | NVIDIA | maximum | MAXIMUM | Stops and disables the NVIDIA logging and monitoring services. |
-| 276 | `net-002` | TCP Congestion Provider CTCP | Network | performance | FOUNDATION | Switches the TCP congestion provider to Compound TCP (modern Win11 + legacy fallback). |
-| 277 | `net-003` | Enable Receive-Side Scaling | Network | performance | FOUNDATION | Turns on RSS so network processing spreads across CPU cores. |
-| 278 | `net-004` | Enable ECN Capability | Network | performance | FOUNDATION | Enables Explicit Congestion Notification on TCP. |
-| 279 | `net-005` | Disable TCP Timestamps | Network | performance | FOUNDATION | Turns off TCP timestamp options. |
-| 280 | `net-006` | Initial RTO 2000 ms | Network | performance | FOUNDATION | Sets the TCP initial retransmission timeout to 2000 ms. |
-| 281 | `net-007` | Max Connections Per Server (IE/Apps) | Network | foundation | FREE | Raises simultaneous connections per HTTP server to 8. |
-| 282 | `net-008` | Max Connections Per 1.0 Server | Network | foundation | FREE | Raises parallel connections for HTTP/1.0 servers to 8. |
-| 283 | `net-009` | Disable Network Throttling | Network | performance | FOUNDATION | Raises the MMCSS network throttling index to maximum. |
-| 284 | `net-010` | Default TTL 64 | Network | foundation | FREE | Sets the default IPv4 time-to-live to 64. |
-| 285 | `net-012` | Set DNS to Cloudflare | Network | foundation | FREE | Switches DNS to Cloudflare's fast public resolvers. |
-| 286 | `net-013` | Disable Delivery Optimization P2P | Network | foundation | FREE | Disables peer-to-peer Windows Update sharing. |
-| 287 | `net-017` | Disable Nagle Algorithm | Network | performance | FOUNDATION | Disables Nagle's algorithm on all network interfaces for lower latency. |
-| 288 | `net-019` | Disable RSS on Low RAM | Network | maximum | MAXIMUM | Disables Receive-Side Scaling on systems with limited RAM to free memory for games. |
-| 289 | `net-020` | Disable NIC Interrupt Moderation | Network | maximum | MAXIMUM | Turns off the active adapter's Interrupt Moderation so every packet is raised to the CPU immediately instead of being batched. |
-| 290 | `net-021` | Restore Receive-Side Scaling (Adapter) | Network | performance | FOUNDATION | Re-enables RSS on the TCP stack and on the adapter when it is supported but was switched off. |
-| 291 | `net-022` | Network Adapter Performance Mode | Network | performance | FOUNDATION | Disables the NIC's low-power link features (EEE, Green Ethernet, Power Saving Mode, Gigabit Lite, Ultra Low Power Mode) for lower jitter. |
-| 292 | `gpu-027` | Suppress Animations While Shifting | Performance | foundation | FREE | Lets you hold Shift to instantly disable window animations, useful for remote sessions. |
-| 293 | `gpu-028` | Disable DWM Telemetry | Performance | foundation | FREE | Stops the DWM Customer Experience Improvement Program from collecting UI rendering data. |
-| 294 | `gpu-029` | Disable DWM Machine Check Redraw | Performance | maximum | MAXIMUM | Stops DWM's full-surface redraw when the desktop changes, cutting jank on low-end GPUs. |
-| 295 | `gpu-030` | Skip DWM Machine Check Fast Path | Performance | maximum | MAXIMUM | Prevents the DWM machine-check fast-path shortcut that can degrade presentation cadence. |
-| 296 | `gpu-032` | Disable Window Blur | Performance | foundation | FREE | Turns off the blur-behind-windows effect that costs extra GPU fill passes. |
-| 297 | `gpu-035` | Enable WPF Hardware Acceleration | Performance | foundation | FREE | Ensures WPF (.NET) apps render on the GPU instead of the software rasterizer. |
-| 298 | `gpu-042` | Disable DirectX Update Checks | Performance | foundation | FREE | Stops the DirectX runtime from checking for optional updates during installs. |
-| 299 | `gpu-046` | Clear DirectX Shader Cache | Performance | foundation | FREE | Wipes the DirectX shader cache so stale or corrupt shader blobs recompile cleanly. |
-| 300 | `gpu-058` | Enable GPU MMCSS Scheduling | Performance | performance | FOUNDATION | Tunes the Multimedia Class Scheduler Service profile for GPU-priority tasks. |
-| 301 | `perf-001` | Timer Resolution Diagnostic | Performance | performance | FOUNDATION | One optional timer card. Permits applications to request a higher timer resolution; it does not force 0.5 ms. Games already request the resolution they need, so this rarely changes anything. |
-| 302 | `perf-002` | Enable Game Mode | Performance | foundation | FREE | Enable Windows Game Mode for better gaming performance. |
-| 303 | `perf-003` | Disable Game Mode | Performance | foundation | FREE | Disable Windows Game Mode if it causes issues with your system. |
-| 304 | `perf-004` | Disable Memory Compression | Performance | performance | FOUNDATION | Disable Windows Memory Compression which can add CPU overhead. |
-| 305 | `perf-005` | Disable Superfetch (SysMain) | Performance | foundation | FREE | Disable Superfetch/SysMain service which can cause disk thrashing. |
-| 306 | `perf-008` | Disable Hibernation | Performance | foundation | FREE | Disable hibernation to free disk space and reduce overhead. |
-| 307 | `perf-009` | Throttle Windows Update During Gaming | Performance | foundation | FREE | Configure Windows Update to avoid downloading during active gaming. |
-| 308 | `perf-012` | Disable Toast Notifications | Performance | foundation | FREE | Disable Windows toast notifications to avoid interruptions. |
-| 309 | `perf-013` | Disable NIC Interrupt Moderation | Performance | maximum | MAXIMUM | Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe). |
-| 310 | `perf-019` | Optimize Interrupt Affinity | Performance | maximum | MAXIMUM | Configure interrupt affinity for better CPU load distribution. |
-| 311 | `perf-029` | Set MMCSS Gaming Priority | Performance | performance | FOUNDATION | Configure MMCSS to give game processes highest scheduling priority. |
-| 312 | `perf-034` | Set Processor Performance Decrease Policy | Performance | maximum | MAXIMUM | Configure aggressive processor performance decrease for faster frequency scaling under gaming loads. |
-| 313 | `perf-035` | Disable USB Selective Suspend | Performance | foundation | FREE | Disable USB selective suspend to prevent USB device disconnections. |
-| 314 | `perf-037` | Force TRIM | Performance | foundation | FREE | Ensure TRIM is always enabled for optimal SSD performance. |
-| 315 | `perf-038` | Disable I/O Coalescing | Performance | performance | FOUNDATION | Disable I/O coalescing in the LAN server driver for lower latency. |
-| 316 | `perf-042` | Disable Memory Compression (Cmd) | Performance | performance | FOUNDATION | Disable Windows Memory Compression via PowerShell to reduce CPU overhead on systems with ample RAM. |
-| 317 | `perf-043` | Disable Page Combining (Registry) | Performance | performance | FOUNDATION | Disable Windows page combining through registry to reduce memory management overhead. |
-| 318 | `perf-046` | Disable Background Maintenance | Performance | performance | FOUNDATION | Disable scheduled maintenance tasks that consume disk and CPU resources during gaming sessions. |
-| 319 | `perf-049` | Set IRPStackSize | Performance | maximum | MAXIMUM | Increase the I/O Request Packet stack size for better network throughput in LAN gaming scenarios. |
-| 320 | `perf-053` | Optimize Non-Paged Pool Size | Performance | foundation | FREE | Let Windows auto-manage non-paged pool size for optimal memory allocation on gaming systems. |
-| 321 | `perf-054` | Disable Game DVR Recording (Policy) | Performance | foundation | FREE | Disable Game DVR background recording via Group Policy to free up system resources. |
-| 322 | `perf-055` | Optimize Thread Scheduling | Performance | performance | FOUNDATION | Disable scheduler profiling overhead for lower context switch latency in gaming workloads. |
-| 323 | `power-002` | Disable USB Selective Suspend | Power | foundation | FREE | Prevents USB ports from suspending. |
-| 324 | `power-003` | Disable PCI Express ASPM | Power | performance | FOUNDATION | Prevents PCIe link power saving. |
-| 325 | `power-004` | Set Sleep to Never | Power | foundation | FREE | Prevents the system from sleeping. |
-| 326 | `power-005` | Set Display Off Timeout | Power | foundation | FREE | Sets display-off timeout to 15 minutes. |
-| 327 | `power-006` | Disable Hibernation | Power | foundation | FREE | Turns off hibernation and deletes the hibernation file. |
-| 328 | `power-009` | Set Minimum Processor State | Power | performance | FOUNDATION | Keeps the CPU at a high clock floor on AC. |
-| 329 | `power-010` | Disable Adaptive Brightness | Power | foundation | FREE | Turns off display adaptive brightness. |
-| 330 | `power-011` | Disable Hard Disk Sleep | Power | foundation | FREE | Prevents the disk from idling down. |
-| 331 | `power-016` | Disable Fast Startup | Power | foundation | FREE | Turns off Windows Fast Startup so the system performs a full cold boot every time. |
-| 332 | `power-018` | Disable Power Telemetry | Power | foundation | FREE | Turns off Windows power telemetry collection to reduce background CPU and disk activity. |
-| 333 | `power-019` | Disable Power Estimation | Power | foundation | FREE | Turns off the Windows power estimation engine to stop periodic CPU wake-ups for power tracking. |
-| 334 | `power-021` | Disable Power Throttling | Power | performance | FOUNDATION | Turns off Windows Power Throttling globally so background processes are not duty-cycled to save energy. |
-| 335 | `power-022` | Disable Lazy Mode | Power | performance | FOUNDATION | Turns off CPU lazy idle mode so cores transition out of idle states immediately instead of waiting. |
-| 336 | `power-023` | Disable DIPM | Power | maximum | MAXIMUM | Disables Device Initiated Power Management on NVMe drives to prevent aggressive low-power transitions. |
-| 337 | `power-024` | Disable HIPM | Power | maximum | MAXIMUM | Disables Host Initiated Power Management on NVMe drives to prevent the OS from putting drives into low-power states. |
-| 338 | `power-025` | Disable Hidden Power Saving | Power | performance | FOUNDATION | Turns off the AoAcOverride that enables Always On Always Connected hidden power-saving states. |
-| 339 | `power-026` | Disable Sleep Study | Power | foundation | FREE | Turns off the Windows Sleep Study diagnostic logger to reduce background disk and CPU activity. |
-| 340 | `power-027` | Disable Connected Standby | Power | maximum | MAXIMUM | Disables Connected Standby (Modern Standby) via the platform override to force classic S3 sleep behavior. |
-| 341 | `pp-013` | Maximum Power Plan | Power Plans | maximum | MAXIMUM | Create and activate the Maximum Power Plan — a maximum-performance gaming power plan that lets the CPU boost to 100% under load while idling down at rest, minimizing throttling for consistent frame times. |
-| 342 | `pre-001` | Trajectory Timing | Precision Tweaks | maximum | MAXIMUM | Tweaks frame timing & send intervals. |
-| 343 | `pre-003` | Packet Flow | Precision Tweaks | maximum | MAXIMUM | Packet flow optimization for stable network timing. |
-| 344 | `pre-004` | Tick Sync | Precision Tweaks | maximum | MAXIMUM | Server timing tick alignment. |
-| 345 | `pre-005` | Latency Consistency | Precision Tweaks | maximum | MAXIMUM | Latency spike reduction & response consistency. |
-| 346 | `pre-006` | Click Timing | Precision Tweaks | maximum | MAXIMUM | Click-to-shot timing tightness. |
-| 347 | `pre-007` | Packet Timing | Precision Tweaks | maximum | MAXIMUM | Network jitter & micro-loss mitigation. |
-| 348 | `pre-009` | Taste Tester | Precision Tweaks | foundation | FREE | Preset mix of lighter tweaks across all categories. |
-| 349 | `priv-001` | Disable Suggested Content | Privacy | foundation | FREE | Turns off suggested app content in Start. |
-| 350 | `priv-002` | Disable Tailored Experiences | Privacy | foundation | FREE | Turns off tailored ad experiences. |
-| 351 | `priv-003` | Disable Online Speech | Privacy | foundation | FREE | Turns off online speech recognition. |
-| 352 | `priv-004` | Disable Handwriting Data | Privacy | foundation | FREE | Turns off handwriting data collection. |
-| 353 | `priv-005` | Disable Advertiser Tracking | Privacy | foundation | FREE | Turns off the ad tracking ID. |
-| 354 | `priv-006` | Disable Camera Access | Privacy | performance | FOUNDATION | Denies camera access to apps. |
-| 355 | `priv-008` | Disable Contacts Access | Privacy | foundation | FREE | Denies contacts access. |
-| 356 | `priv-009` | Disable Email Access | Privacy | foundation | FREE | Denies email access to apps. |
-| 357 | `priv-010` | Disable Notifications | Privacy | performance | FOUNDATION | Disables app notification access. |
-| 358 | `priv-011` | Disable Call History Access | Privacy | foundation | FREE | Denies call history access. |
-| 359 | `ram-001` | Enable Prefetch | RAM | performance | FOUNDATION | Turns on boot and application prefetching. |
-| 360 | `ram-002` | Enable SysMain Service | RAM | performance | FOUNDATION | Sets the SysMain (Superfetch) service to automatic. |
-| 361 | `ram-003` | Disable SysMain on SSD | RAM | performance | FOUNDATION | Disables Superfetch on SSD-only systems. |
-| 362 | `ram-004` | Disable Superfetch Registry (SSD) | RAM | performance | FOUNDATION | Turns off the Superfetch prefetcher at the registry level. |
-| 363 | `ram-005` | Enable Superfetch on HDD | RAM | performance | FOUNDATION | Turns on the Superfetch prefetcher for HDD systems. |
-| 364 | `ram-008` | Disable Hibernation Reserve | RAM | foundation | FREE | Frees the RAM-space reserved for the hibernation file. |
-| 365 | `ram-009` | 32-bit Large Address Space | RAM | maximum | MAXIMUM | Raises the user address space for 32-bit games. |
-| 366 | `ram-014` | Disable Memory Diagnostics at Boot | RAM | foundation | FREE | Prevents the scheduled memory check at boot. |
-| 367 | `ram-021` | Cache Memory-Mapped Images | RAM | performance | FOUNDATION | Lets Windows keep loaded DLL and executable pages in the standby cache. |
-| 368 | `ram-022` | Physical Address Extension (32-bit) | RAM | maximum | MAXIMUM | Enables PAE so 32-bit Windows can address more physical RAM. |
-| 369 | `ram-023` | Enable Hibernation for Fast Startup | RAM | foundation | FREE | Turns hibernation back on so Fast Startup can preload the kernel. |
-| 370 | `ram-024` | System-Managed Pagefile | RAM | foundation | FREE | Lets Windows automatically size the pagefile on all drives. |
-| 371 | `ram-028` | Restore Automatic Pagefile Size | RAM | foundation | FREE | Returns the system-drive pagefile to Windows-managed sizing. |
-| 372 | `ram-030` | Disable Telemetry Service | RAM | performance | FOUNDATION | Stops the Connected User Experiences and Telemetry service. |
-| 373 | `ram-031` | Disable Maps Broker | RAM | foundation | FREE | Stops the downloaded-maps manager service. |
-| 374 | `ram-032` | Disable WMP Network Sharing | RAM | foundation | FREE | Stops the Windows Media Player network sharing service. |
-| 375 | `ram-033` | Disable Retail Demo Service | RAM | foundation | FREE | Stops the retail demo mode service. |
-| 376 | `ram-035` | Disable Device WAP Push | RAM | foundation | FREE | Stops the Device Management WAP Push service. |
-| 377 | `ram-036` | Disable Diagnostics Hub | RAM | performance | FOUNDATION | Stops the Diagnostics Hub Standard Collector service. |
-| 378 | `ram-038` | Disable Windows Error Reporting | RAM | performance | FOUNDATION | Stops the WerSvc error reporting service. |
-| 379 | `ram-039` | Disable Windows Error Reporting (WER) | RAM | foundation | FREE | Stops Windows Error Reporting from collecting crash dumps. |
-| 380 | `ram-040` | Disable Memory Compression | RAM | performance | FOUNDATION | Turns off Windows 10/11 memory compression. |
-| 381 | `ram-042` | Shorten Service Shutdown Timeout | RAM | performance | FOUNDATION | Cuts how long Windows waits for services to stop at shutdown. |
-| 382 | `ram-043` | Disable Boot Memory Diagnostic | RAM | foundation | FREE | Prevents the scheduled Windows Memory Diagnostic run. |
-| 383 | `ram-044` | Disable Data Sharing Service | RAM | performance | FOUNDATION | Stops the DsmSvc data sharing service. |
-| 384 | `ram-046` | Disable Push Notifications | RAM | performance | FOUNDATION | Stops the Windows Push Notifications System service. |
-| 385 | `ram-047` | Disable Full Memory Diagnostic Task | RAM | foundation | FREE | Disables the scheduled full memory check task. |
-| 386 | `ram-048` | Disable Memory Diagnostic Events | RAM | foundation | FREE | Disables the memory-diagnostic event processing task. |
-| 387 | `ram-049` | Disable Compatibility Appraiser | RAM | foundation | FREE | Disables the Microsoft Compatibility Appraiser task. |
-| 388 | `ram-050` | Disable Program Data Updater | RAM | foundation | FREE | Disables the Application Experience ProgramDataUpdater task. |
-| 389 | `ram-051` | Disable CEIP Consolidator | RAM | foundation | FREE | Disables the Customer Experience Improvement Program task. |
-| 390 | `ram-052` | Disable WER Queue Reporting | RAM | foundation | FREE | Disables the error-reporting queue task. |
-| 391 | `ram-053` | Remove Solitaire and Casual Games | RAM | performance | FOUNDATION | Uninstalls the built-in Solitaire Collection and casual games. |
-| 392 | `ram-054` | Remove Xbox Gaming Overlay | RAM | performance | FOUNDATION | Uninstalls the Xbox Game Bar overlay app. |
-| 393 | `ram-056` | Remove Pagefile From Second Drive | RAM | performance | FOUNDATION | Deletes a pagefile that was placed on D:. |
-| 394 | `ram-057` | Enable Large System Cache | RAM | maximum | MAXIMUM | Sets the LargeSystemCache registry value to optimize file system caching. |
-| 395 | `ram-058` | Increase Io Page Lock Limit | RAM | performance | FOUNDATION | Lets Windows auto-manage the I/O page lock limit. |
-| 396 | `ram-059` | Disable Paging Executive | RAM | performance | FOUNDATION | Keeps the kernel and drivers in physical RAM instead of paging them to disk. |
-| 397 | `ram-060` | Set System Pages | RAM | performance | FOUNDATION | Lets Windows manage the number of system page table entries. |
-| 398 | `ram-061` | Optimize Paged Pool Size | RAM | performance | FOUNDATION | Lets Windows auto-manage the paged pool size. |
-| 399 | `ram-062` | Enable Memory Compression | RAM | foundation | FREE | Enables Windows memory compression to fit more data in RAM. |
-| 400 | `ram-063` | Set Process Count Limit | RAM | maximum | MAXIMUM | Optimizes the shared section size for desktop heap. |
-| 401 | `ram-064` | Disable Prefetch (SSD) | RAM | performance | FOUNDATION | Turns off boot and application prefetching at the registry level. |
-| 402 | `reg-001` | Foreground Lock Timeout 0 | Registry | foundation | FREE | Removes the delay before a clicked window receives focus. |
-| 403 | `reg-002` | Active Window Tracking Timeout 0 | Registry | foundation | FREE | Removes the hover delay for focus-follows-mouse tracking. |
-| 404 | `reg-003` | Suppress Low Disk Space Warnings | Registry | foundation | FREE | Stops the low-disk-space balloon warnings. |
-| 405 | `reg-004` | Disable Recent Documents History | Registry | foundation | FREE | Stops tracking of recently opened documents. |
-| 406 | `reg-005` | Disable Screen Saver | Registry | foundation | FREE | Turns the screen saver off. |
-| 407 | `reg-006` | Disable Taskbar Animations | Registry | foundation | FREE | Turns off taskbar animation effects. |
-| 408 | `reg-007` | Disable ListView Shadows | Registry | foundation | FREE | Turns off drop shadows behind list views. |
-| 409 | `reg-008` | Never Combine Taskbar Buttons | Registry | foundation | FREE | Shows every window as a separate taskbar button. |
-| 410 | `reg-009` | Explorer Separate Processes | Registry | foundation | FREE | Runs each Explorer folder in its own process. |
-| 411 | `reg-010` | Hide Sync Provider Notifications | Registry | foundation | FREE | Removes cloud sync badges and banners in Explorer. |
-| 412 | `reg-011` | Disable Desktop Peek Preview | Registry | foundation | FREE | Turns off the Aero Peek hover preview. |
-| 413 | `reg-012` | Disable Icons Only Thumbnails | Registry | foundation | FREE | Shows only file icons instead of embedded thumbnail previews in lists. |
-| 414 | `reg-013` | Hide Frequent Folders in Quick Access | Registry | foundation | FREE | Removes the frequent folders section from Quick Access. |
-| 415 | `reg-014` | Disable AutoPlay Handlers | Registry | foundation | FREE | Disables AutoPlay for removable media. |
-| 416 | `reg-015` | Disable Widgets Button | Registry | foundation | FREE | Removes the Widgets button from the taskbar. |
-| 417 | `reg-016` | Disable Copilot Button | Registry | foundation | FREE | Removes the Copilot icon from the taskbar. |
-| 418 | `rep-005` | Reset Windows Update Components | Repair | performance | FOUNDATION | Stops the update service, renames the SoftwareDistribution cache, and restarts it. |
-| 419 | `rep-015` | CPU Optimization Repair | Repair | performance | FOUNDATION | Detect-first cleaner for bad scheduling values left behind by old MaximumTweaks builds, REG packs, BAT packs or other optimizers. |
-| 420 | `sec-001` | Add Game Folder to Defender Exclusions | Security & Performance | performance | FOUNDATION | Excludes game folders from real-time scanning. |
-| 421 | `sec-002` | Exclude Game Processes | Security & Performance | performance | FOUNDATION | Excludes game executables from scanning. |
-| 422 | `sec-008` | Disable Remote Desktop | Security & Performance | foundation | FREE | Disables RDP if unused. |
-| 423 | `sec-010` | Disable PowerShell Script Logging | Security & Performance | performance | FOUNDATION | Disables PowerShell ScriptBlock Logging via Group Policy. |
-| 424 | `sec-011` | Disable Network Discovery | Security & Performance | foundation | FREE | Disables network discovery. |
-| 425 | `svc-001` | Disable SysMain | Services | performance | FOUNDATION | Disables the SysMain (Superfetch) service. |
-| 426 | `svc-002` | Disable Windows Search | Services | performance | FOUNDATION | Disables the Windows Search indexer. |
-| 427 | `svc-005` | Disable Remote Registry | Services | foundation | FREE | Disables remote registry access. |
-| 428 | `svc-006` | Disable Print Spooler | Services | performance | FOUNDATION | Disables the print spooler if you have no printers. |
-| 429 | `svc-007` | Disable Xbox Services | Services | performance | FOUNDATION | Disables the Xbox Live services. |
-| 430 | `svc-010` | Disable Bluetooth Support | Services | performance | FOUNDATION | Disables the Bluetooth service if unused. |
-| 431 | `svc-011` | Disable Fax Service | Services | foundation | FREE | Disables the Fax service. |
-| 432 | `svc-012` | Disable Touch Keyboard Service | Services | performance | FOUNDATION | Disables the touch keyboard if not needed. |
-| 433 | `svc-013` | Disable Phone Service | Services | performance | FOUNDATION | Disables the Phone Link service. |
-| 434 | `svc-016` | Disable Infrared Service | Services | foundation | FREE | Disables the infrared device service. |
-| 435 | `svc-019` | Disable Windows Insider Service | Services | foundation | FREE | Disables the Windows Insider Preview service. |
-| 436 | `start-005` | Enable Multi-Core Boot | Startup | performance | FOUNDATION | Uses all CPU cores while booting Windows. |
-| 437 | `start-012` | Disable Automatic Sign-in Animations | Startup | foundation | FREE | Disables the Windows logon background image and sign-in animation. |
-| 438 | `start-016` | Disable Maintenance Tasks | Startup | performance | FOUNDATION | Disables the automatic Windows Maintenance scheduler. |
-| 439 | `stor-001` | Enable SSD TRIM | Storage | foundation | FREE | Turns on the TRIM command for SSD/NVMe drives. |
-| 440 | `stor-002` | Disable 8.3 Short Names | Storage | performance | FOUNDATION | Stops NTFS from generating legacy 8.3 filenames. |
-| 441 | `stor-004` | MFT Zone Reservation | Storage | performance | FOUNDATION | Reserves extra space for the NTFS Master File Table. |
-| 442 | `stor-005` | Disable HDD Idle Spin-Down | Storage | foundation | FREE | Prevents the hard drive from spinning down during long sessions. |
-| 443 | `stor-006` | Disable Scheduled Defragmentation | Storage | performance | FOUNDATION | Disables the automatic disk defrag task. |
-| 444 | `stor-007` | Disable Storage Sense | Storage | foundation | FREE | Turns off automatic storage cleanup. |
-| 445 | `stor-016` | Optimize NTFS Last Access | Storage | foundation | FREE | Disables NTFS last-access timestamp updates to reduce metadata writes on every file read. |
-| 446 | `sys-002` | Do Not Clear Pagefile at Shutdown | System | foundation | FREE | Skips clearing the pagefile during shutdown. |
-| 447 | `sys-004` | Disable Windows Error Reporting | System | foundation | FREE | Turns off WER popups and background report submission. |
-| 448 | `sys-006` | Disable Auto Reboot on Crash | System | foundation | FREE | Prevents automatic restart after a system failure. |
-| 449 | `sys-007` | Enable Long Paths | System | foundation | FREE | Enables Win32 long path support (>260 chars). |
-| 450 | `sys-009` | Boot Manager Timeout 0 | System | performance | FOUNDATION | Removes the boot manager selection delay. |
-| 451 | `sys-010` | Disable Automatic Driver Downloads | System | maximum | MAXIMUM | Stops Windows Update from automatically installing drivers. |
-| 452 | `sys-012` | Fast App Shutdown Timeouts | System | maximum | MAXIMUM | Reduces how long Windows waits for hung applications at shutdown. |
-| 453 | `sys-013` | Auto-End Tasks at Logoff | System | performance | FOUNDATION | Forces hung applications to close when you log off. |
-| 454 | `sys-014` | Disable Drive AutoRun | System | foundation | FREE | Disables AutoRun for all drive types. |
-| 455 | `sys-015` | Disable Aero Shake | System | foundation | FREE | Turns off the Aero Shake minimize gesture. |
-| 456 | `sys-016` | Disable Minimize Animation | System | foundation | FREE | Turns off window minimize/restore animations. |
-| 457 | `sys-017` | Disable Notification Center | System | performance | FOUNDATION | Turns off the notification center via policy. |
-| 458 | `sys-019` | Disable 'Start Full-Screen Optimizations' Help | System | foundation | FREE | Turns off the fullscreen optimization compatibility help overlay. |
-| 459 | `sys-021` | Reduce Hung App Timeout | System | performance | FOUNDATION | Lowers the threshold before Windows considers an app hung. |
-| 460 | `tel-002` | Disable Compatibility Telemetry | Telemetry | foundation | FREE | Turns off the compatibility appraiser telemetry. |
-| 461 | `tel-003` | Disable Inventory Collector | Telemetry | foundation | FREE | Disables the Device Inventory Collector. |
-| 462 | `tel-004` | Disable Activity History | Telemetry | foundation | FREE | Turns off activity history tracking. |
-| 463 | `tel-005` | Disable Advertising ID | Telemetry | foundation | FREE | Turns off the advertising ID. |
-| 464 | `tel-009` | Disable Windows Update Telemetry | Telemetry | foundation | FREE | Sets Windows Data Collection telemetry level to minimum. |
-| 465 | `tel-010` | Disable Feedback Requests | Telemetry | foundation | FREE | Turns off Windows feedback prompts. |
-| 466 | `tel-012` | Disable Location Service | Telemetry | foundation | FREE | Turns off location access. |
-| 467 | `tel-013` | Disable Find My Device | Telemetry | foundation | FREE | Turns off device-finder telemetry. |
-| 468 | `tel-016` | Disable App Diagnostics | Telemetry | foundation | FREE | Turns off per-app diagnostic data access. |
-| 469 | `tel-017` | Disable Customer Experience | Telemetry | foundation | FREE | Disables the Customer Experience Improvement Program. |
-| 470 | `tel-019` | Disable Diagnostic Data Viewer | Telemetry | foundation | FREE | Disables the Diagnostic Data Viewer plugin. |
-| 471 | `usb-001` | Disable USB Selective Suspend | USB | foundation | FREE | Turns off USB selective suspend in the active power scheme. |
-| 472 | `usb-006` | Disable USB Host Controller Power Management | USB | performance | FOUNDATION | Disables power management on all USB host controllers to prevent input device sleep. |
-| 473 | `usb-014` | Set USB Data Queue Size | USB | performance | FOUNDATION | Sets the minimum USB transfer bytes to zero for lower latency. |
-| 474 | `usb-015` | Disable USB Hub Power Management | USB | foundation | FREE | Disables 'Allow the computer to turn off this device' on selected USB hubs. |
-| 475 | `usb-016` | Disable HID Keyboard/Mouse Power Management | USB | foundation | FREE | Disables 'Allow the computer to turn off this device' for detected HID keyboard and mouse instances. |
-| 476 | `usb-017` | Disable Bluetooth HID Power Saving | USB | performance | FOUNDATION | Disables power-saving on the Bluetooth HID adapter that serves BT keyboards and mice. |
-| 477 | `wifi-001` | Disable Wi-Fi Power Saving | Wi-Fi | foundation | FREE | Turns off power management on the wireless adapter. |
-| 478 | `wifi-002` | Highest Roaming Aggressiveness | Wi-Fi | performance | FOUNDATION | Sets roaming aggressiveness to its highest value. |
-| 479 | `wifi-003` | Disable LSO on Wi-Fi | Wi-Fi | performance | FOUNDATION | Turns off Large Send Offload on the wireless adapter. |
-| 480 | `wifi-005` | Prefer 5 GHz / 6 GHz Band | Wi-Fi | foundation | FREE | Sets the wireless adapter preferred band to 5 GHz / 6 GHz. |
-| 481 | `wifi-007` | Disable Auto-Connect to Hotspots | Wi-Fi | foundation | FREE | Stops automatic connections to suggested open hotspots via registry. |
-| 482 | `wifi-009` | Disable Wake on Magic Packet (Wi-Fi) | Wi-Fi | foundation | FREE | Turns off wireless Wake-on-LAN. |
-| 483 | `wifi-010` | Disable LSO IPv6 (Wi-Fi) | Wi-Fi | performance | FOUNDATION | Turns off IPv6 large send offload on Wi-Fi. |
-| 484 | `wifi-011` | Disable Background Scanning | Wi-Fi | foundation | FREE | Reduces frequent wireless background scans via registry. |
-| 485 | `win-005` | Disable Balloon Tip Notifications | Windows | foundation | FREE | Turns off Explorer balloon tips and toasts. |
-| 486 | `win-006` | Visual Effects: Best Performance | Windows | foundation | FREE | Sets the system visual effects preset to 'best performance'. |
-| 487 | `win-007` | Menu Show Delay 0 | Windows | foundation | FREE | Removes the delay before submenus open. |
-| 488 | `win-008` | Disable Transparency Effects | Windows | foundation | FREE | Turns off acrylic/blur transparency in the UI. |
-| 489 | `win-009` | Disable Windows Tips and Suggestions | Windows | foundation | FREE | Disables the Start/tips content delivered by Windows. |
-| 490 | `win-012` | Disable Web Search in Start | Windows | foundation | FREE | Stops Start menu web search results. |
-| 491 | `win-013` | Disable Cortana | Windows | foundation | FREE | Turns off Cortana via policy. |
-| 492 | `win-014` | Disable Bing Search in Start | Windows | foundation | FREE | Disables Bing results in Windows Search. |
-| 493 | `win-015` | Legacy Windows 10 Context Menu | Windows | foundation | FREE | Restores the classic full context menu in Windows 11. |
-| 494 | `win-017` | Disable First Sign-in Animation | Windows | foundation | FREE | Skips the Windows welcome/first-sign-in animation. |
-| 495 | `win-018` | Disable Start Menu App Suggestions | Windows | foundation | FREE | Removes promoted app suggestions from the Start menu. |
-| 496 | `win-019` | Disable Timeline | Windows | foundation | FREE | Turns off Windows Timeline activity history tracking. |
-| 497 | `win-021` | Disable Search Cloud | Windows | foundation | FREE | Stops Windows Search from fetching cloud/web results. |
-| 498 | `win-022` | Disable Search Box Suggestions | Windows | foundation | FREE | Turns off predictive suggestions in the Windows Search box. |
-| 499 | `win-023` | Disable News and Interests | Windows | foundation | FREE | Turns off the News and Interests widget on the taskbar. |
-| 500 | `expl-001` | Show Hidden Files | Windows Explorer | foundation | FREE | Displays hidden files and folders in Explorer. |
-| 501 | `expl-002` | Show Protected Operating System Files | Windows Explorer | foundation | FREE | Reveals protected system files in Explorer. |
-| 502 | `expl-003` | Show File Name Extensions | Windows Explorer | foundation | FREE | Displays full file name extensions. |
-| 503 | `expl-004` | Disable Thumbnail Cache | Windows Explorer | foundation | FREE | Stops Explorer from generating thumbnail previews. |
-| 504 | `expl-005` | Disable Network Thumbnail Cache | Windows Explorer | foundation | FREE | Turns off thumbnail caching for network folders. |
-| 505 | `expl-006` | Disable thumbs.db Creation | Windows Explorer | foundation | FREE | Stops creation of thumbs.db database files on network folders. |
-| 506 | `expl-007` | Enlarge Icon Cache | Windows Explorer | foundation | FREE | Raises the shell icon cache size to 8192 entries. |
-| 507 | `expl-008` | Explorer Opens to This PC | Windows Explorer | foundation | FREE | Changes File Explorer's default landing page to This PC. |
-| 508 | `expl-009` | Disable Recent Item Tracking | Windows Explorer | foundation | FREE | Stops Start menu and jump list from tracking opened items. |
-| 509 | `expl-010` | Full Path in Explorer Title Bar | Windows Explorer | foundation | FREE | Shows the complete folder path in the window title bar. |
-| 510 | `expl-011` | Hide Taskbar Search Box | Windows Explorer | foundation | FREE | Reduces the taskbar search box to an icon (or removes it). |
-| 511 | `expl-012` | Disable Search Highlights | Windows Explorer | foundation | FREE | Turns off the search box highlights content. |
-| 512 | `expl-013` | Explorer Compact Mode | Windows Explorer | foundation | FREE | Enables compact spacing in Windows 11 Explorer. |
-| 513 | `wgr-003` | Disable Auto HDR | Windows Graphics | foundation | FREE | Disables Windows Auto HDR via policy registry key. |
-| 514 | `wgr-006` | Restore MPO Composition | Windows Graphics | performance | FOUNDATION | Re-enables Multiplane Overlay (undo of the MPO disable tweak). |
-| 515 | `wgr-012` | Reset Graphics Settings | Windows Graphics | performance | FOUNDATION | Deletes Windows' per-app DirectX GPU preference blob (stale per-app assignments and performance flags are removed at once). |
-| 516 | `wgr-013` | DirectX Graphics Flags | Windows Graphics | performance | FOUNDATION | Sets all four DirectXUserGlobalSettings performance flags in one write (replaces the old four separate cards that fought over one value). |
+| 238 | `lap-047` | Disable Hybrid Sleep on Battery | Laptop | foundation | FREE | Disable hybrid sleep on battery to prevent disk writes. |
+| 239 | `lap-048` | Disable Wake Timers on Battery | Laptop | foundation | FREE | Prevent scheduled tasks from waking the laptop on battery. |
+| 240 | `lap-049` | Disable Adaptive Brightness | Laptop | foundation | FREE | Disable ambient light sensor-based brightness adjustment. |
+| 241 | `lap-050` | Moderate C-States on Battery | Laptop | performance | FOUNDATION | Allow moderate CPU C-states on battery for power savings. |
+| 242 | `lap-052` | Standard Timer on Battery | Laptop | performance | FOUNDATION | Use standard timer resolution on battery to save power. |
+| 243 | `lap-053` | Disable DWM Effects on Battery | Laptop | foundation | FREE | Disable DWM visual effects on battery to reduce GPU power draw. |
+| 244 | `mon-001` | Disable Monitor Auto-Detect Sleep | Monitor | foundation | FREE | Prevents the display from entering power save during long play sessions. |
+| 245 | `mon-006` | Disable Adaptive Brightness | Monitor | foundation | FREE | Turns off display adaptive brightness in the power plan. |
+| 246 | `mouse-002` | Disable Cursor Suppression | Mouse | foundation | FREE | Stops Windows from hiding the cursor during typing in games. |
+| 247 | `mouse-004` | Instant Hover Time | Mouse | foundation | FREE | Sets the pointer hover activation time to its minimum. |
+| 248 | `mouse-014` | Fast Double-Click | Mouse | foundation | FREE | Lowers the double-click speed threshold so rapid clicks register faster. |
+| 249 | `mouse-015` | Compact Double-Click Zone | Mouse | foundation | FREE | Shrinks the vertical double-click hit zone for precise rapid clicking. |
+| 250 | `mouse-016` | Compact Double-Click Zone Width | Mouse | foundation | FREE | Shrinks the horizontal double-click hit zone for rapid clicking. |
+| 251 | `mouse-017` | Disable Pointer Trails | Mouse | foundation | FREE | Turns off cursor motion trails for a clean, precise pointer. |
+| 252 | `mouse-018` | Disable Snap-To | Mouse | foundation | FREE | Prevents the pointer from jumping to the default button in dialogs. |
+| 253 | `mouse-019` | Linear Pointer Curve | Mouse | foundation | FREE | Replaces the Windows acceleration curves with a flat 1:1 pointer response. |
+| 254 | `mouse-020` | Tight Hover Zone | Mouse | foundation | FREE | Narrows the horizontal pointer hover zone for faster hover activation. |
+| 255 | `mouse-021` | Tight Hover Zone Height | Mouse | foundation | FREE | Narrows the vertical pointer hover zone for faster hover activation. |
+| 256 | `mouse-022` | Disable Click Lock | Mouse | foundation | FREE | Turns off Click Lock so dragging never sticks after a long press. |
+| 257 | `mouse-023` | Faster Click Lock Engage | Mouse | foundation | FREE | Shortens the hold time before Click Lock engages when it is enabled. |
+| 258 | `mouse-024` | Disable Cursor Blink | Mouse | foundation | FREE | Stops the text cursor from blinking. |
+| 259 | `mouse-027` | Horizontal Wheel Chars | Mouse | foundation | FREE | Sets how many characters a horizontal wheel tilt scrolls. |
+| 260 | `mouse-028` | Snappy Window Drag | Mouse | foundation | FREE | Lowers the vertical threshold before a window switches to full-window drag. |
+| 261 | `mouse-029` | Snappy Window Drag Width | Mouse | foundation | FREE | Lowers the horizontal threshold before a window switches to full-window drag. |
+| 262 | `mouse-030` | Activate Window on Hover | Mouse | performance | FOUNDATION | Makes windows activate as soon as the pointer passes over them. |
+| 263 | `mouse-031` | Disable Snap Layouts | Mouse | foundation | FREE | Turns off the Win11 Snap Layouts popup when dragging a window to an edge. |
+| 264 | `mouse-032` | Minimize Flash Count | Mouse | foundation | FREE | Sets the number of flashes a background window makes when it steals attention. |
+| 265 | `mouse-047` | Scroll Inactive Windows on Hover | Mouse | foundation | FREE | Lets the wheel scroll windows under the pointer without activating them. |
+| 266 | `mouse-048` | Disable Snap Assist | Mouse | foundation | FREE | Disables the Snap Assist layout buttons shown when dragging a window to an edge. |
+| 267 | `mouse-049` | Disable Snap Fill | Mouse | foundation | FREE | Prevents windows from auto-filling available space when snapped. |
+| 268 | `mouse-050` | Drag Maximized Windows | Mouse | foundation | FREE | Allows dragging a maximized window off the top edge to restore and move it. |
+| 269 | `mouse-051` | Disable MouseKeys | Mouse | foundation | FREE | Turns off the numpad-based MouseKeys pointer control. |
+| 270 | `mouse-052` | Faster MouseKeys Speed | Mouse | foundation | FREE | Raises the top pointer speed for the numpad MouseKeys control. |
+| 271 | `mouse-053` | Faster MouseKeys Acceleration | Mouse | foundation | FREE | Shortens the time MouseKeys takes to reach its top pointer speed. |
+| 272 | `nv-001` | Enable Persistence Mode | NVIDIA | performance | FOUNDATION | Keeps the NVIDIA driver resident to lower launch stalls. |
+| 273 | `nv-002` | Reset Auto Boost Defaults | NVIDIA | performance | FOUNDATION | Returns GPU boost clocks to driver defaults. |
+| 274 | `nv-018` | Disable NVIDIA Logging Services | NVIDIA | maximum | MAXIMUM | Stops and disables the NVIDIA logging and monitoring services. |
+| 275 | `net-002` | TCP Congestion Provider CTCP | Network | performance | FOUNDATION | Switches the TCP congestion provider to Compound TCP (modern Win11 + legacy fallback). |
+| 276 | `net-003` | Enable Receive-Side Scaling | Network | performance | FOUNDATION | Turns on RSS so network processing spreads across CPU cores. |
+| 277 | `net-004` | Enable ECN Capability | Network | performance | FOUNDATION | Enables Explicit Congestion Notification on TCP. |
+| 278 | `net-005` | Disable TCP Timestamps | Network | performance | FOUNDATION | Turns off TCP timestamp options. |
+| 279 | `net-006` | Initial RTO 2000 ms | Network | performance | FOUNDATION | Sets the TCP initial retransmission timeout to 2000 ms. |
+| 280 | `net-007` | Max Connections Per Server (IE/Apps) | Network | foundation | FREE | Raises simultaneous connections per HTTP server to 8. |
+| 281 | `net-008` | Max Connections Per 1.0 Server | Network | foundation | FREE | Raises parallel connections for HTTP/1.0 servers to 8. |
+| 282 | `net-009` | Disable Network Throttling | Network | performance | FOUNDATION | Raises the MMCSS network throttling index to maximum. |
+| 283 | `net-010` | Default TTL 64 | Network | foundation | FREE | Sets the default IPv4 time-to-live to 64. |
+| 284 | `net-012` | Set DNS to Cloudflare | Network | foundation | FREE | Switches DNS to Cloudflare's fast public resolvers. |
+| 285 | `net-013` | Disable Delivery Optimization P2P | Network | foundation | FREE | Disables peer-to-peer Windows Update sharing. |
+| 286 | `net-017` | Disable Nagle Algorithm | Network | performance | FOUNDATION | Disables Nagle's algorithm on all network interfaces for lower latency. |
+| 287 | `net-019` | Disable RSS on Low RAM | Network | maximum | MAXIMUM | Disables Receive-Side Scaling on systems with limited RAM to free memory for games. |
+| 288 | `net-020` | Disable NIC Interrupt Moderation | Network | maximum | MAXIMUM | Turns off the active adapter's Interrupt Moderation so every packet is raised to the CPU immediately instead of being batched. |
+| 289 | `net-021` | Restore Receive-Side Scaling (Adapter) | Network | performance | FOUNDATION | Re-enables RSS on the TCP stack and on the adapter when it is supported but was switched off. |
+| 290 | `net-022` | Network Adapter Performance Mode | Network | performance | FOUNDATION | Disables the NIC's low-power link features (EEE, Green Ethernet, Power Saving Mode, Gigabit Lite, Ultra Low Power Mode) for lower jitter. |
+| 291 | `gpu-027` | Suppress Animations While Shifting | Performance | foundation | FREE | Lets you hold Shift to instantly disable window animations, useful for remote sessions. |
+| 292 | `gpu-028` | Disable DWM Telemetry | Performance | foundation | FREE | Stops the DWM Customer Experience Improvement Program from collecting UI rendering data. |
+| 293 | `gpu-029` | Disable DWM Machine Check Redraw | Performance | maximum | MAXIMUM | Stops DWM's full-surface redraw when the desktop changes, cutting jank on low-end GPUs. |
+| 294 | `gpu-030` | Skip DWM Machine Check Fast Path | Performance | maximum | MAXIMUM | Prevents the DWM machine-check fast-path shortcut that can degrade presentation cadence. |
+| 295 | `gpu-032` | Disable Window Blur | Performance | foundation | FREE | Turns off the blur-behind-windows effect that costs extra GPU fill passes. |
+| 296 | `gpu-035` | Enable WPF Hardware Acceleration | Performance | foundation | FREE | Ensures WPF (.NET) apps render on the GPU instead of the software rasterizer. |
+| 297 | `gpu-042` | Disable DirectX Update Checks | Performance | foundation | FREE | Stops the DirectX runtime from checking for optional updates during installs. |
+| 298 | `gpu-046` | Clear DirectX Shader Cache | Performance | foundation | FREE | Wipes the DirectX shader cache so stale or corrupt shader blobs recompile cleanly. |
+| 299 | `gpu-058` | Enable GPU MMCSS Scheduling | Performance | performance | FOUNDATION | Tunes the Multimedia Class Scheduler Service profile for GPU-priority tasks. |
+| 300 | `perf-001` | Timer Resolution Diagnostic | Performance | performance | FOUNDATION | One optional timer card. Permits applications to request a higher timer resolution; it does not force 0.5 ms. Games already request the resolution they need, so this rarely changes anything. |
+| 301 | `perf-002` | Enable Game Mode | Performance | foundation | FREE | Enable Windows Game Mode for better gaming performance. |
+| 302 | `perf-003` | Disable Game Mode | Performance | foundation | FREE | Disable Windows Game Mode if it causes issues with your system. |
+| 303 | `perf-004` | Disable Memory Compression | Performance | performance | FOUNDATION | Disable Windows Memory Compression which can add CPU overhead. |
+| 304 | `perf-005` | Disable Superfetch (SysMain) | Performance | foundation | FREE | Disable Superfetch/SysMain service which can cause disk thrashing. |
+| 305 | `perf-008` | Disable Hibernation | Performance | foundation | FREE | Disable hibernation to free disk space and reduce overhead. |
+| 306 | `perf-009` | Throttle Windows Update During Gaming | Performance | foundation | FREE | Configure Windows Update to avoid downloading during active gaming. |
+| 307 | `perf-012` | Disable Toast Notifications | Performance | foundation | FREE | Disable Windows toast notifications to avoid interruptions. |
+| 308 | `perf-013` | Disable NIC Interrupt Moderation | Performance | maximum | MAXIMUM | Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe). |
+| 309 | `perf-019` | Optimize Interrupt Affinity | Performance | maximum | MAXIMUM | Configure interrupt affinity for better CPU load distribution. |
+| 310 | `perf-029` | Set MMCSS Gaming Priority | Performance | performance | FOUNDATION | Configure MMCSS to give game processes highest scheduling priority. |
+| 311 | `perf-034` | Set Processor Performance Decrease Policy | Performance | maximum | MAXIMUM | Configure aggressive processor performance decrease for faster frequency scaling under gaming loads. |
+| 312 | `perf-035` | Disable USB Selective Suspend | Performance | foundation | FREE | Disable USB selective suspend to prevent USB device disconnections. |
+| 313 | `perf-037` | Force TRIM | Performance | foundation | FREE | Ensure TRIM is always enabled for optimal SSD performance. |
+| 314 | `perf-038` | Disable I/O Coalescing | Performance | performance | FOUNDATION | Disable I/O coalescing in the LAN server driver for lower latency. |
+| 315 | `perf-042` | Disable Memory Compression (Cmd) | Performance | performance | FOUNDATION | Disable Windows Memory Compression via PowerShell to reduce CPU overhead on systems with ample RAM. |
+| 316 | `perf-043` | Disable Page Combining (Registry) | Performance | performance | FOUNDATION | Disable Windows page combining through registry to reduce memory management overhead. |
+| 317 | `perf-046` | Disable Background Maintenance | Performance | performance | FOUNDATION | Disable scheduled maintenance tasks that consume disk and CPU resources during gaming sessions. |
+| 318 | `perf-049` | Set IRPStackSize | Performance | maximum | MAXIMUM | Increase the I/O Request Packet stack size for better network throughput in LAN gaming scenarios. |
+| 319 | `perf-053` | Optimize Non-Paged Pool Size | Performance | foundation | FREE | Let Windows auto-manage non-paged pool size for optimal memory allocation on gaming systems. |
+| 320 | `perf-054` | Disable Game DVR Recording (Policy) | Performance | foundation | FREE | Disable Game DVR background recording via Group Policy to free up system resources. |
+| 321 | `perf-055` | Optimize Thread Scheduling | Performance | performance | FOUNDATION | Disable scheduler profiling overhead for lower context switch latency in gaming workloads. |
+| 322 | `power-002` | Disable USB Selective Suspend | Power | foundation | FREE | Prevents USB ports from suspending. |
+| 323 | `power-003` | Disable PCI Express ASPM | Power | performance | FOUNDATION | Prevents PCIe link power saving. |
+| 324 | `power-004` | Set Sleep to Never | Power | foundation | FREE | Prevents the system from sleeping. |
+| 325 | `power-005` | Set Display Off Timeout | Power | foundation | FREE | Sets display-off timeout to 15 minutes. |
+| 326 | `power-006` | Disable Hibernation | Power | foundation | FREE | Turns off hibernation and deletes the hibernation file. |
+| 327 | `power-009` | Set Minimum Processor State | Power | performance | FOUNDATION | Keeps the CPU at a high clock floor on AC. |
+| 328 | `power-010` | Disable Adaptive Brightness | Power | foundation | FREE | Turns off display adaptive brightness. |
+| 329 | `power-011` | Disable Hard Disk Sleep | Power | foundation | FREE | Prevents the disk from idling down. |
+| 330 | `power-016` | Disable Fast Startup | Power | foundation | FREE | Turns off Windows Fast Startup so the system performs a full cold boot every time. |
+| 331 | `power-018` | Disable Power Telemetry | Power | foundation | FREE | Turns off Windows power telemetry collection to reduce background CPU and disk activity. |
+| 332 | `power-019` | Disable Power Estimation | Power | foundation | FREE | Turns off the Windows power estimation engine to stop periodic CPU wake-ups for power tracking. |
+| 333 | `power-021` | Disable Power Throttling | Power | performance | FOUNDATION | Turns off Windows Power Throttling globally so background processes are not duty-cycled to save energy. |
+| 334 | `power-022` | Disable Lazy Mode | Power | performance | FOUNDATION | Turns off CPU lazy idle mode so cores transition out of idle states immediately instead of waiting. |
+| 335 | `power-023` | Disable DIPM | Power | maximum | MAXIMUM | Disables Device Initiated Power Management on NVMe drives to prevent aggressive low-power transitions. |
+| 336 | `power-024` | Disable HIPM | Power | maximum | MAXIMUM | Disables Host Initiated Power Management on NVMe drives to prevent the OS from putting drives into low-power states. |
+| 337 | `power-025` | Disable Hidden Power Saving | Power | performance | FOUNDATION | Turns off the AoAcOverride that enables Always On Always Connected hidden power-saving states. |
+| 338 | `power-026` | Disable Sleep Study | Power | foundation | FREE | Turns off the Windows Sleep Study diagnostic logger to reduce background disk and CPU activity. |
+| 339 | `power-027` | Disable Connected Standby | Power | maximum | MAXIMUM | Disables Connected Standby (Modern Standby) via the platform override to force classic S3 sleep behavior. |
+| 340 | `pp-013` | Maximum Power Plan | Power Plans | maximum | MAXIMUM | Create and activate the Maximum Power Plan — a maximum-performance gaming power plan that lets the CPU boost to 100% under load while idling down at rest, minimizing throttling for consistent frame times. |
+| 341 | `pre-001` | Trajectory Timing | Precision Tweaks | maximum | MAXIMUM | Tweaks frame timing & send intervals. |
+| 342 | `pre-003` | Packet Flow | Precision Tweaks | maximum | MAXIMUM | Packet flow optimization for stable network timing. |
+| 343 | `pre-004` | Tick Sync | Precision Tweaks | maximum | MAXIMUM | Server timing tick alignment. |
+| 344 | `pre-005` | Latency Consistency | Precision Tweaks | maximum | MAXIMUM | Latency spike reduction & response consistency. |
+| 345 | `pre-006` | Click Timing | Precision Tweaks | maximum | MAXIMUM | Click-to-shot timing tightness. |
+| 346 | `pre-007` | Packet Timing | Precision Tweaks | maximum | MAXIMUM | Network jitter & micro-loss mitigation. |
+| 347 | `pre-009` | Taste Tester | Precision Tweaks | foundation | FREE | Preset mix of lighter tweaks across all categories. |
+| 348 | `priv-001` | Disable Suggested Content | Privacy | foundation | FREE | Turns off suggested app content in Start. |
+| 349 | `priv-002` | Disable Tailored Experiences | Privacy | foundation | FREE | Turns off tailored ad experiences. |
+| 350 | `priv-003` | Disable Online Speech | Privacy | foundation | FREE | Turns off online speech recognition. |
+| 351 | `priv-004` | Disable Handwriting Data | Privacy | foundation | FREE | Turns off handwriting data collection. |
+| 352 | `priv-005` | Disable Advertiser Tracking | Privacy | foundation | FREE | Turns off the ad tracking ID. |
+| 353 | `priv-006` | Disable Camera Access | Privacy | performance | FOUNDATION | Denies camera access to apps. |
+| 354 | `priv-008` | Disable Contacts Access | Privacy | foundation | FREE | Denies contacts access. |
+| 355 | `priv-009` | Disable Email Access | Privacy | foundation | FREE | Denies email access to apps. |
+| 356 | `priv-010` | Disable Notifications | Privacy | performance | FOUNDATION | Disables app notification access. |
+| 357 | `priv-011` | Disable Call History Access | Privacy | foundation | FREE | Denies call history access. |
+| 358 | `ram-001` | Enable Prefetch | RAM | performance | FOUNDATION | Turns on boot and application prefetching. |
+| 359 | `ram-002` | Enable SysMain Service | RAM | performance | FOUNDATION | Sets the SysMain (Superfetch) service to automatic. |
+| 360 | `ram-003` | Disable SysMain on SSD | RAM | performance | FOUNDATION | Disables Superfetch on SSD-only systems. |
+| 361 | `ram-004` | Disable Superfetch Registry (SSD) | RAM | performance | FOUNDATION | Turns off the Superfetch prefetcher at the registry level. |
+| 362 | `ram-005` | Enable Superfetch on HDD | RAM | performance | FOUNDATION | Turns on the Superfetch prefetcher for HDD systems. |
+| 363 | `ram-008` | Disable Hibernation Reserve | RAM | foundation | FREE | Frees the RAM-space reserved for the hibernation file. |
+| 364 | `ram-009` | 32-bit Large Address Space | RAM | maximum | MAXIMUM | Raises the user address space for 32-bit games. |
+| 365 | `ram-014` | Disable Memory Diagnostics at Boot | RAM | foundation | FREE | Prevents the scheduled memory check at boot. |
+| 366 | `ram-021` | Cache Memory-Mapped Images | RAM | performance | FOUNDATION | Lets Windows keep loaded DLL and executable pages in the standby cache. |
+| 367 | `ram-022` | Physical Address Extension (32-bit) | RAM | maximum | MAXIMUM | Enables PAE so 32-bit Windows can address more physical RAM. |
+| 368 | `ram-023` | Enable Hibernation for Fast Startup | RAM | foundation | FREE | Turns hibernation back on so Fast Startup can preload the kernel. |
+| 369 | `ram-024` | System-Managed Pagefile | RAM | foundation | FREE | Lets Windows automatically size the pagefile on all drives. |
+| 370 | `ram-028` | Restore Automatic Pagefile Size | RAM | foundation | FREE | Returns the system-drive pagefile to Windows-managed sizing. |
+| 371 | `ram-030` | Disable Telemetry Service | RAM | performance | FOUNDATION | Stops the Connected User Experiences and Telemetry service. |
+| 372 | `ram-031` | Disable Maps Broker | RAM | foundation | FREE | Stops the downloaded-maps manager service. |
+| 373 | `ram-032` | Disable WMP Network Sharing | RAM | foundation | FREE | Stops the Windows Media Player network sharing service. |
+| 374 | `ram-033` | Disable Retail Demo Service | RAM | foundation | FREE | Stops the retail demo mode service. |
+| 375 | `ram-035` | Disable Device WAP Push | RAM | foundation | FREE | Stops the Device Management WAP Push service. |
+| 376 | `ram-036` | Disable Diagnostics Hub | RAM | performance | FOUNDATION | Stops the Diagnostics Hub Standard Collector service. |
+| 377 | `ram-038` | Disable Windows Error Reporting | RAM | performance | FOUNDATION | Stops the WerSvc error reporting service. |
+| 378 | `ram-039` | Disable Windows Error Reporting (WER) | RAM | foundation | FREE | Stops Windows Error Reporting from collecting crash dumps. |
+| 379 | `ram-040` | Disable Memory Compression | RAM | performance | FOUNDATION | Turns off Windows 10/11 memory compression. |
+| 380 | `ram-042` | Shorten Service Shutdown Timeout | RAM | performance | FOUNDATION | Cuts how long Windows waits for services to stop at shutdown. |
+| 381 | `ram-043` | Disable Boot Memory Diagnostic | RAM | foundation | FREE | Prevents the scheduled Windows Memory Diagnostic run. |
+| 382 | `ram-044` | Disable Data Sharing Service | RAM | performance | FOUNDATION | Stops the DsmSvc data sharing service. |
+| 383 | `ram-046` | Disable Push Notifications | RAM | performance | FOUNDATION | Stops the Windows Push Notifications System service. |
+| 384 | `ram-047` | Disable Full Memory Diagnostic Task | RAM | foundation | FREE | Disables the scheduled full memory check task. |
+| 385 | `ram-048` | Disable Memory Diagnostic Events | RAM | foundation | FREE | Disables the memory-diagnostic event processing task. |
+| 386 | `ram-049` | Disable Compatibility Appraiser | RAM | foundation | FREE | Disables the Microsoft Compatibility Appraiser task. |
+| 387 | `ram-050` | Disable Program Data Updater | RAM | foundation | FREE | Disables the Application Experience ProgramDataUpdater task. |
+| 388 | `ram-051` | Disable CEIP Consolidator | RAM | foundation | FREE | Disables the Customer Experience Improvement Program task. |
+| 389 | `ram-052` | Disable WER Queue Reporting | RAM | foundation | FREE | Disables the error-reporting queue task. |
+| 390 | `ram-053` | Remove Solitaire and Casual Games | RAM | performance | FOUNDATION | Uninstalls the built-in Solitaire Collection and casual games. |
+| 391 | `ram-054` | Remove Xbox Gaming Overlay | RAM | performance | FOUNDATION | Uninstalls the Xbox Game Bar overlay app. |
+| 392 | `ram-056` | Remove Pagefile From Second Drive | RAM | performance | FOUNDATION | Deletes a pagefile that was placed on D:. |
+| 393 | `ram-057` | Enable Large System Cache | RAM | maximum | MAXIMUM | Sets the LargeSystemCache registry value to optimize file system caching. |
+| 394 | `ram-058` | Increase Io Page Lock Limit | RAM | performance | FOUNDATION | Lets Windows auto-manage the I/O page lock limit. |
+| 395 | `ram-059` | Disable Paging Executive | RAM | performance | FOUNDATION | Keeps the kernel and drivers in physical RAM instead of paging them to disk. |
+| 396 | `ram-060` | Set System Pages | RAM | performance | FOUNDATION | Lets Windows manage the number of system page table entries. |
+| 397 | `ram-061` | Optimize Paged Pool Size | RAM | performance | FOUNDATION | Lets Windows auto-manage the paged pool size. |
+| 398 | `ram-062` | Enable Memory Compression | RAM | foundation | FREE | Enables Windows memory compression to fit more data in RAM. |
+| 399 | `ram-063` | Set Process Count Limit | RAM | maximum | MAXIMUM | Optimizes the shared section size for desktop heap. |
+| 400 | `ram-064` | Disable Prefetch (SSD) | RAM | performance | FOUNDATION | Turns off boot and application prefetching at the registry level. |
+| 401 | `reg-001` | Foreground Lock Timeout 0 | Registry | foundation | FREE | Removes the delay before a clicked window receives focus. |
+| 402 | `reg-002` | Active Window Tracking Timeout 0 | Registry | foundation | FREE | Removes the hover delay for focus-follows-mouse tracking. |
+| 403 | `reg-003` | Suppress Low Disk Space Warnings | Registry | foundation | FREE | Stops the low-disk-space balloon warnings. |
+| 404 | `reg-004` | Disable Recent Documents History | Registry | foundation | FREE | Stops tracking of recently opened documents. |
+| 405 | `reg-005` | Disable Screen Saver | Registry | foundation | FREE | Turns the screen saver off. |
+| 406 | `reg-006` | Disable Taskbar Animations | Registry | foundation | FREE | Turns off taskbar animation effects. |
+| 407 | `reg-007` | Disable ListView Shadows | Registry | foundation | FREE | Turns off drop shadows behind list views. |
+| 408 | `reg-008` | Never Combine Taskbar Buttons | Registry | foundation | FREE | Shows every window as a separate taskbar button. |
+| 409 | `reg-009` | Explorer Separate Processes | Registry | foundation | FREE | Runs each Explorer folder in its own process. |
+| 410 | `reg-010` | Hide Sync Provider Notifications | Registry | foundation | FREE | Removes cloud sync badges and banners in Explorer. |
+| 411 | `reg-011` | Disable Desktop Peek Preview | Registry | foundation | FREE | Turns off the Aero Peek hover preview. |
+| 412 | `reg-012` | Disable Icons Only Thumbnails | Registry | foundation | FREE | Shows only file icons instead of embedded thumbnail previews in lists. |
+| 413 | `reg-013` | Hide Frequent Folders in Quick Access | Registry | foundation | FREE | Removes the frequent folders section from Quick Access. |
+| 414 | `reg-014` | Disable AutoPlay Handlers | Registry | foundation | FREE | Disables AutoPlay for removable media. |
+| 415 | `reg-015` | Disable Widgets Button | Registry | foundation | FREE | Removes the Widgets button from the taskbar. |
+| 416 | `reg-016` | Disable Copilot Button | Registry | foundation | FREE | Removes the Copilot icon from the taskbar. |
+| 417 | `rep-005` | Reset Windows Update Components | Repair | performance | FOUNDATION | Stops the update service, renames the SoftwareDistribution cache, and restarts it. |
+| 418 | `rep-015` | CPU Optimization Repair | Repair | performance | FOUNDATION | Detect-first cleaner for bad scheduling values left behind by old MaximumTweaks builds, REG packs, BAT packs or other optimizers. |
+| 419 | `sec-001` | Add Game Folder to Defender Exclusions | Security & Performance | performance | FOUNDATION | Excludes game folders from real-time scanning. |
+| 420 | `sec-002` | Exclude Game Processes | Security & Performance | performance | FOUNDATION | Excludes game executables from scanning. |
+| 421 | `sec-008` | Disable Remote Desktop | Security & Performance | foundation | FREE | Disables RDP if unused. |
+| 422 | `sec-010` | Disable PowerShell Script Logging | Security & Performance | performance | FOUNDATION | Disables PowerShell ScriptBlock Logging via Group Policy. |
+| 423 | `sec-011` | Disable Network Discovery | Security & Performance | foundation | FREE | Disables network discovery. |
+| 424 | `svc-001` | Disable SysMain | Services | performance | FOUNDATION | Disables the SysMain (Superfetch) service. |
+| 425 | `svc-002` | Disable Windows Search | Services | performance | FOUNDATION | Disables the Windows Search indexer. |
+| 426 | `svc-005` | Disable Remote Registry | Services | foundation | FREE | Disables remote registry access. |
+| 427 | `svc-006` | Disable Print Spooler | Services | performance | FOUNDATION | Disables the print spooler if you have no printers. |
+| 428 | `svc-007` | Disable Xbox Services | Services | performance | FOUNDATION | Disables the Xbox Live services. |
+| 429 | `svc-010` | Disable Bluetooth Support | Services | performance | FOUNDATION | Disables the Bluetooth service if unused. |
+| 430 | `svc-011` | Disable Fax Service | Services | foundation | FREE | Disables the Fax service. |
+| 431 | `svc-012` | Disable Touch Keyboard Service | Services | performance | FOUNDATION | Disables the touch keyboard if not needed. |
+| 432 | `svc-013` | Disable Phone Service | Services | performance | FOUNDATION | Disables the Phone Link service. |
+| 433 | `svc-016` | Disable Infrared Service | Services | foundation | FREE | Disables the infrared device service. |
+| 434 | `svc-019` | Disable Windows Insider Service | Services | foundation | FREE | Disables the Windows Insider Preview service. |
+| 435 | `start-005` | Enable Multi-Core Boot | Startup | performance | FOUNDATION | Uses all CPU cores while booting Windows. |
+| 436 | `start-012` | Disable Automatic Sign-in Animations | Startup | foundation | FREE | Disables the Windows logon background image and sign-in animation. |
+| 437 | `start-016` | Disable Maintenance Tasks | Startup | performance | FOUNDATION | Disables the automatic Windows Maintenance scheduler. |
+| 438 | `stor-001` | Enable SSD TRIM | Storage | foundation | FREE | Turns on the TRIM command for SSD/NVMe drives. |
+| 439 | `stor-002` | Disable 8.3 Short Names | Storage | performance | FOUNDATION | Stops NTFS from generating legacy 8.3 filenames. |
+| 440 | `stor-004` | MFT Zone Reservation | Storage | performance | FOUNDATION | Reserves extra space for the NTFS Master File Table. |
+| 441 | `stor-005` | Disable HDD Idle Spin-Down | Storage | foundation | FREE | Prevents the hard drive from spinning down during long sessions. |
+| 442 | `stor-006` | Disable Scheduled Defragmentation | Storage | performance | FOUNDATION | Disables the automatic disk defrag task. |
+| 443 | `stor-007` | Disable Storage Sense | Storage | foundation | FREE | Turns off automatic storage cleanup. |
+| 444 | `stor-016` | Optimize NTFS Last Access | Storage | foundation | FREE | Disables NTFS last-access timestamp updates to reduce metadata writes on every file read. |
+| 445 | `sys-002` | Do Not Clear Pagefile at Shutdown | System | foundation | FREE | Skips clearing the pagefile during shutdown. |
+| 446 | `sys-004` | Disable Windows Error Reporting | System | foundation | FREE | Turns off WER popups and background report submission. |
+| 447 | `sys-006` | Disable Auto Reboot on Crash | System | foundation | FREE | Prevents automatic restart after a system failure. |
+| 448 | `sys-007` | Enable Long Paths | System | foundation | FREE | Enables Win32 long path support (>260 chars). |
+| 449 | `sys-009` | Boot Manager Timeout 0 | System | performance | FOUNDATION | Removes the boot manager selection delay. |
+| 450 | `sys-010` | Disable Automatic Driver Downloads | System | maximum | MAXIMUM | Stops Windows Update from automatically installing drivers. |
+| 451 | `sys-012` | Fast App Shutdown Timeouts | System | maximum | MAXIMUM | Reduces how long Windows waits for hung applications at shutdown. |
+| 452 | `sys-013` | Auto-End Tasks at Logoff | System | performance | FOUNDATION | Forces hung applications to close when you log off. |
+| 453 | `sys-014` | Disable Drive AutoRun | System | foundation | FREE | Disables AutoRun for all drive types. |
+| 454 | `sys-015` | Disable Aero Shake | System | foundation | FREE | Turns off the Aero Shake minimize gesture. |
+| 455 | `sys-016` | Disable Minimize Animation | System | foundation | FREE | Turns off window minimize/restore animations. |
+| 456 | `sys-017` | Disable Notification Center | System | performance | FOUNDATION | Turns off the notification center via policy. |
+| 457 | `sys-019` | Disable 'Start Full-Screen Optimizations' Help | System | foundation | FREE | Turns off the fullscreen optimization compatibility help overlay. |
+| 458 | `sys-021` | Reduce Hung App Timeout | System | performance | FOUNDATION | Lowers the threshold before Windows considers an app hung. |
+| 459 | `tel-002` | Disable Compatibility Telemetry | Telemetry | foundation | FREE | Turns off the compatibility appraiser telemetry. |
+| 460 | `tel-003` | Disable Inventory Collector | Telemetry | foundation | FREE | Disables the Device Inventory Collector. |
+| 461 | `tel-004` | Disable Activity History | Telemetry | foundation | FREE | Turns off activity history tracking. |
+| 462 | `tel-005` | Disable Advertising ID | Telemetry | foundation | FREE | Turns off the advertising ID. |
+| 463 | `tel-009` | Disable Windows Update Telemetry | Telemetry | foundation | FREE | Sets Windows Data Collection telemetry level to minimum. |
+| 464 | `tel-010` | Disable Feedback Requests | Telemetry | foundation | FREE | Turns off Windows feedback prompts. |
+| 465 | `tel-012` | Disable Location Service | Telemetry | foundation | FREE | Turns off location access. |
+| 466 | `tel-013` | Disable Find My Device | Telemetry | foundation | FREE | Turns off device-finder telemetry. |
+| 467 | `tel-016` | Disable App Diagnostics | Telemetry | foundation | FREE | Turns off per-app diagnostic data access. |
+| 468 | `tel-017` | Disable Customer Experience | Telemetry | foundation | FREE | Disables the Customer Experience Improvement Program. |
+| 469 | `tel-019` | Disable Diagnostic Data Viewer | Telemetry | foundation | FREE | Disables the Diagnostic Data Viewer plugin. |
+| 470 | `usb-001` | Disable USB Selective Suspend | USB | foundation | FREE | Turns off USB selective suspend in the active power scheme. |
+| 471 | `usb-006` | Disable USB Host Controller Power Management | USB | performance | FOUNDATION | Disables power management on all USB host controllers to prevent input device sleep. |
+| 472 | `usb-014` | Set USB Data Queue Size | USB | performance | FOUNDATION | Sets the minimum USB transfer bytes to zero for lower latency. |
+| 473 | `usb-015` | Disable USB Hub Power Management | USB | foundation | FREE | Disables 'Allow the computer to turn off this device' on selected USB hubs. |
+| 474 | `usb-016` | Disable HID Keyboard/Mouse Power Management | USB | foundation | FREE | Disables 'Allow the computer to turn off this device' for detected HID keyboard and mouse instances. |
+| 475 | `usb-017` | Disable Bluetooth HID Power Saving | USB | performance | FOUNDATION | Disables power-saving on the Bluetooth HID adapter that serves BT keyboards and mice. |
+| 476 | `wifi-001` | Disable Wi-Fi Power Saving | Wi-Fi | foundation | FREE | Turns off power management on the wireless adapter. |
+| 477 | `wifi-002` | Highest Roaming Aggressiveness | Wi-Fi | performance | FOUNDATION | Sets roaming aggressiveness to its highest value. |
+| 478 | `wifi-003` | Disable LSO on Wi-Fi | Wi-Fi | performance | FOUNDATION | Turns off Large Send Offload on the wireless adapter. |
+| 479 | `wifi-005` | Prefer 5 GHz / 6 GHz Band | Wi-Fi | foundation | FREE | Sets the wireless adapter preferred band to 5 GHz / 6 GHz. |
+| 480 | `wifi-007` | Disable Auto-Connect to Hotspots | Wi-Fi | foundation | FREE | Stops automatic connections to suggested open hotspots via registry. |
+| 481 | `wifi-009` | Disable Wake on Magic Packet (Wi-Fi) | Wi-Fi | foundation | FREE | Turns off wireless Wake-on-LAN. |
+| 482 | `wifi-010` | Disable LSO IPv6 (Wi-Fi) | Wi-Fi | performance | FOUNDATION | Turns off IPv6 large send offload on Wi-Fi. |
+| 483 | `wifi-011` | Disable Background Scanning | Wi-Fi | foundation | FREE | Reduces frequent wireless background scans via registry. |
+| 484 | `win-005` | Disable Balloon Tip Notifications | Windows | foundation | FREE | Turns off Explorer balloon tips and toasts. |
+| 485 | `win-006` | Visual Effects: Best Performance | Windows | foundation | FREE | Sets the system visual effects preset to 'best performance'. |
+| 486 | `win-007` | Menu Show Delay 0 | Windows | foundation | FREE | Removes the delay before submenus open. |
+| 487 | `win-008` | Disable Transparency Effects | Windows | foundation | FREE | Turns off acrylic/blur transparency in the UI. |
+| 488 | `win-009` | Disable Windows Tips and Suggestions | Windows | foundation | FREE | Disables the Start/tips content delivered by Windows. |
+| 489 | `win-012` | Disable Web Search in Start | Windows | foundation | FREE | Stops Start menu web search results. |
+| 490 | `win-013` | Disable Cortana | Windows | foundation | FREE | Turns off Cortana via policy. |
+| 491 | `win-014` | Disable Bing Search in Start | Windows | foundation | FREE | Disables Bing results in Windows Search. |
+| 492 | `win-015` | Legacy Windows 10 Context Menu | Windows | foundation | FREE | Restores the classic full context menu in Windows 11. |
+| 493 | `win-017` | Disable First Sign-in Animation | Windows | foundation | FREE | Skips the Windows welcome/first-sign-in animation. |
+| 494 | `win-018` | Disable Start Menu App Suggestions | Windows | foundation | FREE | Removes promoted app suggestions from the Start menu. |
+| 495 | `win-019` | Disable Timeline | Windows | foundation | FREE | Turns off Windows Timeline activity history tracking. |
+| 496 | `win-021` | Disable Search Cloud | Windows | foundation | FREE | Stops Windows Search from fetching cloud/web results. |
+| 497 | `win-022` | Disable Search Box Suggestions | Windows | foundation | FREE | Turns off predictive suggestions in the Windows Search box. |
+| 498 | `win-023` | Disable News and Interests | Windows | foundation | FREE | Turns off the News and Interests widget on the taskbar. |
+| 499 | `expl-001` | Show Hidden Files | Windows Explorer | foundation | FREE | Displays hidden files and folders in Explorer. |
+| 500 | `expl-002` | Show Protected Operating System Files | Windows Explorer | foundation | FREE | Reveals protected system files in Explorer. |
+| 501 | `expl-003` | Show File Name Extensions | Windows Explorer | foundation | FREE | Displays full file name extensions. |
+| 502 | `expl-004` | Disable Thumbnail Cache | Windows Explorer | foundation | FREE | Stops Explorer from generating thumbnail previews. |
+| 503 | `expl-005` | Disable Network Thumbnail Cache | Windows Explorer | foundation | FREE | Turns off thumbnail caching for network folders. |
+| 504 | `expl-006` | Disable thumbs.db Creation | Windows Explorer | foundation | FREE | Stops creation of thumbs.db database files on network folders. |
+| 505 | `expl-007` | Enlarge Icon Cache | Windows Explorer | foundation | FREE | Raises the shell icon cache size to 8192 entries. |
+| 506 | `expl-008` | Explorer Opens to This PC | Windows Explorer | foundation | FREE | Changes File Explorer's default landing page to This PC. |
+| 507 | `expl-009` | Disable Recent Item Tracking | Windows Explorer | foundation | FREE | Stops Start menu and jump list from tracking opened items. |
+| 508 | `expl-010` | Full Path in Explorer Title Bar | Windows Explorer | foundation | FREE | Shows the complete folder path in the window title bar. |
+| 509 | `expl-011` | Hide Taskbar Search Box | Windows Explorer | foundation | FREE | Reduces the taskbar search box to an icon (or removes it). |
+| 510 | `expl-012` | Disable Search Highlights | Windows Explorer | foundation | FREE | Turns off the search box highlights content. |
+| 511 | `expl-013` | Explorer Compact Mode | Windows Explorer | foundation | FREE | Enables compact spacing in Windows 11 Explorer. |
+| 512 | `wgr-003` | Disable Auto HDR | Windows Graphics | foundation | FREE | Disables Windows Auto HDR via policy registry key. |
+| 513 | `wgr-006` | Restore MPO Composition | Windows Graphics | performance | FOUNDATION | Re-enables Multiplane Overlay (undo of the MPO disable tweak). |
+| 514 | `wgr-012` | Reset Graphics Settings | Windows Graphics | performance | FOUNDATION | Deletes Windows' per-app DirectX GPU preference blob (stale per-app assignments and performance flags are removed at once). |
+| 515 | `wgr-013` | DirectX Graphics Flags | Windows Graphics | performance | FOUNDATION | Sets all four DirectXUserGlobalSettings performance flags in one write (replaces the old four separate cards that fought over one value). |

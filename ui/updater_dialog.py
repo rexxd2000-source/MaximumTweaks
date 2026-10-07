@@ -260,6 +260,8 @@ class DownloadWorker(QThread):
         self._url = url
         self._err = ""
         self._dest = None
+        self._checksum_url = ""
+        self._sha256 = ""
 
     def _progress(self, got, total):
         self.bytes.emit(int(got), int(total))
@@ -270,7 +272,10 @@ class DownloadWorker(QThread):
     def run(self):
         from engine import updater
         try:
-            self._dest = updater.download(self._url, progress_cb=self._progress, checksum_url=getattr(self, "_checksum_url", ""))
+            self._dest = updater.download(
+                self._url, progress_cb=self._progress,
+                checksum_url=self._checksum_url,
+                expected_sha256=self._sha256)
         except updater.UpdaterError as exc:
             self._err = str(exc)
         except Exception as exc:  # noqa: BLE001
@@ -927,6 +932,8 @@ class UpdateDialog(QDialog):
         self._progress_bar.setVisible(True)
         self._status.setText("Downloading the new build\u2026")
         self.worker = DownloadWorker(self._info["url"], self)
+        self.worker._checksum_url = str(self._info.get("checksum_url") or "")
+        self.worker._sha256 = str(self._info.get("sha256") or "")
         self.worker.bytes.connect(self._on_bytes)
         self.worker.done.connect(self._on_downloaded)
         self.worker.start()

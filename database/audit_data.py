@@ -298,7 +298,6 @@ DECISIONS: dict[str, dict[str, str | None]] = {
     "lap-043": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
     "lap-044": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
     "lap-045": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
-    "lap-046": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
     "lap-047": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
     "lap-048": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},
     "lap-049": {"decision": 'KEEP', "reason": "Clean implementation with a revert path; ships as-is.", "canonical": None},

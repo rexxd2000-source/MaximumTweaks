@@ -28,7 +28,6 @@ import urllib.error
 import urllib.request
 import hashlib
 from pathlib import Path
-import tempfile
 
 from config.app_config import (
     APP_VERSION,
@@ -169,26 +168,7 @@ def _github_asset_url(asset_id) -> str:
 
 
 
-def _load_cache():
-    try:
-        if _CACHE_FILE.exists():
-            with open(_CACHE_FILE,'r',encoding='utf-8') as f:
-                d=json.load(f)
-            if time.time()-d.get('ts',0) < _CACHE_TTL_SECONDS:
-                return d
-    except Exception:
-        pass
-    return None
-
-def _save_cache(d):
-    try:
-        with open(_CACHE_FILE,'w',encoding='utf-8') as f:
-            json.dump(d,f)
-    except Exception:
-        pass
-
-# ---------------------------------------------------------------------------
-# Remote update info
+# ---------------------------------------------------------------------------# Remote update info
 # ---------------------------------------------------------------------------
 
 def fetch_update(timeout: float = 15.0) -> dict | None:
@@ -204,11 +184,15 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
 
 
 def _fetch_update(timeout: float = 15.0) -> dict | None:
+    checksum_url = ""
+    sha256 = ""
     if UPDATE_MANIFEST_URL:
         data = _get_json(UPDATE_MANIFEST_URL.strip(), timeout)
         version = str(data.get("version") or "").strip()
         url = str(data.get("url") or "").strip()
         notes = str(data.get("notes") or "")
+        checksum_url = str(data.get("checksum_url") or "").strip()
+        sha256 = _normalize_sha256(str(data.get("sha256") or ""))
         if not version or not url:
             raise UpdaterError("The update manifest is missing version/url.")
     else:
@@ -219,7 +203,6 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         version = tag
         notes = str(data.get("body") or "")
         url = ""
-        checksum_url = ""
 
     if not is_newer(version, APP_VERSION):
         logger.info(f"updater: up to date (latest is v{version})")
@@ -235,6 +218,10 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
                     asset_url = _github_asset_url(asset_id)
                 else:
                     asset_url = str(asset.get("browser_download_url") or "")
+                # GitHub's API reports a server-computed digest on assets.
+                digest = _normalize_sha256(str(asset.get("digest") or ""))
+                if digest and not sha256:
+                    sha256 = digest
                 break
         for asset in data.get("assets", []):
             name = str(asset.get("name") or "")
@@ -249,6 +236,8 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
     res = {"version": version, "notes": notes, "url": url}
     if checksum_url:
         res["checksum_url"] = checksum_url
+    if sha256:
+        res["sha256"] = sha256
     return res
 
 
@@ -263,10 +252,59 @@ def _sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest().lower()
 
+
+def _normalize_sha256(text: str) -> str:
+    """Extract a bare 64-hex digest from 'sha256:<hex>', '<hex>  file', etc."""
+    if not text:
+        return ""
+    m = re.search(r"[0-9a-fA-F]{64}", text)
+    return m.group(0).lower() if m else ""
+
+
+def _compare_sha256(path: Path, expected: str, source: str) -> None:
+    """Fail-closed comparison; deletes the artifact on mismatch."""
+    actual = _sha256_file(path)
+    if actual != expected:
+        path.unlink(missing_ok=True)
+        raise UpdaterError(
+            f"The downloaded update does not match the published {source} "
+            "and was deleted. The file may be corrupt or tampered with — "
+            "try again, or download the latest build manually.")
+    logger.info(f"updater: {source} verified OK")
+
+
+def _fetch_expected_sha256(url: str, timeout: float) -> str:
+    """Download a published .sha256 file and return its digest (fail-closed)."""
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read(4096).decode("utf-8", errors="replace")
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        raise UpdaterError(
+            f"Could not download the update checksum: {exc}") from exc
+    digest = _normalize_sha256(text)
+    if not digest:
+        raise UpdaterError("The published update checksum is missing or malformed.")
+    return digest
+
+
+def _verify_checksum(path: Path, checksum_url: str, timeout: float) -> None:
+    _compare_sha256(path, _fetch_expected_sha256(checksum_url, timeout),
+                    "SHA-256 checksum")
+
+
+def _verify_sha256(path: Path, expected: str) -> None:
+    digest = _normalize_sha256(expected)
+    if not digest:
+        raise UpdaterError("The published update checksum is malformed.")
+    _compare_sha256(path, digest, "SHA-256 checksum")
+
 # Download + install
 # ---------------------------------------------------------------------------
 
-def download(url: str, progress_cb=None, timeout: float = 60.0, checksum_url: str = "") -> Path:
+def download(url: str, progress_cb=None, timeout: float = 60.0,
+             checksum_url: str = "", expected_sha256: str = "") -> Path:
     """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(got, total)."""
     logger.info("updater: download started")
     dest = data_dir() / UPDATE_EXE_NAME
@@ -297,9 +335,15 @@ def download(url: str, progress_cb=None, timeout: float = 60.0, checksum_url: st
         dest.unlink(missing_ok=True)
         raise UpdaterError("Downloaded file is empty.")
     logger.info(f"updater: downloaded {size} bytes")
-    if checksum_url:
-        _verify_checksum(dest, checksum_url, timeout)
-    _verify_download(dest)
+    try:
+        if expected_sha256:
+            _verify_sha256(dest, expected_sha256)
+        elif checksum_url:
+            _verify_checksum(dest, checksum_url, timeout)
+        _verify_download(dest)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
     logger.info("updater: download verified OK")
     return dest
 

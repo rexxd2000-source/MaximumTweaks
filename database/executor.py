@@ -37,6 +37,7 @@ from .tweaks import BY_ID
 from .tweaks._base import plan_guid
 from engine import reg_util
 from engine.state_checker import CHANGE_SETTINGS
+from engine.state_checker import POWER_NAMES as POWER_SETTINGS
 
 # Thread-local context so process-level actions ("process") know which tweak
 # they belong to (used to key the per-exe original-state snapshots).
@@ -44,143 +45,10 @@ _tweak_ctx = threading.local()
 
 _GUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
-# named power settings -> (subgroup GUID, setting GUID) for powercfg
-POWER_SETTINGS = {
-    # Display subgroup (7516b95f-f776-4464-8c53-06167f40cc99)
-    "adaptive_brightness": (
-        "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
-        "fbd9aa66-9553-4097-ba44-ed6e9d65eab8",          # Adaptive display brightness
-    ),
-    "display_brightness": (
-        "7516b95f-f776-4464-8c53-06167f40cc99",
-        "aded5e82-b909-4619-9949-f5d71dac0bcb",          # Display brightness
-    ),
-    "display_brightness_dim": (
-        "7516b95f-f776-4464-8c53-06167f40cc99",
-        "f1fbfde2-a960-4165-9f88-50667911ce96",          # Dimmed display brightness
-    ),
-    "display_timeout": (
-        "7516b95f-f776-4464-8c53-06167f40cc99",          # Display subgroup
-        "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e",          # Turn off display after
-    ),
-    # Disk subgroup (0012ee47-9041-4b5d-9b77-535fba8b1442)
-    "hdd_timeout": (
-        "0012ee47-9041-4b5d-9b77-535fba8b1442",          # Disk subgroup
-        "6738e2c4-e8a5-4a42-b16a-e040e769756e",          # Turn off hard disk after
-    ),
-    # Sleep subgroup (238c9fa8-0aad-41ed-83f4-97be242c8f20)
-    "sleep_timeout": (
-        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
-        "29f6c1db-86da-48c5-9fdb-f2b67b1f44da",          # Sleep after
-    ),
-    "away_mode": (
-        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
-        "25dfa149-5dd1-4736-b5ab-e8a37b5b8187",          # Allow away mode policy
-    ),
-    "hybrid_sleep": (
-        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
-        "94ac6d29-73ce-41a6-809f-6363ba21b47e",          # Allow hybrid sleep
-    ),
-    "wake_timers": (
-        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
-        "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d",          # Allow wake timers
-    ),
-    "hibernate_timeout": (
-        "238c9fa8-0aad-41ed-83f4-97be242c8f20",
-        "9d7815a6-7ee4-497e-8888-515a05f02364",          # Hibernate after
-    ),
-    # Power buttons subgroup (4f971e89-eebd-4455-a8de-9e59040e7347)
-    "lid_action": (
-        "4f971e89-eebd-4455-a8de-9e59040e7347",          # Power buttons subgroup
-        "5ca83367-6e45-459f-a27b-476b1d01c936",          # Lid close action
-    ),
-    "pcie_aspm": (
-        "501a4d13-42af-4429-9fd1-a8218c268e20",          # PCI Express subgroup
-        "ee12f906-d277-404b-b6da-e5fa1a576df5",          # Link State Power Management
-    ),
-    "usb_selective": (
-        "2a737441-1930-4402-8d77-b2bebba308a3",          # USB settings subgroup
-        "48e6b7a6-50f5-4782-a5d4-53bb8f07e226",          # USB selective suspend
-    ),
-    # Processor subgroup (54533251-82be-4824-96c1-47b60b740d00)
-    "processor_max": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "bc5038f7-23e0-4960-96da-33abaf5935ec",
-    ),
-    "processor_min": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "893dee8e-2bef-41e0-89c6-b55d0929964c",
-    ),
-    "boost_mode": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "be337238-0d82-4146-a960-4f3749d470c7",
-    ),
-    "perf_increase_threshold": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "06cadf0e-64ed-448a-8927-ce7bf90eb35d",
-    ),
-    "perf_decrease_threshold": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "12a0ab44-fe28-4fa9-b3bd-4b64f44960a6",
-    ),
-    "proc_freq_max": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "75b0ae3f-bce0-45a7-8c89-c9611c25e100",          # Maximum processor frequency
-    ),
-    "sys_cooling_pol": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "94d3a615-a899-4ac5-ae2b-e4d8f634367f",          # System cooling policy (0 Passive, 1 Active)
-    ),
-    "parking_min": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "0cc5b647-c1df-4637-891a-dec35c318583",
-    ),
-    "parking_max": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "ea062031-0e34-4ff1-9b6d-eb1059334028",
-    ),
-    # Power policy settings live under the Processor subgroup, not a "policy"
-    # subgroup of their own (verified against powercfg /query SCHEME_CURRENT).
-    "perf_increase_policy": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "465e1f50-b610-473a-ab58-00d1077dc418",
-    ),
-    "perf_decrease_policy": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "40fbefc7-2e9d-4d25-a185-0cfd8574bac6",
-    ),
-    "boost_policy": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "45bcc044-d885-43e2-8605-ee0ec6e96b59",
-    ),
-    "epp": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "36687f9e-e3a5-4dbf-b1dc-15eb381c6863",
-    ),
-    # Heterogeneous (P-core / E-core) scheduling. Only meaningful on hybrid
-    # parts; 0=All, 1=Performant, 2=Prefer performant, 3=Efficient,
-    # 4=Prefer efficient, 5=Automatic. Both default to 5/2 on a desktop.
-    "sched_policy": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "93b8b6dc-0698-4d1c-9ee4-0644e900c85d",
-    ),
-    "short_sched_policy": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "bae08b81-2d5e-4688-ad6a-13243356654b",
-    ),
-    # Processor idle disable is an ENUM, not a percentage:
-    # 0 = Enable idle, 1 = Disable idle. (The old CPU card wrote 0 while
-    # claiming to disable idle states, so it did the exact opposite.)
-    "idle_disable": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "5d76a2ca-e8c0-402f-a133-2158492d58ad",
-    ),
-    # Processor performance time check interval, in milliseconds.
-    "time_check": (
-        "54533251-82be-4824-96c1-47b60b740d00",
-        "4d2b0152-7d5c-498b-88e2-34345392a2c5",
-    ),
-}
+# POWER_SETTINGS: named power settings -> (subgroup GUID, setting GUID).
+# Single source of truth lives in engine.state_checker.POWER_NAMES (verified
+# against the live PowerSettings registry); this alias keeps apply and detect
+# on the same table so a GUID can never drift between them.
 
 # Power setting GUIDs exposed by each (active scheme, subgroup) pair, keyed by
 # (active scheme guid, subgroup guid).  Populated lazily by
@@ -362,7 +230,8 @@ def _restore_power_backup(entry: dict, dry_run: bool = False):
     ok1, msg1 = _run(
         f"powercfg {flag} {target} {entry['subgroup']} {entry['guid']} {entry['value']}")
     if not ok1 and "does not exist" in (msg1 or "").lower():
-        return True, f"{entry['setting']}: not supported, skip"
+        return False, (f"{entry['setting']}: setting/scheme no longer exists - "
+                       f"NOT restored ({msg1})")
     if not ok1:
         return ok1, msg1
     ok2, msg2 = _run(f"powercfg /setactive {target}")
@@ -419,7 +288,8 @@ def _restore_svc_backup(entry: dict, dry_run: bool = False):
     if dry_run:
         return True, f"dry-run: restore svc {entry['name']} start={entry['start_type']}"
     if entry["start_type"] is None:
-        return True, f"{entry['name']}: original state unknown, skip"
+        return False, (f"{entry['name']}: original startup type unknown - "
+                       f"NOT restored")
     token = entry["start_type"].lower()
     friendly = _REV_SVC.get(token, token)
     ok, detail = _svc(entry["name"], friendly)
@@ -616,19 +486,20 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
     if kind == "powercfg_setactive":
         prev = entry.get("prev_active") or entry.get("prev_name")
         if not prev:
-            return True, "original scheme unknown, skip"
+            return False, "original scheme unknown - NOT restored"
         ok, detail = _run(f'powercfg /setactive "{prev}"')
         return ok, detail or f"restored active scheme to {prev}"
 
     if kind == "powercfg_value":
         if entry.get("prev_value") is None:
-            return True, "original value unknown, skip"
+            return False, "original value unknown - NOT restored"
         flag = "/SETACVALUEINDEX" if entry["index"] == "AC" else "/SETDCVALUEINDEX"
         ok1, msg1 = _run(
             f"powercfg {flag} SCHEME_CURRENT {entry['subgroup']} "
             f"{entry['guid']} {entry['prev_value']}")
         if not ok1 and "does not exist" in (msg1 or "").lower():
-            return True, "setting not supported, skip"
+            return False, (f"setting no longer exists on this scheme - "
+                           f"NOT restored ({msg1})")
         if not ok1:
             return ok1, msg1
         ok2, msg2 = _run("powercfg /setactive SCHEME_CURRENT")
@@ -636,7 +507,7 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
 
     if kind == "powercfg_change":
         if entry.get("prev_value") is None:
-            return True, "original value unknown, skip"
+            return False, "original value unknown - NOT restored"
         flag = "/SETACVALUEINDEX" if entry["ac_dc"] == "ac" else "/SETDCVALUEINDEX"
         ok1, msg1 = _run(
             f"powercfg {flag} SCHEME_CURRENT {entry['subgroup']} "
@@ -649,7 +520,7 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
     if kind == "powercfg_hibernate":
         prev = entry.get("prev_value")
         if prev is None:
-            return True, "original hibernate state unknown, skip"
+            return False, "original hibernate state unknown - NOT restored"
         target_val = 1 if str(prev).strip() == "1" else 0
         ok, detail = reg_util.write_value(
             "HKLM", r"SYSTEM\CurrentControlSet\Control\Power",
@@ -670,7 +541,7 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
     if kind == "netsh":
         prev = entry.get("prev_value")
         if prev is None:
-            return True, "original netsh value unknown, skip"
+            return False, "original netsh value unknown - NOT restored"
         ok, detail = _run(f"netsh int tcp set global {entry['name']}={prev}")
         return ok, detail or f"restored {entry['name']}={prev}"
 
@@ -686,7 +557,7 @@ def _restore_cmd_backup(entry: dict, dry_run: bool = False):
         short = _REV_TYPE.get(vtype.upper(), "STRING")
         return _reg_write(hive, path, name, prev, short)
 
-    return True, f"unknown cmd backup kind {kind!r}, skip"
+    return False, f"unknown cmd backup kind {kind!r} - NOT restored"
 
 
 def _snapshot_powerscheme_targets(tweak_id: str, actions: list) -> None:
@@ -695,17 +566,19 @@ def _snapshot_powerscheme_targets(tweak_id: str, actions: list) -> None:
 
     existing = state_mgr.get_powerscheme_backups(tweak_id)
     if existing:
-        return  # keep the original snapshot
+        return  # keep the original pre-apply snapshot (first apply wins)
 
     created = []
     deleted = []
     active_before = None
+    setactive_done = False
 
     for a in actions:
         if a[0] != "powerscheme":
             continue
         op = a[1]
         if op == "setactive":
+            setactive_done = True
             if active_before is None:
                 ok, out = _run("powercfg /getactivescheme")
                 if ok:
@@ -729,11 +602,12 @@ def _snapshot_powerscheme_targets(tweak_id: str, actions: list) -> None:
                             break
             deleted.append({"guid": a[2], "name": scheme_name})
 
-    if active_before or created or deleted:
+    if active_before or created or deleted or setactive_done:
         state_mgr.save_powerscheme_backups(tweak_id, {
             "active_scheme": active_before,
             "created_schemes": created,
             "deleted_schemes": deleted,
+            "setactive": setactive_done,
         })
 
 
@@ -759,20 +633,35 @@ def _restore_powerscheme_backup(entry: dict, dry_run: bool = False):
 
     # Re-create schemes that this tweak deleted (if we know the name)
     for scheme in entry.get("deleted_schemes", []):
-        if dry_run or not scheme.get("name"):
+        if dry_run:
+            continue
+        name = scheme.get("name")
+        if not name:
+            ok_all = False
+            results.append(
+                f"re-create {scheme.get('guid')}: NOT restored "
+                f"(scheme name unknown)")
             continue
         ok, detail = _run(f'powercfg -duplicatescheme "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" "{scheme["guid"]}"')
         if ok:
-            _run(f'powercfg -changename "{scheme["guid"]}" "{scheme["name"]}"')
-        results.append(f"re-create {scheme.get('name', scheme['guid'])}: {detail}")
+            _run(f'powercfg -changename "{scheme["guid"]}" "{name}"')
+        if not ok:
+            ok_all = False
+        results.append(f"re-create {name}: {detail}")
 
-    # Activate the original scheme
+    # Activate the original scheme. Legacy snapshots (written before the
+    # setactive flag existed) restore when a previous scheme is known; a
+    # snapshot that recorded a setactive happened but could not read the
+    # original scheme must fail instead of silently leaving this one active.
     prev = entry.get("active_scheme")
     if prev and not dry_run:
         ok, detail = _run(f'powercfg /setactive "{prev}"')
         results.append(f"activate {prev}: {detail}")
         if not ok:
             ok_all = False
+    elif entry.get("setactive") and not dry_run:
+        ok_all = False
+        results.append("activate: NOT restored (original active scheme unknown)")
 
     return ok_all, "; ".join(results) or "powerscheme restored"
 
@@ -824,7 +713,7 @@ def _restore_sched_backup(entry: dict, dry_run: bool = False):
     if dry_run:
         return True, f"dry-run: restore sched {entry['task']}"
     if entry.get("was_enabled") is None:
-        return True, f"{entry['task']}: original state unknown, skip"
+        return False, f"{entry['task']}: original state unknown - NOT restored"
     suffix = "/Enable" if entry["was_enabled"] else "/Disable"
     ok, detail = _run(f'schtasks /Change /TN "{entry["task"]}" {suffix}')
     return ok, detail or f"restored {entry['task']} {'enabled' if entry['was_enabled'] else 'disabled'}"
@@ -885,13 +774,15 @@ def _values_equal(target, vtype, data) -> bool:
 
 
 def _snapshot_reg_targets(tweak_id: str, actions: list) -> None:
-    """Record each reg/regall value's previous state before the apply writes it.
+    """Record each reg/regall/regdel/regdelall value's previous state before the apply runs.
 
     Backups are kept from the FIRST apply: re-applying never overwrites the
     snapshot, so revert always lands on the true pre-tweak value.  A value that
     already equals the target is not snapshotted (revert then falls back to the
     hardcoded revert list).  ``regall`` writes are snapshotted per subkey, so a
     revert restores each subkey's real previous value instead of deleting it.
+    ``regdel``/``regdelall`` record the value they are about to remove so a
+    rollback or revert can write it back instead of leaving it deleted.
     """
     from engine import state as state_mgr  # deferred: avoids import cycle
 
@@ -914,16 +805,41 @@ def _snapshot_reg_targets(tweak_id: str, actions: list) -> None:
                              "existed": False}
         changed = True
 
+    def _one_before_delete(hive, path, name):
+        """Snapshot a value a regdel is about to remove (restore = write back)."""
+        nonlocal changed
+        key = _target_key(hive, path, name)
+        if key in existing:
+            return  # keep the original snapshot
+        existed, rtype, data = _reg_read_value(hive, path, name)
+        if not existed:
+            return  # already absent; deleting it changes nothing
+        existing[key] = {"hive": hive, "path": path, "name": name,
+                         "existed": True, "vtype": rtype, "data": data}
+        changed = True
+
     for a in actions:
-        if len(a) < 6:
-            continue
         kind = a[0]
         if kind == "reg":
+            if len(a) < 6:
+                continue
             _one(a[1], a[2], a[3], a[4], a[5])
         elif kind == "regall":
+            if len(a) < 6:
+                continue
             hive, base, name, value, vtype = a[1], a[2], a[3], a[4], a[5]
             for sub in _reg_subkeys(hive, base):
                 _one(hive, sub, name, value, vtype)
+        elif kind == "regdel":
+            if len(a) < 4:
+                continue
+            _one_before_delete(a[1], a[2], a[3])
+        elif kind == "regdelall":
+            if len(a) < 4:
+                continue
+            hive, base, name = a[1], a[2], a[3]
+            for sub in _reg_subkeys(hive, base):
+                _one_before_delete(hive, sub, name)
     if changed:
         state_mgr.save_reg_backups(tweak_id, existing)
 
@@ -1439,77 +1355,176 @@ def _apply_tweak(tweak, tweak_id, dry_run=False):
         if ok:
             executed.append(action)
         else:
-            # Roll back all previously-executed actions
+            # Roll back everything executed so far from the snapshots taken
+            # before the first action ran; report honestly when something
+            # cannot be restored.
             if not dry_run and executed:
-                rollback_results = _rollback_actions(executed)
-                results.append((("_rollback",), True,
-                                f"rolled back {len(executed)} actions"))
+                rollback_results = _rollback_actions(tweak_id, executed)
+                results.extend(rollback_results)
+                rb_bad = sum(1 for _, ok, _ in rollback_results if not ok)
+                results.append(
+                    (("_rollback",), rb_bad == 0,
+                     f"rolled back {len(executed)} actions"
+                     + (f"; {rb_bad} item(s) NOT restored" if rb_bad else "")))
             return False, results
 
     return all(ok for _, ok, _ in results), results
 
 
-def _rollback_actions(actions):
-    """Undo a list of successfully-executed actions (best-effort rollback).
+def _rollback_actions(tweak_id, actions):
+    """Undo a failed apply by restoring the snapshots taken before it ran.
 
-    For reg writes, deletes the written value. For reg deletes, attempts to
-    restore. For other actions, we attempt the inverse where possible.
+    Every backup stored under ``tweak_id`` was captured before the first
+    action executed, so restoring all of them returns the machine to its
+    pre-apply state; restoring entries whose action this apply never reached
+    is idempotent (it rewrites the value that is already there).  Executed
+    actions no snapshot covers are reported honestly instead of claiming a
+    revert that cannot happen.  Returns ``(label, ok, detail)`` tuples in the
+    same shape as ``_revert_tweak``; backups are kept so the user can still
+    run Revert afterwards.
     """
+    from engine import state as state_mgr
+
+    reg_backups = state_mgr.get_reg_backups(tweak_id) or {}
+    file_backups = state_mgr.get_file_backups(tweak_id) or {}
+    ini_backups = state_mgr.get_ini_backups(tweak_id) or {}
+    power_backups = state_mgr.get_power_backups(tweak_id) or {}
+    svc_backups = state_mgr.get_svc_backups(tweak_id) or {}
+    cmd_backups = state_mgr.get_cmd_backups(tweak_id) or {}
+    powerscheme_backups = state_mgr.get_powerscheme_backups(tweak_id) or {}
+    sched_backups = state_mgr.get_sched_backups(tweak_id) or {}
+
     results = []
-    for action in reversed(actions):
-        kind = action[0]
+
+    def _restore(label, fn, entry, what):
+        """Restore one backup entry without letting a raise abort the rollback."""
         try:
-            if kind == "reg":
-                ok, detail = _reg_delete(action[1], action[2], action[3])
-                results.append((action, ok, detail))
-            elif kind == "regall":
-                ok, detail = _reg_delete_all(action[1], action[2], action[3])
-                results.append((action, ok, detail))
-            elif kind == "svc":
-                ok, detail = _svc(action[1], "manual")
-                results.append((action, ok, detail or f"reset {action[1]} to manual"))
-            elif kind == "svcstop":
-                ok, detail = _svc_run(action[1], "svcstart")
-                results.append((action, ok, detail or f"attempted restart of {action[1]}"))
-            elif kind == "svcstart":
-                ok, detail = _svc_run(action[1], "svcstop")
-                results.append((action, ok, detail or f"attempted stop of {action[1]}"))
-            elif kind == "sc":
-                subop = action[1] if len(action) > 1 else ""
-                name = action[2] if len(action) > 2 else ""
-                if subop == "disable":
-                    ok, detail = _sc(("sc", "enable", name))
-                    results.append((action, ok, detail or f"re-enabled {name}"))
-                elif subop == "enable":
-                    ok, detail = _sc(("sc", "disable", name))
-                    results.append((action, ok, detail or f"re-disabled {name}"))
-                elif subop == "stop":
-                    ok, detail = _svc_run(name, "svcstart")
-                    results.append((action, ok, detail or f"attempted restart of {name}"))
-                elif subop == "start":
-                    ok, detail = _svc_run(name, "svcstop")
-                    results.append((action, ok, detail or f"attempted stop of {name}"))
-                else:
-                    results.append((action, True, f"sc {subop} will be reverted"))
-            elif kind == "cmd":
-                results.append((action, True, "cmd change will be reverted"))
-            elif kind == "powerscheme":
-                results.append((action, True, "powerscheme change will be reverted"))
-            elif kind == "power":
-                results.append((action, True, "power change will be reverted"))
-            elif kind == "file":
-                results.append((action, True, "file change will be reverted"))
-            elif kind == "ini" or kind == "inidel":
-                results.append((action, True, "ini change will be reverted"))
-            elif kind == "regdel":
-                results.append((action, True, "regdel will be reverted"))
-            elif kind == "sched":
-                results.append((action, True, "sched change will be reverted"))
-            else:
-                results.append((action, True, f"{kind} will be reverted"))
-        except Exception as exc:
+            ok, detail = fn(entry)
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, f"{type(exc).__name__}: {exc}"
+        results.append((label, ok, f"{what} -> {detail}"))
+
+    # ── Restore every captured snapshot (each restore is idempotent) ──
+    for entry in reg_backups.values():
+        _restore("restore_reg", _restore_backup, entry,
+                 f"restored {entry['hive']}\\{entry['path']} "
+                 f"[{entry['name']}]")
+    for entry in file_backups.values():
+        _restore("restore_file", _restore_file_backup, entry,
+                 f"restored {entry['path']}")
+    for entry in ini_backups.values():
+        _restore("restore_ini", _restore_ini_backup, entry,
+                 f"restored {entry['section']}.{entry['key']}")
+    for entry in power_backups.values():
+        _restore("restore_power", _restore_power_backup, entry,
+                 f"restored power {entry['setting']}")
+    for entry in svc_backups.values():
+        _restore("restore_svc", _restore_svc_backup, entry,
+                 f"restored svc {entry['name']}")
+    for entry in cmd_backups.values():
+        _restore("restore_cmd", _restore_cmd_backup, entry,
+                 f"restored cmd {entry['kind']}")
+    if powerscheme_backups:
+        _restore("restore_powerscheme", _restore_powerscheme_backup,
+                 powerscheme_backups, "restored powerscheme state")
+    for entry in sched_backups.values():
+        _restore("restore_sched", _restore_sched_backup, entry,
+                 f"restored sched {entry['task']}")
+
+    # ── Executed actions no snapshot covers ──────────────────────────
+    for action in actions:
+        try:
+            _report_uncovered(action, results, reg_backups, svc_backups,
+                              cmd_backups, power_backups, powerscheme_backups,
+                              sched_backups, file_backups, ini_backups)
+        except Exception as exc:  # noqa: BLE001
             results.append((action, False, f"rollback failed: {exc}"))
     return results
+
+
+def _report_uncovered(action, results, reg_backups, svc_backups, cmd_backups,
+                      power_backups, powerscheme_backups, sched_backups,
+                      file_backups, ini_backups):
+    """Report the rollback fate of one executed action no snapshot restores."""
+    kind = action[0]
+    if kind in ("reg", "regdel") and len(action) >= 4:
+        if _target_key(action[1], action[2], action[3]) in reg_backups:
+            return  # restored from the snapshot above
+        results.append((action, True,
+                        f"{kind}: no change to undo "
+                        f"(value already at its original state)"))
+    elif kind in ("regall", "regdelall") and len(action) >= 4:
+        prefix = (f"{action[1].upper()}\\"
+                  f"{action[2].replace('\\\\', '\\').upper()}\\")
+        if any(k.startswith(prefix) for k in reg_backups):
+            return  # restored from the snapshot above
+        results.append((action, True,
+                        f"{kind}: no change to undo "
+                        f"(values already at their original state)"))
+    elif kind in ("svc", "svcstop", "svcstart"):
+        if action[1].upper() in svc_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        f"{kind} {action[1]}: no snapshot - NOT restored"))
+    elif kind == "sc":
+        name = action[2] if len(action) >= 3 else ""
+        if name.upper() in svc_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        f"sc {name}: no snapshot - NOT restored"))
+    elif kind == "cmd":
+        low_cmd = " ".join(action[1].strip().lower().split())
+        if low_cmd in cmd_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        f"cmd '{action[1]}' is not restorable "
+                        f"from a snapshot - NOT restored"))
+    elif kind == "power":
+        scheme = action[3] if len(action) > 3 else "AC"
+        if f"{action[1]}_{scheme}" in power_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        f"power {action[1]}: no snapshot - NOT restored"))
+    elif kind == "powerscheme":
+        if powerscheme_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        "powerscheme: no snapshot - NOT restored"))
+    elif kind == "sched":
+        task = _extract_task_name(action[2]) if len(action) >= 3 else None
+        if task and task in sched_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        "sched: no snapshot - NOT restored"))
+    elif kind == "file":
+        if len(action) >= 3 and _file_backup_key(action[2]) in file_backups:
+            return  # restored from the snapshot above
+        results.append((action, False,
+                        f"file {action[1]}: no snapshot - NOT restored"))
+    elif kind in ("ini", "inidel") and len(action) >= 4:
+        if _ini_backup_key(action[1], action[2], action[3]) in ini_backups:
+            return  # restored from the snapshot above
+        if kind == "inidel":
+            results.append((action, True,
+                            "inidel: key already absent - no change to undo"))
+            return
+        results.append((action, False,
+                        f"ini {action[2]}.{action[3]}: no snapshot "
+                        f"- NOT restored"))
+    elif kind == "guidance":
+        results.append((action, True, "guidance: nothing was changed"))
+    elif kind == "restart":
+        results.append((action, True,
+                        "explorer restarted (benign - cannot be undone)"))
+    elif kind == "mkdir":
+        results.append((action, True,
+                        f"directory {action[1]} left in place (benign)"))
+    elif kind == "appx":
+        results.append((action, False,
+                        f"appx {action[2]} removal cannot be rolled back"))
+    else:
+        results.append((action, False,
+                        f"{kind}: no automatic rollback - NOT restored"))
 
 
 def _file_backup_key(path: str) -> str:
@@ -1587,19 +1602,28 @@ def _restore_file_backup(entry: dict, dry_run: bool = False):
 
 
 def _snapshot_ini_targets(tweak_id: str, actions: list) -> None:
-    """Back up the previous value of every ini key a tweak will set."""
+    """Back up the previous value of every ini key a tweak will set or delete."""
     from engine import state as state_mgr  # deferred: avoids import cycle
 
     existing = state_mgr.get_ini_backups(tweak_id) or {}
     changed = False
     for a in actions:
-        if len(a) < 5 or a[0] != "ini":
+        if a[0] == "inidel":
+            if len(a) < 4:
+                continue
+            path, section, key = a[1], a[2], a[3]
+        elif a[0] == "ini":
+            if len(a) < 5:
+                continue
+            path, section, key = a[1], a[2], a[3]
+        else:
             continue
-        path, section, key = a[1], a[2], a[3]
         ikey = _ini_backup_key(path, section, key)
         if ikey in existing:
             continue
         existed, value = _ini_read_value(path, section, key)
+        if a[0] == "inidel" and not existed:
+            continue  # already absent; deleting it changes nothing
         existing[ikey] = {"kind": "ini", "path": path, "section": section,
                           "key": key, "existed": existed, "value": value}
         changed = True

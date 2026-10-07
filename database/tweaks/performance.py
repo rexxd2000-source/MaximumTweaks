@@ -276,10 +276,10 @@ TWEAKS = validate_module("performance", [
       "Configure aggressive processor performance decrease for faster "
       "frequency scaling under gaming loads.",
       actions=[
-          ("power", "CPPERF", "2", "SCHEME_CURRENT"),
+          ("power", "perf_decrease_policy", 2, "AC"),
       ],
       revert=[
-          ("power", "CPPERF", "0", "SCHEME_CURRENT"),
+          ("power", "perf_decrease_policy", 0, "AC"),
       ],
       why="Controls how quickly the CPU scales down frequency. Aggressive mode "
           "prevents unnecessary frequency drops during gaming workloads.",

@@ -569,22 +569,11 @@ TWEAKS = validate_module("laptop", [
       tags=["gamemode", "battery", "power"]),
 
     # ── Processor Idle ─────────────────────────────────────────────
-    T("lap-046", "Deep CPU Idle on Battery",
-      "Allow the CPU to enter deeper idle states on battery.",
-      actions=[
-          ("cmd", "powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISC 1"),
-          ("cmd", "powercfg /setactive SCHEME_CURRENT"),
-      ],
-      revert=[
-          ("cmd", "powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_PROCESSOR IDLEDISC 0"),
-          ("cmd", "powercfg /setactive SCHEME_CURRENT"),
-      ],
-      why="Idle disconnect allows the CPU to drop to lower C-states "
-          "when idle, reducing battery drain during light workloads.",
-      changes="Enables deep CPU idle on battery.",
-      risk="safe", impact="low", recommended="recommended",
-      admin=True,
-      tags=["cpu", "idle", "battery"]),
+    # lap-046 "Deep CPU Idle on Battery" was removed: it wrote the alias
+    # IDLEDISC, which is not a real powercfg setting (apply failed every
+    # time), and the verified setting it meant - "Processor idle disable" -
+    # is already at the optimal stock value (0 = idle enabled), so there
+    # was nothing honest for it to apply.
 
     # ── Hybrid Sleep ───────────────────────────────────────────────
     T("lap-047", "Disable Hybrid Sleep on Battery",
@@ -647,11 +636,9 @@ TWEAKS = validate_module("laptop", [
     T("lap-050", "Moderate C-States on Battery",
       "Allow moderate CPU C-states on battery for power savings.",
       actions=[
-          ("power", "processor_idle_allow", 1, "DC"),
           ("power", "processor_idle_demote_threshold", 2, "DC"),
       ],
       revert=[
-          ("power", "processor_idle_allow", 0, "DC"),
           ("power", "processor_idle_demote_threshold", 0, "DC"),
       ],
       why="Moderate C-states on battery let the CPU save power during "

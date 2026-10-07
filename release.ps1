@@ -51,15 +51,36 @@ function Set-Version {
     Write-Host "[1/5] APP_VERSION -> $Version" -ForegroundColor Cyan
 }
 
+function Get-Checksum {
+    # Hash the built exe and publish it next to it as <exe>.sha256 so the
+    # in-app updater can verify downloads (returns the bare hex digest).
+    if (-not (Test-Path $exePath)) {
+        Write-Warning "No exe at $exePath - manifest will be published without a checksum."
+        return ""
+    }
+    $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
+    Set-Content -Path "$exePath.sha256" -Value "$hash  $exeName" -Encoding ascii
+    Write-Host "      sha256: $hash" -ForegroundColor DarkGray
+    return $hash
+}
+
 function Update-Manifest {
+    param([string]$Sha256 = "")
     # Regenerate the served /update.json (auth_backend\web\update.json) so the
     # desktop app's built-in UPDATE_MANIFEST_URL points at this new build.
-    $dl = "https://github.com/$Repo/download/v$Version/$exeName"
+    # NOTE: the canonical GitHub asset path is /releases/download/... - the
+    # shorter /download/... form 404s.
+    $dl = "https://github.com/$Repo/releases/download/v$Version/$exeName"
     $m = @{
         version = $Version
         notes   = "Maximum Tweaks v$Version - see the in-app changelog for details."
         url     = $dl
-    } | ConvertTo-Json
+    }
+    if ($Sha256) {
+        $m["sha256"] = $Sha256
+        $m["checksum_url"] = "$dl.sha256"
+    }
+    $m = $m | ConvertTo-Json
     $manifest = Join-Path $root "auth_backend\web\update.json"
     Set-Content $manifest $m -Encoding UTF8
     Write-Host "      manifest -> auth_backend\web\update.json (version $Version)" -ForegroundColor DarkGray
@@ -104,16 +125,29 @@ function Publish-Release {
     }
     $tag = "v$Version"
     $api = "https://api.github.com/repos/$Repo/releases"
-    # Authenticated push URL so git can push the tag using the token.
-    $owner = ($Repo -split "/")[0]
-    $authPush = "https://$owner`:$env:GITHUB_TOKEN@github.com/$Repo.git"
 
     Write-Host "[4/5] Ensuring tag $tag exists..." -ForegroundColor Cyan
     $tagLines = & $git -C $root ls-remote --tags origin "refs/tags/$tag" 2>$null
     $tagExists = [bool]$tagLines
     if (-not $tagExists) {
         & $git -C $root tag $tag
-        & $git -C $root push "$authPush" $tag
+        # Pass the token through environment-scoped git config so it never
+        # shows up in the command line, shell history, or git's error output
+        # (the previous https://user:token@... push URL did all three).
+        $b64 = [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GITHUB_TOKEN"))
+        $env:GIT_CONFIG_COUNT = "1"
+        $env:GIT_CONFIG_KEY_0 = "http.https://github.com/.extraheader"
+        $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $b64"
+        try {
+            & $git -C $root push origin $tag
+            if ($LASTEXITCODE -ne 0) {
+                throw "git push of tag $tag failed (exit $LASTEXITCODE)"
+            }
+        }
+        finally {
+            Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
+        }
     }
     else {
         Write-Host "      tag $tag already present - skipping." -ForegroundColor DarkGray
@@ -137,6 +171,12 @@ function Publish-Release {
     Write-Host "[6/5] Uploading $exeName ..." -ForegroundColor Cyan
     $upload = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$exeName"
     curl.exe -s -X POST $upload -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$exePath" | Out-Null
+    $shaPath = "$exePath.sha256"
+    if (Test-Path $shaPath) {
+        $uploadSha = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$exeName.sha256"
+        curl.exe -s -X POST $uploadSha -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$shaPath" | Out-Null
+        Write-Host "      uploaded: $shaPath" -ForegroundColor Green
+    }
     Write-Host "      uploaded: $exePath" -ForegroundColor Green
     Write-Host ""
     Write-Host "Update source (the app auto-checks this when GITHUB_REPO matches):" -ForegroundColor Yellow
@@ -152,6 +192,7 @@ function Publish-Release {
 Set-Version
 if (-not $SkipBuild) { Build-Exe }
 $repo = Get-Repo
-Update-Manifest
+$sha256 = Get-Checksum
+Update-Manifest -Sha256 $sha256
 Publish-Release -Repo $repo
 Write-Host "Done. Users on v$Version can click 'Check for Updates' once the next tag is published." -ForegroundColor Green

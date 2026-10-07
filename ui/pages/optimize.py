@@ -78,24 +78,39 @@ class BundleCard(QFrame):
         self._update_preview()
 
     def _states(self):
-        """Return (applyable, skipped) lists of tweak dicts."""
-        applyable, skipped = [], []
+        """Return (applyable, skipped, unverified) lists of tweak dicts.
+
+        ``unverified`` holds tweaks the entitlement gate flagged
+        ``requires_confirmation`` (the safety audit could not prove them
+        safe). Like Apply All, a preset batch never applies those unattended:
+        they are reported separately so the user can open each card, read why,
+        and apply it themselves.
+        """
+        from engine.safety import preflight as _preflight
+        applyable, skipped, unverified = [], [], []
         for tid in self.bundle["tweaks"]:
             tweak = BY_ID.get(tid)
             if not tweak:
                 continue
             state = self.ctx.state_of(tid)
-            if state in ("ready",):
-                applyable.append(tweak)
-            else:
+            if state not in ("ready",):
                 skipped.append((tweak, state))
-        return applyable, skipped
+                continue
+            pf = _preflight(tweak, profile=self.ctx.profile or None)
+            if pf.get("requires_confirmation"):
+                unverified.append(tweak)
+            else:
+                applyable.append(tweak)
+        return applyable, skipped, unverified
 
     def _update_preview(self):
-        applyable, skipped = self._states()
+        applyable, skipped, unverified = self._states()
         text = f"• {len(applyable)} compatible tweaks will be applied"
         if skipped:
             text += f" · {len(skipped)} skipped (incompatible with this PC)"
+        if unverified:
+            text += (f" · {len(unverified)} not verified by the safety audit "
+                     f"(excluded — apply from each card after reading why)")
         self.preview_lbl.setText(text)
 
     def _show_detail(self):
@@ -105,18 +120,25 @@ class BundleCard(QFrame):
         lay = QVBoxLayout(dlg)
         box = QPlainTextEdit()
         box.setReadOnly(True)
+        _, _, unverified = self._states()
+        unverified_ids = {t["id"] for t in unverified}
         for tid in self.bundle["tweaks"]:
             tweak = BY_ID.get(tid)
             if not tweak:
                 continue
-            state = self.ctx.state_of(tid)
-            color = STATE_COLORS.get(state, T["text_dim"])
+            if tid in unverified_ids:
+                state, color = "unverified", STATE_COLORS["warning"]
+            else:
+                state = self.ctx.state_of(tid)
+                color = STATE_COLORS.get(state, T["text_dim"])
             box.appendHtml(
-                f"<span style='color:{T['accent']}'>{tid}</span> "
+                f"<span style='color:{color}'>{tid}</span> "
                 f"<b>{tweak['name']}</b>  "
                 f"<span style='color:{color}'>{state.upper()}</span>"
                 f"<br/><span style='color:{T['text_dim']}'>  {tweak.get('desc','')}</span>")
-        box.appendHtml("<br/><b>Legend:</b> READY = will apply · OPTIONAL = advanced · INCOMPATIBLE = skipped")
+        box.appendHtml("<br/><b>Legend:</b> READY = will apply · OPTIONAL = advanced · "
+                       "UNVERIFIED = excluded from one-click apply (open its card to review) · "
+                       "INCOMPATIBLE = skipped")
         lay.addWidget(box)
         btn = QPushButton("Close")
         btn.clicked.connect(dlg.accept)
@@ -124,7 +146,7 @@ class BundleCard(QFrame):
         dlg.exec()
 
     def _confirm_and_apply(self):
-        applyable, skipped = self._states()
+        applyable, skipped, unverified = self._states()
         if not applyable:
             return
         include_advanced = QCheckBox("Include advanced/optional tweaks (may affect security)")
@@ -171,6 +193,13 @@ class BundleCard(QFrame):
                 f"or power-management settings. These are ordinary Windows "
                 f"settings, and everything can be turned back off in the app "
                 f"at any time ({names}{more}).")
+        if unverified:
+            names = ", ".join(t["name"] for t in unverified[:4])
+            more = f" and {len(unverified) - 4} more" if len(unverified) > 4 else ""
+            notes.append(
+                f"\u26a0\ufe0f {len(unverified)} tweak(s) are not verified by the "
+                f"safety audit and are not part of this batch ({names}{more}). "
+                f"Open each card to read why and apply it yourself.")
         if notes:
             warn.setText("\n\n".join(notes))
         lay.addWidget(warn)

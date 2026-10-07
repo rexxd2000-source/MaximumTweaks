@@ -3,7 +3,7 @@ _dev/import_tier_review.py, do not edit by hand.
 
 Source review sheet : tweak_tier_review.csv
 Imported            : 2026-10-02 23:18 UTC
-Tweaks covered      : 516
+Tweaks covered      : 515
 
 This is the reviewed, human-signed-off grade for each optimization
 tweak. :func:`database.classification.grade_optimization` returns these
@@ -291,7 +291,6 @@ REVIEWED_GRADES: dict[str, str] = {
     "lap-043": "FREE",
     "lap-044": "FREE",
     "lap-045": "FREE",
-    "lap-046": "FOUNDATION",
     "lap-047": "FREE",
     "lap-048": "FREE",
     "lap-049": "FREE",
@@ -555,7 +554,7 @@ REVIEWED_GRADES: dict[str, str] = {
 #: Import-time tally, so a truncated or duplicated sheet is obvious.
 REVIEWED_COUNTS: dict[str, int] = {
     "FREE": 293,
-    "FOUNDATION": 168,
+    "FOUNDATION": 167,
     "MAXIMUM": 55,
 }
 

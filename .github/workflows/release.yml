@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Extract version from tag
+        id: get_version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v','V')
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build app with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller MaximumTweaks.spec --noconfirm
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $version = "$env:VERSION"
+          $nsi = "MaximumTweaks-Setup.nsi"
+          if (!(Test-Path $nsi)) {
+            Write-Error "NSIS script $nsi not found"
+            exit 1
+          }
+          makensis /DVERSION=$version $nsi
+
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          $version = "$env:VERSION"
+          $installer = "MaximumTweaks-Setup-$version.exe"
+          $hash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLower()
+          "$hash  $installer" | Out-File -FilePath "$installer.sha256" -Encoding ascii
+          # The in-app updater downloads the portable exe (UPDATE_EXE_NAME),
+          # so it needs its own published checksum alongside the installer.
+          $exe = "dist\MaximumTweaks.exe"
+          $hash2 = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash2  MaximumTweaks.exe" | Out-File -FilePath "dist\MaximumTweaks.exe.sha256" -Encoding ascii
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Maximum Tweaks v${{ steps.get_version.outputs.version }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          files: |
+            dist/MaximumTweaks.exe
+            dist/MaximumTweaks.exe.sha256
+            MaximumTweaks-Setup-${{ steps.get_version.outputs.version }}.exe
+            MaximumTweaks-Setup-${{ steps.get_version.outputs.version }}.exe.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

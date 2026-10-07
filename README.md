@@ -2,7 +2,7 @@
 
 Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert
 
-Maximum Tweaks is a Windows system optimizer with a **596-tweak database** across
+Maximum Tweaks is a Windows system optimizer with a **595-tweak database** across
 52 categories (CPU, GPU, RAM, network, power, services, privacy, storage,
 audio, input, BIOS, game-specific and more). It detects your hardware, marks
 only **compatible** tweaks as ready, and applies/reverts them with one click.
@@ -122,7 +122,7 @@ The "Open GitHub" sidebar button is controlled by `GITHUB_URL`.
 
 ```
 config/     app configuration, theme, paths
-database/   tweak database (596 tweaks) + action executor
+database/   tweak database (595 tweaks) + action executor
 engine/     recommender, bundles, applier, applied-state tracking
 hardware/   hardware detection (WMI + psutil)
 ui/         PySide6 pages: dashboard, detect, tweaks, optimize, logs

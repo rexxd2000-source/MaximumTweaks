@@ -409,7 +409,7 @@ def test_report_counts_diagnostics_separately(report):
 
 def test_report_rows_cover_the_catalogue_exactly_once(report):
     ids = [r["id"] for r in report["rows"]]
-    assert len(ids) == len(set(ids)) == len(TWEAKS) == 596
+    assert len(ids) == len(set(ids)) == len(TWEAKS) == 595
 
 
 def test_report_marks_non_mutating_rows_reversible_na(report):

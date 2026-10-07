@@ -236,7 +236,6 @@ lap-042,Disk Idle 5 min on Battery,Spin down the disk after 5 minutes on battery
 lap-043,High Refresh on AC,Ensure the display uses its highest refresh rate when plugged in.,FREE,foundation,Laptop,1,False,UNVERIFIED
 lap-044,Restrict Background Apps on Battery,Restrict UWP background app activity when on battery power.,FREE,foundation,Laptop,1,False,UNVERIFIED
 lap-045,Disable Game Mode on Battery,Disable Windows Game Mode when on battery to save power.,FREE,foundation,Laptop,1,False,UNVERIFIED
-lap-046,Deep CPU Idle on Battery,Allow the CPU to enter deeper idle states on battery.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
 lap-047,Disable Hybrid Sleep on Battery,Disable hybrid sleep on battery to prevent disk writes.,FREE,foundation,Laptop,2,False,UNVERIFIED
 lap-048,Disable Wake Timers on Battery,Prevent scheduled tasks from waking the laptop on battery.,FREE,foundation,Laptop,2,False,UNVERIFIED
 lap-049,Disable Adaptive Brightness,Disable ambient light sensor-based brightness adjustment.,FREE,foundation,Laptop,1,False,UNVERIFIED

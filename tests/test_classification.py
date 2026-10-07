@@ -124,8 +124,8 @@ def test_normalize_grade_rejects_junk_instead_of_guessing():
 def test_review_covers_every_optimization_tweak_exactly_once():
     opt = _optimization_tweaks()
     ids = [t["id"] for t in opt]
-    assert len(ids) == 516
-    assert len(set(ids)) == 516
+    assert len(ids) == 515
+    assert len(set(ids)) == 515
     assert set(REVIEWED_GRADES) == set(ids)
 
 
@@ -133,7 +133,7 @@ def test_review_grades_are_all_valid_and_the_tally_is_honest():
     assert all(g in CLASSIFICATIONS for g in REVIEWED_GRADES.values())
     assert REVIEWED_COUNTS == dict(Counter(REVIEWED_GRADES.values()))
     assert set(REVIEWED_COUNTS) == set(CLASSIFICATIONS)
-    assert sum(REVIEWED_COUNTS.values()) == 516
+    assert sum(REVIEWED_COUNTS.values()) == 515
 
 
 def test_shipped_grade_is_the_reviewed_grade_for_every_optimization_tweak():
@@ -171,7 +171,9 @@ def test_heuristic_differs_from_review_on_a_known_bounded_set():
         facts = extract_implementation(t)
         if grade_optimization(facts, t)[0] != classify_optimization(facts, t)[0]:
             disagreements.append(t["id"])
-    assert len(disagreements) == 172
+    # 171: lap-046 (reviewed FOUNDATION vs heuristic FREE) was deleted
+    # (broken powercfg alias), dropping the pin from 172.
+    assert len(disagreements) == 171
     assert "nv-001" in disagreements and "lap-001" in disagreements
 
 
