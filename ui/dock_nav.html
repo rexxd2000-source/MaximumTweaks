@@ -153,7 +153,9 @@ body.ready{opacity:1}
 /* SINGLE-COLOUR LOGOS. Every key is a white alpha mask (<i class="ic">) and
    the visible paint is currentColor: one see-through dock accent (#8b6bff at
    partial opacity) on orbs and tiles alike, full strength on hover/active.
-   There is no per-key artwork any more - see _assets_json in dock_nav.py. */
+   Exception: the CPU/GPU/RAM tiles carry their real category logo artwork
+   (the green hardware PNGs in assets/icons) - paint() swaps those to an
+   unmasked background-image so the actual logo file is shown as-is. */
 .ic{display:block;background:currentColor;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;
   mask-repeat:no-repeat;mask-position:center;mask-size:contain}
 .t .ic{width:22px;height:22px;margin:0 auto 7px;color:#8b6bff;opacity:.75;
@@ -183,7 +185,7 @@ const D=[
 
 /* STATE. `page` = the page key currently shown by the app (updated from Python via sync()). */
 let cat=0, item="", open=false, page="dashboard";
-let ASSETS=null, layers=[], closeT=null, BD="";
+let ASSETS=null, ART=[], layers=[], closeT=null, BD="";
 const SLIDE=44;   // px the category layers travel sideways when switching
 const $=id=>document.getElementById(id);
 
@@ -196,10 +198,20 @@ function paint(){
   const u=(ASSETS&&(ASSETS[key]||(tint&&ASSETS[key+'|'+tint])))||'';
   if(!u)continue;
   if(el.tagName==='IMG'){el.src=u;continue}   // brand mark: shown as-is, not masked
+  if(ART.indexOf(key)>=0){                    // CPU/GPU/RAM: real logo artwork, as-is
+   el.style.webkitMaskImage=''; el.style.maskImage='';
+   el.style.backgroundImage='url("'+u+'")';
+   el.style.backgroundColor='transparent';
+   el.style.backgroundSize='contain';
+   el.style.backgroundRepeat='no-repeat';
+   el.style.backgroundPosition='center';
+   el.style.opacity='1';
+   continue;
+  }
   el.style.webkitMaskImage='url("'+u+'")'; el.style.maskImage='url("'+u+'")';
  }
 }
-function setAssets(map){ASSETS=map||{};paint();document.body.classList.add('ready');moveHl(cat)}
+function setAssets(map,art){ART=art||[];ASSETS=map||{};paint();document.body.classList.add('ready');moveHl(cat)}
 
 /* Measure where the panel and the bar actually sit inside the 560x340 widget.
    Each one pulls its own slice out of the full-widget snapshot with a negative

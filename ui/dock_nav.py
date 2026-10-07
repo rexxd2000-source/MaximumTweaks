@@ -192,13 +192,30 @@ def _brand_uri() -> str:
 # Every glyph the dock draws: category orbs and tiles alike are white alpha
 # masks of the lucide/fill glyphs in ui.widgets.NAV_LUCIDE; the page tints them
 # a single translucent dock accent via CSS (currentColor), so no key ever
-# carries its own coloured artwork.
+# carries its own coloured artwork. The CPU/GPU/RAM tiles are the exception:
+# they show the real category logo artwork from assets/icons as-is (the old
+# green hardware logos the user asked to keep, same files the dashboard temps
+# use) - see _ARTWORK_KEYS and the paint() branch in dock_nav.html.
 _ORB_KEYS = ("fpsboost", "system", "input", "tools", "profiles", "settings")
 _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio",
               "network", "hourglass", "keyboard", "mouse", "input",
               "delay_destroyer", "tools", "controller", "app_optimizers", "debloat",
               "route_analyzer", "activity", "profiles", "fortnite", "chat",
               "settings")
+#: Keys served as full-colour PNG artwork instead of an accent-tinted mask.
+_ARTWORK_KEYS = ("cpu", "gpu", "ram")
+
+
+def _artwork_uri(key: str) -> str:
+    """Base64 data URI for assets/icons/<key>.png, or '' when the file is missing."""
+    p = _asset(f"assets/icons/{key}.png")
+    if not p.is_file():
+        return ""
+    try:
+        raw = p.read_bytes()
+    except OSError:
+        return ""
+    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
 
 
 def _assets_json() -> str:
@@ -206,10 +223,17 @@ def _assets_json() -> str:
 
     Every entry is a white alpha mask (see ``_icon_uri``); colour and opacity
     live in the page's CSS so all logos are one see-through accent. The brand
-    mark is the one image shown as-is (it is artwork, not a category logo).
+    mark is shown as-is (it is artwork, not a category logo), and the
+    ``_ARTWORK_KEYS`` tiles are shown as-is too - their PNGs are served
+    unmasked so the dock shows the real logo files.
     """
     out = {"brand": _brand_uri()}
     for k in dict.fromkeys((*_ORB_KEYS, *_TILE_KEYS)):
+        if k in _ARTWORK_KEYS:
+            uri = _artwork_uri(k)
+            if uri:
+                out[k] = uri
+                continue
         out[k] = _icon_uri(k, "#ffffff")
     return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) + "}")
 
@@ -383,8 +407,10 @@ class DockNav(QWidget):
             if not ok:
                 return
             # The dock stays invisible until the real icons and logo are in place,
-            # so it never paints a frame of empty boxes.
-            self._run(f"setAssets({_assets_json()})")
+            # so it never paints a frame of empty boxes. The second argument tells
+            # the page which keys are full-colour artwork (unmasked, shown as-is).
+            self._run(f"setAssets({_assets_json()},"
+                      f"[{','.join(f'\"{k}\"' for k in _ARTWORK_KEYS)}])")
             # Paint the plan badge from the live entitlement, not a literal.
             self.refresh_tier()
             self.apply_geometry()
