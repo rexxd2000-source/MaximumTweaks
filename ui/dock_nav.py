@@ -32,6 +32,7 @@ fits, so no clamping is needed.
 from __future__ import annotations
 
 import base64
+import json
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -120,7 +121,7 @@ def _logo_uri(stem: str) -> str:
     """The dock's monochrome category-logo PNG (assets/icons/dock/<stem>.png)
     as a base64 data URI, or "" if it does not exist. The dock draws these
     pure-white silhouettes -- each key has its own distinct glyph -- unmasked
-    on the coloured orb/tile. Keys with no artwork fall back to lucide line
+    on the coloured orb. Keys with no artwork fall back to lucide line
     glyphs."""
     p = _asset(f"assets/icons/dock/{stem}.png")
     if not p.is_file():
@@ -130,6 +131,25 @@ def _logo_uri(stem: str) -> str:
     except OSError:
         return ""
     return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
+
+
+@lru_cache(maxsize=64)
+def _phosphor_svg(key: str) -> str:
+    """One Phosphor duotone icon (assets/icons/phosphor/<key>.svg) as raw SVG
+    markup, or "" if the file is missing.
+
+    Phosphor duotone SVGs render with ``fill="currentColor"`` at the root (the
+    duotone layer is a second path at 0.2 opacity) so the flyout's tile markup
+    is inlined into the page and recolored by CSS ``color`` -- a plain <img>
+    cannot re-tint a currentColor icon. Keeping the raw file text allows the
+    page to own the colour, matching the dock's violet family exactly."""
+    p = _asset(f"assets/icons/phosphor/{key}.svg")
+    if not p.is_file():
+        return ""
+    try:
+        return p.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 @lru_cache(maxsize=1)
@@ -168,15 +188,15 @@ def _brand_uri() -> str:
     return _image_uri(out)
 
 
-# Every glyph the dock draws: category orbs in white, tiles in the colour of
-# the category they belong to. One set, one source (ui.widgets.NAV_LUCIDE).
+# Every glyph the dock bar draws: category orbs in white. One set, one source
+# (ui.widgets.NAV_LUCIDE). Flyout tiles use Phosphor duotone SVGs (see below),
+# not these lucide glyphs.
 _ORB_KEYS = ("fpsboost", "monitor", "input", "tools", "profiles", "settings")
 _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio",
               "network", "hourglass", "keyboard", "mouse", "input",
               "delay_destroyer", "tools", "controller", "app_optimizers", "debloat",
               "route_analyzer", "activity", "profiles", "fortnite", "chat",
               "settings")
-_TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
 
 # Dock drawing key -> monochrome logo PNG stem (assets/icons/dock/<stem>.png).
 # Pure-white silhouettes (Material Design Icons, Apache-2.0/MIT, plus the
@@ -214,11 +234,16 @@ _DOCK_LOGO_FILES = {
 
 
 def _assets_json() -> str:
-    """Build the JS object literal of ``key -> data URI`` handed to the page.
+    """Build the JS object literal of ``key -> data URI / svg markup`` handed
+    to the page.
 
-    Keys that have a real monochrome dock logo render it as-is (pure-white
-    artwork shown unmasked on the coloured orb). Keys with no artwork keep the
-    lucide line glyph, rendered as a white CSS mask the page tints per category.
+    Orbit keys (fpsboost, monitor, ...) have real monochrome dock logos and are
+    rendered as-is (pure-white artwork shown unmasked on the coloured orb). The
+    flyout tiles use ONE consistent icon set: Phosphor Icons, duotone weight,
+    delivered as raw inline SVG markup under ``__svg`` so the page recolors
+    them with CSS ``color`` to match the dock's violet family. A tile whose
+    Phosphor file is missing falls back to the lucide line glyph (a white
+    mask the page tints per category).
     """
     out = {"brand": _brand_uri(), "__img": []}
     for k in _ORB_KEYS:
@@ -229,25 +254,21 @@ def _assets_json() -> str:
             out["__img"].append(k)
             continue
         out[k] = _icon_uri(k, "#ffffff")
+    svg_map: dict[str, str] = {}
     for k in _TILE_KEYS:
-        stem = _DOCK_LOGO_FILES.get(k)
-        uri = _logo_uri(stem) if stem else ""
-        if uri:
-            out[k] = uri
-            out["__img"].append(k)
+        markup = _phosphor_svg(k)
+        if markup:
+            svg_map[k] = markup
             continue
-        # A tile glyph is a CSS mask (see .ic in dock_nav.html): only its alpha
-        # is used and the visible colour comes from var(--c) in CSS. So one
-        # white glyph per key covers every category tint, which is what the
-        # page looks up first. Keep the coloured variants too for any caller
-        # that still asks for a specific tint.
+        # A tile without a Phosphor icon keeps the lucide line glyph as a CSS
+        # mask (see .ic in dock_nav.html): only its alpha is used and the
+        # visible colour comes from var(--c) in CSS.
         out[k] = _icon_uri(k, "#ffffff")
-        for c in _TILE_COLORS:
-            out[f"{k}|{c}"] = _icon_uri(k, c)
     img_list = "[" + ",".join(f'"{k}"' for k in out["__img"]) + "]"
     out.pop("__img")
+    svg_json = json.dumps(svg_map, separators=(",", ":"))
     return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) +
-            ",\"__img\":" + img_list + "}")
+            ",\"__img\":" + img_list + ",\"__svg\":" + svg_json + "}")
 
 
 class _DockPage(QWebEnginePage):

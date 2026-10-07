@@ -85,3 +85,25 @@ distinct glyph -- no two keys share the same silhouette. Rendered at
 - Source SVGs fetched live from
   raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/svgs/solid and
   raw.githubusercontent.com/twbs/icons/main/icons.
+
+Dock flyout icons (added 2026-10-07)
+------------------------------------
+assets/icons/phosphor/*.svg are the flyout-tile icon set: Phosphor Icons,
+duotone weight (MIT, https://phosphoricons.com,
+https://github.com/phosphor-icons/core, @phosphor-icons/core@2.1.1, files
+fetched from cdn.jsdelivr.net). Bundled verbatim as local SVG files (the
+shipped app performs no network fetch at runtime) and recolored via CSS
+currentColor to the dock's neon-violet accent so every flyout item matches
+the glossy dock. One key per tile, 24 files:
+
+  cpu, gpu (graphics-card), ram (memory), games (game-controller),
+  gauge (speedometer), system (windows-logo), storage (hard-drives),
+  audio (speaker-high), network (wifi-high), hourglass (chart-line-up),
+  keyboard, mouse (mouse-simple), input (cursor-click),
+  delay_destroyer (lightning), tools (wrench), controller (joystick),
+  app_optimizers (squares-four), debloat (broom), route_analyzer
+  (map-trifold), activity (pulse), profiles (game-controller),
+  fortnite (sliders-horizontal), chat (sparkle), settings (gear-six).
+
+Generated 2026-08-31 by MaximumTweaks/_gen_gloss.py (extended 2026-09-03;
+icon-runtime notes added 2026-09-24; brand logos added 2026-09-24).
