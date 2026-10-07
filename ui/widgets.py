@@ -84,11 +84,19 @@ NAV_LUCIDE = {
     "cpu": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>',
     "gpu": '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v10M17 7v10"/>',
     "ram": '<rect x="4" y="9" width="16" height="6" rx="1"/>',
-    "games": '<rect x="3" y="7" width="18" height="10" rx="2"/>'
-             '<circle cx="8" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/>',
+    # Joystick, not a grid: the System tile is a four-pane 2x2 (Windows mark),
+    # so a second 2x2 here would be the same logo type in a different category.
+    "games": '<circle cx="12" cy="6.5" r="3.5"/>'
+             '<path d="M12 10v6"/>'
+             '<path d="M7 20h10l-1.7-3.2H8.7z"/>',
     "fpsboost": '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
-    "system": '<circle cx="12" cy="12" r="3"/>'
-              '<path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12"/>',
+    # The Windows mark: four equal sharp panes, flat (Windows 11 geometry),
+    # filled rather than stroked - see _FILL_GLYPHS. Used by the System orb and
+    # the Windows/system tile, and distinct from the Settings gear.
+    "system": '<rect x="3" y="3" width="8.5" height="8.5"/>'
+              '<rect x="12.5" y="3" width="8.5" height="8.5"/>'
+              '<rect x="3" y="12.5" width="8.5" height="8.5"/>'
+              '<rect x="12.5" y="12.5" width="8.5" height="8.5"/>',
     "storage": '<rect x="3" y="4" width="18" height="6" rx="1"/>'
                '<rect x="3" y="14" width="18" height="6" rx="1"/>',
     "audio": '<path d="M3 12h3l2-6 4 12 3-9 2 5h4"/>',
@@ -100,7 +108,7 @@ NAV_LUCIDE = {
     "mouse": '<rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 3v7"/>',
     "input": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "tools": '<path d="M14.7 6.3a4 4 0 00-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 005.4-5.4l-2.6 2.6-2-2z"/>',
-    "delay_destroyer": '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
+    "delay_destroyer": '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
     "debloat": '<path d="M11 2v2"/><path d="M12 3h-2"/><path d="M13.5 10.5 22 2"/>'
                '<path d="M14.734 13.841a2 2 0 00-.314-2.42L12.58 9.58a2 2 0 00-2.421-.314l-7.657 4.461A1 1 0 002.3 15.3l6.403 6.403a1 1 0 001.571-.204z"/>'
                '<path d="M20 15v4"/><path d="M22 17h-4"/><path d="M4 4v4"/>'
@@ -110,13 +118,16 @@ NAV_LUCIDE = {
                       '<path d="M2 8h20"/><path d="M6 4v4"/><path d="M10 4v4"/>',
     "route_analyzer": '<circle cx="12" cy="12" r="9"/>'
                      '<path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
-    "profiles": '<rect x="2" y="7" width="20" height="10" rx="4"/>'
-                '<circle cx="8" cy="12" r="1.3"/><circle cx="16" cy="12" r="1.3"/>',
-    "controller": '<line x1="6" x2="10" y1="12" y2="12"/>'
-                  '<line x1="8" x2="8" y1="10" y2="14"/>'
-                  '<line x1="15" x2="15.01" y1="13" y2="13"/>'
-                  '<line x1="18" x2="18.01" y1="11" y2="11"/>'
-                  '<rect x="2" y="6" width="20" height="12" rx="2"/>',
+    # Frameless person: every other rectangular key draws a frame, so the
+    # silhouette itself keeps this one distinct at 22px.
+    "profiles": '<circle cx="12" cy="8" r="4"/>'
+                '<path d="M4 21v-1a7 7 0 0 1 14 0v1"/>',
+    # Frameless gamepad wings: a rounded-rect pad here collided head-on with
+    # the keyboard's rounded-rect frame (0.72 IoU at 22px).
+    "controller": '<path d="M7.5 7h9a5.5 5.5 0 0 1 5.4 6.6l-.7 3.4a3.1 3.1 0 0 1-5.5 1.4'
+                  'L14.8 16.5H9.2l-.9 1.9a3.1 3.1 0 0 1-5.5-1.4l-.7-3.4A5.5 5.5 0 0 1 7.5 7z"/>'
+                  '<path d="M7 11.5v2M6 12.5h2"/>'
+                  '<circle cx="16" cy="11.5" r=".8"/><circle cx="18" cy="13.5" r=".8"/>',
     "fortnite": '<path d="M6 3v18M6 3h10l-3 4 3 4H6"/>',
     "chat": '<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',
     "settings": '<circle cx="12" cy="12" r="3"/>'
@@ -145,11 +156,25 @@ NAV_LUCIDE = {
 }
 
 
+# Glyphs drawn as solid shapes instead of 1.5-stroke outlines. The Windows
+# mark reads as four filled panes; stroked, it turned into four empty boxes.
+_FILL_GLYPHS = {"system"}
+
+
 def _lucide_svg(kind: str) -> str:
-    """Full lucide SVG document for *kind* (stroke-width 1.5)."""
+    """Full lucide SVG document for *kind* (stroke-width 1.5).
+
+    Glyphs listed in _FILL_GLYPHS are emitted as filled shapes on the same
+    24x24 viewBox, so they share the stroke family's footprint but paint solid.
+    """
     body = NAV_LUCIDE.get(kind)
     if not body:
         return ""
+    if kind in _FILL_GLYPHS:
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+            'fill="currentColor" stroke="none">{}</svg>'.format(body)
+        )
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
         'fill="none" stroke="currentColor" stroke-width="1.5" '

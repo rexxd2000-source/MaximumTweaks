@@ -115,22 +115,6 @@ def _icon_uri(kind: str, color: str) -> str:
     return _png_uri(pm) if not pm.isNull() else ""
 
 
-@lru_cache(maxsize=128)
-def _logo_uri(stem: str) -> str:
-    """The colorful glossy category-logo PNG (assets/icons/<stem>.png) as a
-    base64 data URI, or "" if it does not exist. This is the original
-    side-panel artwork (each key tinted to its category color) drawn unmasked
-    on the orb/tile. Keys with no artwork fall back to lucide line glyphs."""
-    p = _asset(f"assets/icons/{stem}.png")
-    if not p.is_file():
-        return ""
-    try:
-        raw = p.read_bytes()
-    except OSError:
-        return ""
-    return "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
-
-
 @lru_cache(maxsize=1)
 def _brand_uri() -> str:
     """The brand mark for the dock's 44px Dashboard home button.
@@ -167,84 +151,29 @@ def _brand_uri() -> str:
     return _image_uri(out)
 
 
-# Every glyph the dock draws: category orbs in white, tiles in the colour of
-# the category they belong to. One set, one source (ui.widgets.NAV_LUCIDE).
-_ORB_KEYS = ("fpsboost", "monitor", "input", "tools", "profiles", "settings")
+# Every glyph the dock draws: category orbs and tiles alike are white alpha
+# masks of the lucide/fill glyphs in ui.widgets.NAV_LUCIDE; the page tints them
+# a single translucent dock accent via CSS (currentColor), so no key ever
+# carries its own coloured artwork.
+_ORB_KEYS = ("fpsboost", "system", "input", "tools", "profiles", "settings")
 _TILE_KEYS = ("cpu", "gpu", "ram", "games", "gauge", "system", "storage", "audio",
               "network", "hourglass", "keyboard", "mouse", "input",
               "delay_destroyer", "tools", "controller", "app_optimizers", "debloat",
               "route_analyzer", "activity", "profiles", "fortnite", "chat",
               "settings")
-_TILE_COLORS = ("#34d399", "#60a5fa", "#fb7185", "#fbbf24", "#f472b6", "#94a3b8")
-
-# Dock drawing key -> colorful glossy logo PNG stem (assets/icons/<stem>.png).
-# These are the original side-panel category logos, each tinted to its category
-# color, drawn unmasked on the orb/tile.
-# Keys without an entry (or with no file on disk) keep the lucide fallback.
-# "gauge" and "monitor" are the FPS and System categories' orb keys.
-_DOCK_LOGO_FILES = {
-    "fpsboost": "fpsboost",
-    "monitor": "system",
-    "input": "input",
-    "tools": "tools",
-    "profiles": "profiles",
-    "settings": "settings",
-    "gauge": "fpsboost",
-    "system": "system",
-    "cpu": "cpu",
-    "gpu": "gpu",
-    "ram": "ram",
-    "games": "games",
-    "storage": "storage",
-    "audio": "audio",
-    "network": "network",
-    "keyboard": "keyboard",
-    "mouse": "mouse",
-    "delay_destroyer": "delay_destroyer",
-    "controller": "controller",
-    "debloat": "debloat",
-    "route_analyzer": "route_analyzer",
-    "activity": "performance",
-    "fortnite": "fortnite",
-    "chat": "chat",
-}
 
 
 def _assets_json() -> str:
     """Build the JS object literal of ``key -> data URI`` handed to the page.
 
-    Keys that have a real colorful glossy logo render it as-is (unmasked on the
-    orb). Keys with no artwork keep the lucide line glyph, rendered as a white
-    CSS mask the page tints per category.
+    Every entry is a white alpha mask (see ``_icon_uri``); colour and opacity
+    live in the page's CSS so all logos are one see-through accent. The brand
+    mark is the one image shown as-is (it is artwork, not a category logo).
     """
-    out = {"brand": _brand_uri(), "__img": []}
-    for k in _ORB_KEYS:
-        stem = _DOCK_LOGO_FILES.get(k)
-        uri = _logo_uri(stem) if stem else ""
-        if uri:
-            out[k] = uri
-            out["__img"].append(k)
-            continue
+    out = {"brand": _brand_uri()}
+    for k in dict.fromkeys((*_ORB_KEYS, *_TILE_KEYS)):
         out[k] = _icon_uri(k, "#ffffff")
-    for k in _TILE_KEYS:
-        stem = _DOCK_LOGO_FILES.get(k)
-        uri = _logo_uri(stem) if stem else ""
-        if uri:
-            out[k] = uri
-            out["__img"].append(k)
-            continue
-        # A tile glyph is a CSS mask (see .ic in dock_nav.html): only its alpha
-        # is used and the visible colour comes from var(--c) in CSS. So one
-        # white glyph per key covers every category tint, which is what the
-        # page looks up first. Keep the coloured variants too for any caller
-        # that still asks for a specific tint.
-        out[k] = _icon_uri(k, "#ffffff")
-        for c in _TILE_COLORS:
-            out[f"{k}|{c}"] = _icon_uri(k, c)
-    img_list = "[" + ",".join(f'"{k}"' for k in out["__img"]) + "]"
-    out.pop("__img")
-    return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) +
-            ",\"__img\":" + img_list + "}")
+    return ("{" + ",".join(f'"{k}":"{v}"' for k, v in out.items() if v) + "}")
 
 
 class _DockPage(QWebEnginePage):

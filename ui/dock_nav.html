@@ -99,11 +99,17 @@ body.ready{opacity:1}
    the 44px orbs. */
 .c{flex:none;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 6px 10px;border-radius:16px;cursor:pointer;
   border:0;background:none;color:#b3a7ec;font:600 10px 'Segoe UI',sans-serif;transition:color .35s ease-out}
+/* Orb: the dock's own dark glass, not a coloured disc. With every logo now a
+   single translucent accent, a violet disc would swallow its own glyph; the
+   dark field keeps #8b6bff readable and lets the category's hover/active glow
+   (still var(--c)) carry the colour instead. */
 .orb{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;position:relative;
-  background:radial-gradient(circle at 32% 25%,rgba(255,255,255,.65),transparent 38%),linear-gradient(160deg,var(--c),color-mix(in srgb,var(--c) 40%,#000));
-  box-shadow:0 6px 16px color-mix(in srgb,var(--c) 15%,transparent),inset 0 -6px 10px rgba(0,0,0,.3);
+  background:radial-gradient(circle at 32% 25%,rgba(255,255,255,.16),transparent 40%),
+             linear-gradient(160deg,rgba(30,18,64,.92),rgba(14,9,32,.92));
+  border:1px solid rgba(201,192,255,.16);
+  box-shadow:0 6px 16px rgba(10,3,28,.4),inset 0 -6px 10px rgba(0,0,0,.35);
   transform:translateY(0) scale(1);
-  transition:transform .45s cubic-bezier(.34,1.56,.64,1),box-shadow .45s ease-out}
+  transition:transform .45s cubic-bezier(.34,1.56,.64,1),box-shadow .45s ease-out,border-color .45s ease-out}
 .c:hover .orb{transform:translateY(-5px) scale(1.08)}
 .c:active .orb{transform:translateY(-1px) scale(.92);transition-duration:.09s}
 .c.on{color:#fff}
@@ -144,19 +150,20 @@ body.ready{opacity:1}
 .ver .tier-badge.foundation{ --tb:#2fe3ba; --tbg:rgba(47,227,186,.4); }
 .ver .tier-badge.performance{ --tb:#4cc9f0; --tbg:rgba(76,201,240,.4); }
 .ver .tier-badge.maximum{ --tb:#ffb547; --tbg:rgba(255,181,71,.45); }
+/* SINGLE-COLOUR LOGOS. Every key is a white alpha mask (<i class="ic">) and
+   the visible paint is currentColor: one see-through dock accent (#8b6bff at
+   partial opacity) on orbs and tiles alike, full strength on hover/active.
+   There is no per-key artwork any more - see _assets_json in dock_nav.py. */
 .ic{display:block;background:currentColor;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;
   mask-repeat:no-repeat;mask-position:center;mask-size:contain}
-/* Real bundled category-logos arrive as PNG data-URIs and are rendered as-is
-   (<img class="ic">). Keys without artwork keep the lucide line-glyph, which
-   is an <i class="ic"> mask tinted by var(--c). The two share a footprint. */
-.ic.img{width:24px;height:24px;object-fit:contain;background:transparent;-webkit-mask:none;mask:none}
-.orb .ic.img{width:30px;height:30px}
-.orb{width:44px;height:44px}
-.t .ic.img{width:24px;height:24px;margin:0 auto 7px;filter:drop-shadow(0 0 8px color-mix(in srgb,var(--c) 60%,transparent))}
-.t .ic{width:22px;height:22px;margin:0 auto 7px;color:var(--c);filter:drop-shadow(0 0 8px color-mix(in srgb,var(--c) 60%,transparent));
-  transition:color .2s ease-out,filter .2s ease-out}
-.t:hover .ic,.t.on .ic{color:#fff;filter:drop-shadow(0 0 10px var(--c))}
-.orb .ic{width:22px;height:22px;color:#fff}
+.t .ic{width:22px;height:22px;margin:0 auto 7px;color:#8b6bff;opacity:.75;
+  filter:drop-shadow(0 0 8px color-mix(in srgb,var(--c) 55%,transparent));
+  transition:color .2s ease-out,opacity .2s ease-out,filter .2s ease-out}
+.t:hover .ic,.t.on .ic{opacity:1;filter:drop-shadow(0 0 10px var(--c))}
+/* Orbs are the dock's own glass, not coloured discs, so the same translucent
+   accent reads on them instead of disappearing into a matching gradient. */
+.orb .ic{width:24px;height:24px;color:#8b6bff;opacity:.85;transition:opacity .2s ease-out}
+.c:hover .orb .ic,.c.on .orb .ic{opacity:1}
 .c:focus-visible,.t:focus-visible,.logo:focus-visible{outline:2px solid var(--c,#8b6bff);outline-offset:2px}
 .c:focus-visible{outline-offset:3px}
 </style></head><body>
@@ -168,7 +175,7 @@ body.ready{opacity:1}
 <script>
 const D=[
  ["FPS","#8b6bff","fpsboost",[["cpu","CPU","","tweak:cpu"],["gpu","GPU","","tweak:gpu"],["ram","RAM","","tweak:ram"],["games","Games","","tweak:games"],["gauge","FPS boost","","tweak:fpsboost"]]],
- ["System","#8b6bff","monitor",[["system","Windows / system","","tweak:system"],["storage","Storage","","tweak:storage"],["audio","Audio","","tweak:audio"],["network","Network","","tweak:network"],["hourglass","Network QoS","","qos"]]],
+ ["System","#8b6bff","system",[["system","Windows / system","","tweak:system"],["storage","Storage","","tweak:storage"],["audio","Audio","","tweak:audio"],["network","Network","","tweak:network"],["hourglass","Network QoS","","qos"]]],
  ["Input","#8b6bff","input",[["keyboard","Keyboard","","tweak:keyboard"],["mouse","Mouse","","tweak:mouse"],["input","Input","","tweak:input"],["delay_destroyer","Delay Destroyer","","tweak:delay_destroyer"]]],
  ["Tools","#8b6bff","tools",[["tools","Tools","","tools"],["controller","Controller overclock","","controller"],["app_optimizers","App Optimizers","","app_optimizers"],["debloat","Smart debloater","","debloat"],["route_analyzer","Route analyzer","SOON","route_analyzer"],["activity","Diagnostics","","diagnostics"]]],
  ["Profiles","#8b6bff","profiles",[["profiles","Game profiles","","profiles"],["fortnite","Fortnite settings","","tweak:fortnite"],["chat","AI assistant","","chat"]]],
@@ -188,24 +195,11 @@ function paint(){
   const key=el.dataset.k, tint=el.dataset.t||'';
   const u=(ASSETS&&(ASSETS[key]||(tint&&ASSETS[key+'|'+tint])))||'';
   if(!u)continue;
-  if(el.tagName==='IMG'){el.src=u;continue}   // real artwork or brand: shown as-is, not masked
+  if(el.tagName==='IMG'){el.src=u;continue}   // brand mark: shown as-is, not masked
   el.style.webkitMaskImage='url("'+u+'")'; el.style.maskImage='url("'+u+'")';
  }
 }
-/* Keys whose asset is a real logo PNG are rendered as <img> (colored artwork),
-   not as a CSS-mask glyph. Called once the asset map has arrived, on the
-   elements build() created as <i> placeholders. */
-function upgradeImages(){
- if(!ASSETS||!Array.isArray(ASSETS.__img))return;
- const keys=new Set(ASSETS.__img);
- for(const el of document.querySelectorAll('[data-k]')){
-  if(el.tagName==='IMG'||!keys.has(el.dataset.k))continue;
-  const img=new Image(); img.className='ic img'; img.dataset.k=el.dataset.k;
-  if(el.dataset.t)img.dataset.t=el.dataset.t;
-  el.replaceWith(img);
- }
-}
-function setAssets(map){ASSETS=map||{};upgradeImages();paint();document.body.classList.add('ready');moveHl(cat)}
+function setAssets(map){ASSETS=map||{};paint();document.body.classList.add('ready');moveHl(cat)}
 
 /* Measure where the panel and the bar actually sit inside the 560x340 widget.
    Each one pulls its own slice out of the full-widget snapshot with a negative
