@@ -28,6 +28,60 @@ def test_svc_restore_unknown_original_fails():
     assert "NOT restored" in detail
 
 
+def test_svc_restore_sc_qc_tokens_roundtrip(monkeypatch):
+    """Snapshots store ``sc qc`` tokens (AUTO_START/DEMAND_START/...); the
+    restore must map every one back to a real start type.  AUTO_START used to
+    fall through to ``_svc``'s ``demand`` default, silently downgrading an
+    automatic service to Manual on revert (seen live: SysMain)."""
+    calls: list[tuple[str, str]] = []
+
+    def _fake_svc(name, mode):
+        calls.append((name, mode))
+        return True, "ok"
+
+    def _fake_run(name, action):
+        calls.append((name, action))
+        return True, "ok"
+
+    monkeypatch.setattr(executor, "_svc", _fake_svc)
+    monkeypatch.setattr(executor, "_svc_run", _fake_run)
+
+    cases = {
+        "AUTO_START": "auto",
+        "DEMAND_START": "manual",
+        "DISABLED": "disabled",
+        "BOOT_START": "boot",
+        "SYSTEM_START": "system",
+        "DELAYED_AUTO_START": "delayed",
+    }
+    for start_type, friendly in cases.items():
+        calls.clear()
+        ok, _detail = executor._restore_svc_backup(
+            {"name": "FooSvc", "start_type": start_type, "is_running": False})
+        assert ok is True, start_type
+        assert calls == [("FooSvc", friendly)], start_type
+
+
+def test_svc_restore_auto_start_restarts_if_running(monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    def _fake_svc(name, mode):
+        calls.append(("svc", mode))
+        return True, "ok"
+
+    def _fake_run(name, action):
+        calls.append(("run", action))
+        return True, "ok"
+
+    monkeypatch.setattr(executor, "_svc", _fake_svc)
+    monkeypatch.setattr(executor, "_svc_run", _fake_run)
+
+    ok, _detail = executor._restore_svc_backup(
+        {"name": "SysMain", "start_type": "AUTO_START", "is_running": True})
+    assert ok is True
+    assert calls == [("svc", "auto"), ("run", "svcstart")]
+
+
 def test_sched_restore_unknown_original_fails():
     ok, detail = executor._restore_sched_backup(
         {"task": "SomeTask", "was_enabled": None})

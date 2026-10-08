@@ -58,6 +58,9 @@ _POWER_SUBGROUP_CACHE: dict[tuple[str, str], set[str]] = {}
 
 SVC_MODE_MAP = {"auto": "auto", "manual": "demand", "disabled": "disabled",
                 "boot": "boot", "system": "system", "delayed": "delayed"}
+_SVC_START_ALIASES = {"auto_start": "auto", "demand_start": "manual",
+                      "delayed_auto_start": "delayed", "boot_start": "boot",
+                      "system_start": "system"}
 
 # reg.exe type tokens
 REG_TYPE = {"DWORD": "REG_DWORD", "QWORD": "REG_QWORD", "STRING": "REG_SZ",
@@ -291,6 +294,7 @@ def _restore_svc_backup(entry: dict, dry_run: bool = False):
         return False, (f"{entry['name']}: original startup type unknown - "
                        f"NOT restored")
     token = entry["start_type"].lower()
+    token = _SVC_START_ALIASES.get(token, token)
     friendly = _REV_SVC.get(token, token)
     ok, detail = _svc(entry["name"], friendly)
     # Also restore running state
