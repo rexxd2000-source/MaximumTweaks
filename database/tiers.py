@@ -74,6 +74,7 @@ KNOWN_EXECUTABLES = frozenset({
     "ipconfig", "ping", "wevtutil", "rundll32", "control", "sfc", "dism",
     "chkdsk", "defrag", "netsh", "powercfg", "bcdedit", "taskkill.exe",
     "sigverif", "sigverif.exe", "taskmgr", "msconfig", "resmon",
+    "pnputil", "wsreset.exe",
 })
 
 #: Action kinds that change system state. ``guidance`` is a no-op and does not
@@ -194,21 +195,19 @@ _NETWORK_EXES = frozenset({"netsh.exe", "netsh"})
 _APPX_MARKERS = ("Appx", "WindowsApps")
 
 _CMD_FIRST_TOKEN = re.compile(
-    r'^\s*(?:start\s+)?"?([A-Za-z0-9_.\\-]+?)(?:\.exe)?"?(?=\s|$)', re.I)
+    r'^\s*(?:start\s+)?"?([A-Za-z0-9_.\\-]+)"?(?=\s|$)', re.I)
 # PowerShell Verb-Noun cmdlets, e.g. Disable-MMAgent, Get-NetAdapter.
 _PS_CMDLET = re.compile(r'\b([A-Z][a-z]+-[A-Z][A-Za-z0-9]+)\b')
 _DRIVE_LETTER = re.compile(r'\b[A-Za-z]:\\')
 
-
-#: Extension-less commands that are genuinely Windows binaries rather than
-#: PowerShell cmdlets. Anything else without ``.exe`` is treated as a cmdlet.
-_BARE_BINARIES = frozenset({
-    "regedit", "cmd", "taskkill", "schtasks", "cleanmgr", "nvidia-smi", "ver",
-    "ping", "ipconfig", "msinfo32", "dxdiag", "wmic", "chkdsk", "defrag",
-    "sfc", "dism", "reg", "fsutil", "netsh", "powercfg", "bcdedit",
-    "tasklist", "mdsched", "wevtutil", "rundll32", "control",
-    "taskmgr", "msconfig", "resmon", "sigverif",
+#: cmd.exe builtins that dispatch other programs (or nothing) rather than
+#: being binaries themselves: they must never read as an external executable.
+_SHELL_BUILTINS = frozenset({
+    "start", "if", "exist", "del", "rd", "cd", "dir", "copy", "move",
+    "ren", "rename", "mkdir", "echo", "set", "call", "type", "find",
+    "findstr", "assoc", "ftype", "title", "exit", "cls", "pause",
 })
+
 
 #: One-shot, self-healing or maintenance commands. They do change process/OS
 #: state momentarily, but the change is not a persisted configuration: the tool
@@ -254,23 +253,30 @@ def _cmd_executable(command: str) -> str:
     """First real executable in a command string, lowercased.
 
     A bare ``Disable-MMAgent`` is a PowerShell cmdlet, not
-    ``disable-mmagent.exe``. Only a token that reaches ``.exe``, or a known
-    extension-less binary, is treated as a binary, so cmdlets never
-    masquerade as external dependencies.
+    ``disable-mmagent.exe``, so Verb-Noun tokens are never reported as
+    binaries. The ``powershell`` wrapper itself is not a claim either - the
+    inner script governs - and cmd.exe builtins / GUI control surfaces
+    (``.msc``/``.cpl``) dispatch other programs rather than being one.
+
+    Everything else - a token reaching ``.exe`` (including a path form) or
+    any other extension-less invocation - is returned verbatim so the caller
+    audits it against ``KNOWN_EXECUTABLES``. That is the whole point: an
+    unknown executable must surface as a claim, not vanish into an empty
+    string.
     """
     stripped = command.strip()
     m = _CMD_FIRST_TOKEN.match(stripped)
     if not m:
         return ""
-    token = m.group(1)
-    if not token.lower().endswith(".exe"):
-        # Extension-less: accept only known binaries, never Verb-Noun cmdlets.
-        if _PS_CMDLET.fullmatch(token):
-            return ""
-        if token.lower() in _BARE_BINARIES:
-            return token.lower()
+    raw = m.group(1)
+    if _PS_CMDLET.fullmatch(raw):
         return ""
-    return token.lower()
+    token = raw.lower()
+    if token in _SHELL_BUILTINS or token == "powershell":
+        return ""
+    if token.endswith((".msc", ".cpl")):
+        return ""
+    return token
 
 
 def _cmdlets(command: str) -> set[str]:
@@ -580,7 +586,8 @@ def extract_implementation(tweak: dict) -> dict:
         "cross_hive_write": len(hives) > 1,
         "unknown_exes": sorted(
             e for e in exes
-            if e not in KNOWN_EXECUTABLES and not e.startswith("amd-")
+            if e.replace("/", "\\").rsplit("\\", 1)[-1] not in KNOWN_EXECUTABLES
+            and not e.startswith("amd-")
         ),
         "flags": {
             "gpu_vendor_specific": vendor_gpu,
