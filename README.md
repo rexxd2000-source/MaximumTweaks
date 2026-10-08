@@ -85,8 +85,12 @@ New builds are **pushed to users without a reinstall**:
 1. Users run the app; at startup and from **Settings → Update → Check for
    Updates** it asks the server if a newer version exists.
 2. When a release is newer than the installed build, the user presses
-   **Restart & Update** — the app downloads the new exe in the background and
-   swaps itself on relaunch.
+   **Restart & Update** — the app downloads the new build in the background
+   and installs it: **NSIS installs** (registered in the registry) download
+   `MaximumTweaks-Setup-<version>.exe`, verify its SHA-256 and run it
+   silently (the installer self-elevates, replaces the Program Files copy
+   and relaunches the app); **portable copies** swap the exe in place via a
+   batch stub.
 
 ### Publish an update
 
@@ -112,8 +116,18 @@ and downloads the asset named `MaximumTweaks.exe`. For a custom server instead o
 GitHub, set `UPDATE_MANIFEST_URL` to a JSON document:
 
 ```json
-{ "version": "2.0.1", "url": "https://your-cdn.com/MaximumTweaks.exe", "notes": "what's new" }
+{
+  "version": "2.0.1",
+  "url": "https://your-cdn.com/MaximumTweaks.exe",
+  "notes": "what's new",
+  "sha256": "<sha256 of url>",
+  "installer_url": "https://your-cdn.com/MaximumTweaks-Setup-2.0.1.exe",
+  "installer_checksum_url": "https://your-cdn.com/MaximumTweaks-Setup-2.0.1.exe.sha256"
+}
 ```
+
+`installer_url` / `installer_checksum_url` (or `installer_sha256`) are used
+only by NSIS-installed copies; when omitted, every copy uses the exe swap.
 
 Leave `GITHUB_REPO` and `UPDATE_MANIFEST_URL` empty to disable update checks.
 The "Open GitHub" sidebar button is controlled by `GITHUB_URL`.

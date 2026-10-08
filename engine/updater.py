@@ -7,17 +7,23 @@ The release source is either:
   ``UPDATE_EXE_NAME``); the tag name doubles as the version string.
 
 Pure-stdlib (urllib) so the updater works in the frozen exe without extra
-dependencies. The running .exe cannot overwrite itself, so installing works in
-two stages:
+dependencies. Two install strategies exist, and the artifact picks one:
 
-1. download the new exe to ``data/updates/``,
-2. write a tiny batch stub that waits for this process to exit, replaces
-   ``MaximumTweaks.exe`` in place and relaunches it, then deletes itself.
+* **NSIS install** (registry ``InstallDir`` contains the running exe): the
+  downloaded ``MaximumTweaks-Setup-*.exe`` is launched silently (``/S``).
+  It self-elevates (``RequestExecutionLevel admin``), so Program Files is
+  writable even when this process is unelevated; its ``.onInit`` kills this
+  instance before overwriting, and its silent branch relaunches the freshly
+  installed exe — no batch waiter needed.
+* **Portable** (anything else): the running .exe cannot overwrite itself, so
+  a tiny batch stub waits for this process to exit, replaces
+  ``MaximumTweaks.exe`` in place and relaunches it, then deletes itself.
 
 All network/disk work happens off the UI thread (see ui/updater_dialog.py).
 """
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import re
@@ -26,6 +32,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 import hashlib
 from pathlib import Path
 
@@ -53,10 +60,104 @@ def exe_path() -> Path:
 
 
 def data_dir() -> Path:
-    """Writable staging directory for downloads."""
-    d = (ROOT / "data" / "updates").resolve()
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """Writable staging directory for downloads.
+
+    Prefers ``ROOT/data/updates`` (next to the exe). An NSIS install lives
+    under Program Files, which unelevated processes cannot write to, so fall
+    back to ``%LOCALAPPDATA%`` when the primary location is not writable —
+    the setup file only needs to be launchable from anywhere.
+    """
+    candidates = [(ROOT / "data" / "updates").resolve()]
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        candidates.append((Path(local) / "MaximumTweaks" / "updates").resolve())
+    for d in candidates:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            probe = d / ".write_probe"
+            probe.write_bytes(b"")
+            probe.unlink(missing_ok=True)
+            return d
+        except OSError:
+            continue
+    return candidates[0]
+
+
+# ---------------------------------------------------------------------------
+# NSIS install detection
+# ---------------------------------------------------------------------------
+
+_INSTALL_REG = r"Software\Maximum Tweaks"
+_SETUP_PREFIX = "MaximumTweaks-Setup-"
+
+
+def _install_dir_candidates() -> list[Path]:
+    """``InstallDir`` as written by the NSIS installer.
+
+    The installer writes HKCU and HKLM in the *default* registry view, which
+    on 64-bit Windows is the 32-bit view, while Python's default read is the
+    64-bit view — so probe both views of both hives.
+    """
+    try:
+        import winreg
+    except ImportError:  # pragma: no cover - non-Windows
+        return []
+    out: list[Path] = []
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            try:
+                with winreg.OpenKey(root, _INSTALL_REG, 0,
+                                    winreg.KEY_READ | view) as key:
+                    val, _ = winreg.QueryValueEx(key, "InstallDir")
+            except OSError:
+                continue
+            if val:
+                out.append(Path(str(val)))
+    return out
+
+
+def install_dir() -> Path | None:
+    """Registered install folder, or None when the app was never installed."""
+    for d in _install_dir_candidates():
+        try:
+            return d.resolve()
+        except OSError:
+            continue
+    return None
+
+
+def is_nsis_installed(exe: Path | None = None) -> bool:
+    """True when this exe sits inside the registered NSIS install folder.
+
+    Such copies must be updated by re-running the setup (Program Files is not
+    writable unelevated); everything else uses the in-place exe swap.
+    """
+    d = install_dir()
+    if d is None:
+        return False
+    try:
+        return (exe or exe_path()).resolve().is_relative_to(d)
+    except (OSError, ValueError):
+        return False
+
+
+def _url_basename(url: str) -> str:
+    return Path(urllib.parse.urlparse(str(url or "")).path).name
+
+
+def _is_setup_artifact_name(name: str) -> bool:
+    n = Path(str(name or "")).name.lower()
+    return n.startswith(_SETUP_PREFIX.lower()) and n.endswith(".exe")
+
+
+def _is_setup_artifact(path: Path) -> bool:
+    return _is_setup_artifact_name(Path(path).name)
+
+
+def _safe_name(filename: str) -> str:
+    """Download destination file name; rejects any path components."""
+    name = Path(str(filename or "")).name
+    return name if name else UPDATE_EXE_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +287,8 @@ def fetch_update(timeout: float = 15.0) -> dict | None:
 def _fetch_update(timeout: float = 15.0) -> dict | None:
     checksum_url = ""
     sha256 = ""
+    kind = "exe"
+    filename = ""
     if UPDATE_MANIFEST_URL:
         data = _get_json(UPDATE_MANIFEST_URL.strip(), timeout)
         version = str(data.get("version") or "").strip()
@@ -195,6 +298,22 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         sha256 = _normalize_sha256(str(data.get("sha256") or ""))
         if not version or not url:
             raise UpdaterError("The update manifest is missing version/url.")
+        # Installed (NSIS) copies prefer the setup the manifest points at;
+        # without installer fields the manifest keeps its old exe behavior.
+        installer_url = str(data.get("installer_url") or "").strip()
+        if installer_url and is_nsis_installed():
+            url = installer_url
+            checksum_url = str(
+                data.get("installer_checksum_url") or "").strip()
+            sha256 = _normalize_sha256(str(data.get("installer_sha256") or ""))
+            kind = "setup"
+        base = _url_basename(url)
+        if kind == "setup":
+            filename = (base if _is_setup_artifact_name(base)
+                        else f"{_SETUP_PREFIX}{version}.exe")
+        else:
+            filename = (base if base.lower().endswith(".exe")
+                        else UPDATE_EXE_NAME)
     else:
         data = _get_json(_github_api_url(), timeout, token=GITHUB_TOKEN)
         tag = str(data.get("tag_name") or "").strip().lstrip("v")
@@ -209,31 +328,49 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         return None
 
     if not url:
-        asset_url = ""
-        for asset in data.get("assets", []):
-            if str(asset.get("name")) == UPDATE_EXE_NAME:
-                # Private repos: download via the authenticated API endpoint.
-                asset_id = asset.get("id")
-                if asset_id and GITHUB_TOKEN:
-                    asset_url = _github_asset_url(asset_id)
-                else:
-                    asset_url = str(asset.get("browser_download_url") or "")
-                # GitHub's API reports a server-computed digest on assets.
-                digest = _normalize_sha256(str(asset.get("digest") or ""))
-                if digest and not sha256:
-                    sha256 = digest
-                break
-        for asset in data.get("assets", []):
-            name = str(asset.get("name") or "")
-            if name.endswith(".sha256") or name == f"{UPDATE_EXE_NAME}.sha256" or name == f"MaximumTweaks-Setup-{version}.exe.sha256":
-                checksum_url = str(asset.get("browser_download_url") or "")
-                break
-        if not asset_url:
+        assets = data.get("assets", [])
+        want_setup = is_nsis_installed()
+
+        def _find(setup: bool):
+            for asset in assets:
+                name = str(asset.get("name") or "")
+                if setup:
+                    if _is_setup_artifact_name(name):
+                        return asset
+                elif name == UPDATE_EXE_NAME:
+                    return asset
+            return None
+
+        primary = _find(want_setup)
+        if primary is None and want_setup:
+            # No installer asset in this release - fall back to the exe.
+            primary = _find(False)
+            want_setup = False
+        if primary is None:
             raise UpdaterError(
                 f"No asset named {UPDATE_EXE_NAME!r} on the latest release.")
-        url = asset_url
+        name = str(primary.get("name") or "")
+        kind = "setup" if want_setup else "exe"
+        filename = name
+        # Private repos: download via the authenticated API endpoint.
+        asset_id = primary.get("id")
+        if asset_id and GITHUB_TOKEN:
+            url = _github_asset_url(asset_id)
+        else:
+            url = str(primary.get("browser_download_url") or "")
+        # GitHub's API reports a server-computed digest on assets.
+        digest = _normalize_sha256(str(primary.get("digest") or ""))
+        if digest and not sha256:
+            sha256 = digest
+        # Checksum must be the sibling of the chosen artifact - a release
+        # ships both .exe and setup .sha256 files.
+        for asset in assets:
+            if str(asset.get("name") or "") == name + ".sha256":
+                checksum_url = str(asset.get("browser_download_url") or "")
+                break
     logger.info(f"updater: update available: v{version} -> {url}")
-    res = {"version": version, "notes": notes, "url": url}
+    res = {"version": version, "notes": notes, "url": url,
+           "kind": kind, "filename": filename}
     if checksum_url:
         res["checksum_url"] = checksum_url
     if sha256:
@@ -304,10 +441,11 @@ def _verify_sha256(path: Path, expected: str) -> None:
 # ---------------------------------------------------------------------------
 
 def download(url: str, progress_cb=None, timeout: float = 60.0,
-             checksum_url: str = "", expected_sha256: str = "") -> Path:
-    """Stream the exe to data/updates/UPDATE_EXE_NAME. progress_cb(got, total)."""
+             checksum_url: str = "", expected_sha256: str = "",
+             filename: str = "") -> Path:
+    """Stream the artifact to data/updates/<filename>. progress_cb(got, total)."""
     logger.info("updater: download started")
-    dest = data_dir() / UPDATE_EXE_NAME
+    dest = data_dir() / _safe_name(filename)
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
     if "api.github.com" in url:
@@ -463,11 +601,85 @@ del /Q "%~f0" 2>nul
                            backup=backup)
 
 
-def install_and_restart(new_exe: Path):
-    """Prepare + launch the swap stub, then the caller quits the app.
+def _flush_state() -> None:
+    """Persist applied-tweak/license state before a kill can happen."""
+    try:
+        from engine import state as _state
+        _state._save(_state._load())
+    except Exception:  # noqa: BLE001
+        pass
 
-    On success returns the stub path that has been launched; callers should
-    terminate the current process (os._exit / QApplication.quit) right after.
+
+class _ShellExecuteInfo(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_ulong),
+        ("fMask", ctypes.c_ulong),
+        ("hwnd", ctypes.c_void_p),
+        ("lpVerb", ctypes.c_wchar_p),
+        ("lpFile", ctypes.c_wchar_p),
+        ("lpParameters", ctypes.c_wchar_p),
+        ("lpDirectory", ctypes.c_wchar_p),
+        ("nShow", ctypes.c_int),
+        ("hInstApp", ctypes.c_void_p),
+        ("lpIDList", ctypes.c_void_p),
+        ("lpClass", ctypes.c_wchar_p),
+        ("hKeyClass", ctypes.c_void_p),
+        ("dwHotKey", ctypes.c_ulong),
+        ("hIconOrMonitor", ctypes.c_void_p),
+        ("hProcess", ctypes.c_void_p),
+    ]
+
+
+def _shell_execute_setup(setup: Path) -> None:
+    """Launch the downloaded NSIS setup silently (``/S``).
+
+    ``lpVerb=None`` lets the shell honour the setup's own
+    ``RequestExecutionLevel admin`` manifest: already-elevated processes run
+    it directly, unelevated ones get the standard UAC consent prompt.
+    """
+    info = _ShellExecuteInfo()
+    info.cbSize = ctypes.sizeof(_ShellExecuteInfo)
+    info.fMask = 0x00000040  # SEE_MASK_NOCLOSEPROCESS
+    info.lpFile = str(setup)
+    info.lpParameters = "/S"
+    info.lpDirectory = str(setup.parent)
+    info.nShow = 0  # SW_HIDE - the silent installer draws nothing itself
+    ok = ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info))
+    err = ctypes.windll.kernel32.GetLastError() if not ok else 0
+    if info.hProcess:
+        ctypes.windll.kernel32.CloseHandle(info.hProcess)
+    if not ok:
+        if err == 1223:  # ERROR_CANCELLED - the user declined the UAC prompt
+            raise UpdaterError(
+                "The Windows administrator prompt was declined, so the "
+                "update was not installed. The downloaded installer is "
+                "kept - run it manually, or accept the prompt and Retry.")
+        raise UpdaterError(f"Could not start the installer (Windows error {err}).")
+
+
+def _install_via_setup(setup: Path) -> Path:
+    """Run the downloaded NSIS setup and let it replace + relaunch the app.
+
+    State is flushed first because the installer's ``.onInit`` force-kills
+    this process before overwriting the exe; the silent install branch then
+    relaunches the new build, so no batch waiter is needed here.
+    """
+    logger.info("updater: launching NSIS setup for silent install")
+    _flush_state()
+    _shell_execute_setup(setup)
+    logger.info(f"updater: NSIS setup launched ({setup})")
+    return setup
+
+
+def install_and_restart(new_exe: Path):
+    """Prepare + launch the update, then the caller quits the app.
+
+    The artifact picks the strategy: ``MaximumTweaks-Setup-*.exe`` runs the
+    NSIS installer silently (it self-elevates and relaunches the app), any
+    other executable goes through the in-place batch-stub swap.
+
+    On success returns the launched path; callers should terminate the
+    current process (os._exit / QApplication.quit) right after.
     """
     if not getattr(sys, "frozen", False):
         raise UpdaterError(
@@ -476,6 +688,9 @@ def install_and_restart(new_exe: Path):
     if not new_exe.exists():
         raise UpdaterError("Downloaded update file is missing.")
     _verify_download(new_exe)
+
+    if _is_setup_artifact(new_exe):
+        return _install_via_setup(new_exe)
 
     original = exe_path()
     if not original.exists():
@@ -505,11 +720,7 @@ def install_and_restart(new_exe: Path):
 
     # Flush all state files before launching the stub — critical for
     # license persistence and applied-tweak state.
-    try:
-        from engine import state as _state
-        _state._save(_state._load())
-    except Exception:  # noqa: BLE001
-        pass
+    _flush_state()
 
     try:
         subprocess.Popen(

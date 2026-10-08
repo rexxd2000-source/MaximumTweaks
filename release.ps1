@@ -80,6 +80,14 @@ function Update-Manifest {
         $m["sha256"] = $Sha256
         $m["checksum_url"] = "$dl.sha256"
     }
+    # NSIS-installed copies update by re-running the setup instead of the
+    # in-place exe swap (Program Files is not writable unelevated). The
+    # installer itself is built + checksummed by CI (release.yml) from the
+    # same tag, so its asset URL is deterministic here.
+    $setupName = "MaximumTweaks-Setup-$Version.exe"
+    $setupDl = "https://github.com/$Repo/releases/download/v$Version/$setupName"
+    $m["installer_url"] = $setupDl
+    $m["installer_checksum_url"] = "$setupDl.sha256"
     $m = $m | ConvertTo-Json
     $manifest = Join-Path $root "auth_backend\web\update.json"
     Set-Content $manifest $m -Encoding UTF8
