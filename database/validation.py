@@ -214,7 +214,18 @@ def audit_override_drift(tweaks: list[dict] | None = None) -> int:
 
 def apply(tweaks: list[dict]) -> None:
     """Merge validation metadata into every loaded tweak dict (in place)."""
-    audit_override_drift(tweaks)
+    # Drift is a property of the shipped catalogue, not of whatever list the
+    # caller passes - tests apply tiny sample lists, and auditing those made
+    # every override look stale (the "295 orphaned overrides" false warning).
+    # During database init BY_ID does not exist yet (database/__init__ builds
+    # it only after this module's caller finishes), and the incoming list IS
+    # the full catalogue, so audit against it; afterwards audit BY_ID.
+    try:
+        from . import BY_ID  # noqa: F401
+    except ImportError:  # partially initialized package (initial load)
+        audit_override_drift(tweaks)
+    else:
+        audit_override_drift()
     conflicts = _conflicts(tweaks)
     for t in tweaks:
         tid = t["id"]

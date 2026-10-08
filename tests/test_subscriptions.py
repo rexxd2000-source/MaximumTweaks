@@ -437,6 +437,33 @@ def test_apply_does_not_raise_on_orphan_overrides():
     assert sample[0]["status"] == "VALID"
 
 
+def test_no_orphaned_validation_overrides():
+    """Hard gate: ids missing from the shipped catalogue fail the suite.
+
+    This used to be only a RuntimeWarning, and the warning fired on *any*
+    partial list (a one-element sample reported all 295 overrides as stale).
+    Real drift now must not exist at all - _dev/check_validation_drift.py
+    lists the offenders for cleanup.
+    """
+    orphan = V.orphaned_overrides()
+    assert orphan == {}, (
+        f"{len(orphan)} validation override(s) reference tweak ids that are "
+        f"not in the shipped catalogue; first 20: "
+        f"{', '.join(sorted(orphan)[:20])}"
+    )
+
+
+def test_apply_on_partial_list_does_not_warn():
+    """Auditing the caller's sample list made every override look stale."""
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        V.apply([_tweak()])
+    stale = [w for w in caught if "validation override" in str(w.message)]
+    assert stale == []
+
+
 # ---------------------------------------------------------------------------
 # Backend: tier persistence and payload serialization
 # ---------------------------------------------------------------------------
