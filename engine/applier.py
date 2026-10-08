@@ -89,6 +89,7 @@ def run(ids: list[str], mode: str = "apply",
                 results[tid] = {"ok": False, "status": "failed",
                                 "detail": "unknown tweak id", "verified": None,
                                 "live": None, "code": None, "actions": []}
+                logger.error(f"{mode} {tid} -> failed: unknown tweak id")
                 activity.emit("error", f"Unknown tweak id {tid}")
                 if progress:
                     progress(idx, total, tid, False, "unknown tweak id")
@@ -104,7 +105,8 @@ def run(ids: list[str], mode: str = "apply",
                                     "live": None, "code": pf["code"],
                                     "actions": []}
                     activity.emit("warning", f"{tweak['name']} blocked: {pf['reason']}")
-                    logger.info(f"apply {tid} BLOCKED ({pf['code']}): {pf['reason']}")
+                    logger.info(f"apply {tid} ({tweak['name']}) BLOCKED "
+                                f"({pf['code']}): {pf['reason']}")
                     if progress:
                         progress(idx, total, tid, False, pf["reason"])
                     continue
@@ -128,6 +130,9 @@ def run(ids: list[str], mode: str = "apply",
 
             # Dry-run: nothing was written, so there is nothing to verify or record.
             if dry_run:
+                logger.info(
+                    f"{mode} {tid} ({tweak['name']}) -> dry-run ok={ok} "
+                    f"status={'dry_run' if ok else 'failed'} {summary}")
                 if ok:
                     results[tid]["status"] = "dry_run"
                     if progress:
