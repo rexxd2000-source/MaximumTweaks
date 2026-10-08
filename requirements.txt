@@ -1,3 +1,5 @@
-PySide6>=6.6
-psutil>=5.9
-pyinstaller>=6.0
+# Pinned: these exact versions define the release build (CI + local must match).
+# See README "Build the .exe" - bump deliberately, never widen to >= ranges.
+PySide6==6.11.1
+psutil==7.2.2
+pyinstaller==6.22.0

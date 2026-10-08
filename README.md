@@ -50,7 +50,7 @@ only **compatible** tweaks as ready, and applies/reverts them with one click.
 ## Requirements
 
 - Windows 10 1903+ or Windows 11
-- Python 3.10+ (dev only — end users get the `.exe`)
+- Python 3.14 (dev only — end users get the `.exe`)
 
 ## Run from source
 
@@ -70,10 +70,17 @@ python main.py apply <id> [--dry-run] | revert <id> [--dry-run] | report <id>
 ## Build the .exe
 
 ```powershell
-pip install pyinstaller
+pip install -r requirements.txt   # pinned: PySide6==6.11.1, psutil==7.2.2, pyinstaller==6.22.0
 python -m PyInstaller MaximumTweaks.spec --noconfirm
 # output: dist\MaximumTweaks.exe
 ```
+
+**The release artifact is built by CI, not by hand.** On every version tag,
+`.github/workflows/release.yml` runs the exact command above on `windows-latest`
+with Python 3.14 and the pinned `requirements.txt`, then logs the byte size and
+SHA-256 of every artifact in the workflow summary. A local build is for testing
+only — never upload a locally built exe as a release asset, and never widen the
+pinned versions without rebuilding and re-testing.
 
 Run the resulting exe as **Administrator** to apply admin-requiring tweaks
 (many of them need elevation).

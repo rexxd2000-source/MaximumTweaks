@@ -16,14 +16,16 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # Must match the pinned versions in requirements.txt and the README
+          # "Build the .exe" section - CI is the single source of truth for
+          # the published artifact.
+          python-version: '3.14'
 
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
 
       - name: Extract version from tag
         id: get_version
@@ -67,6 +69,20 @@ jobs:
           $exe = "dist\MaximumTweaks.exe"
           $hash2 = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLower()
           "$hash2  MaximumTweaks.exe" | Out-File -FilePath "dist\MaximumTweaks.exe.sha256" -Encoding ascii
+
+      - name: Report artifact hashes and sizes
+        shell: pwsh
+        run: |
+          $version = "$env:VERSION"
+          foreach ($f in @("dist\MaximumTweaks.exe",
+                           "MaximumTweaks-Setup-$version.exe")) {
+            if (!(Test-Path $f)) { Write-Error "missing artifact: $f"; exit 1 }
+            $item = Get-Item $f
+            $hash = (Get-FileHash -Path $f -Algorithm SHA256).Hash.ToLower()
+            $line = "{0}  {1} bytes  sha256={2}" -f $f, $item.Length, $hash
+            Write-Host $line
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$line``"
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
