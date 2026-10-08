@@ -702,6 +702,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="maximum-tweaks", description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="preview actions without executing")
     parser.add_argument("--cli", action="store_true", help="run in terminal mode instead of GUI")
+    _dry_parent = argparse.ArgumentParser(add_help=False)
+    _dry_parent.add_argument("--dry-run", action="store_true",
+                             default=argparse.SUPPRESS,
+                             help="preview actions without executing")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list", help="list all categories")
@@ -712,9 +716,11 @@ def main(argv=None):
     p_cat.add_argument("name")
     p_search = sub.add_parser("search", help="search tweaks")
     p_search.add_argument("query")
-    p_apply = sub.add_parser("apply", help="apply a tweak")
+    p_apply = sub.add_parser("apply", help="apply a tweak",
+                             parents=[_dry_parent])
     p_apply.add_argument("id")
-    p_revert = sub.add_parser("revert", help="revert a tweak")
+    p_revert = sub.add_parser("revert", help="revert a tweak",
+                              parents=[_dry_parent])
     p_revert.add_argument("id")
     p_rep = sub.add_parser("report", help="preview a tweak's actions")
     p_rep.add_argument("id")
