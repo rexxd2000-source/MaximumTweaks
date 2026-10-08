@@ -165,23 +165,47 @@ def _safe_name(filename: str) -> str:
 # ---------------------------------------------------------------------------
 
 def parse_version(text: str) -> tuple:
-    """Normalize 'v1.2.3-beta' -> (1, 2, 3, 'beta'). Non-numeric parts sort last."""
+    """Normalize 'v1.2.3-beta' -> ((1, 2, 3), ('beta',)).
+
+    Numeric runs are split from trailing letters inside each dot-part, so
+    '3rc1' contributes 3 to the numbers and 'rc1' to the suffix. Comparing
+    the numbers first keeps '2.5.3-rc1' newer than '2.5.2' (it contains newer
+    code) while the suffix keeps a prerelease below its own release - see
+    is_newer.
+    """
     text = re.sub(r"[^0-9a-zA-Z.]", "", text).lstrip("vV")
     parts = text.split(".")
     nums: list = []
     suf: list = []
     for p in parts:
-        if p.isdigit():
-            nums.append(int(p))
+        m = re.match(r"(\d+)(.*)", p)
+        if m:
+            nums.append(int(m.group(1)))
+            if m.group(2):
+                suf.append(m.group(2))
         elif p:
             suf.append(p)
     return (tuple(nums), tuple(suf))
 
 
 def is_newer(remote: str, local: str) -> bool:
+    """True when remote is a newer version than local.
+
+    Numbers decide first; with equal numbers a release beats its own
+    prerelease ('2.5.3' > '2.5.3-rc1'), and prereleases order among
+    themselves ('2.5.3-rc2' > '2.5.3-rc1'). That combination is what keeps a
+    prerelease build from ever being offered the previous stable manifest
+    (a downgrade), and keeps stable users from being offered an rc.
+    """
     if remote == local:
         return False
-    return parse_version(remote) > parse_version(local)
+    r_nums, r_suf = parse_version(remote)
+    l_nums, l_suf = parse_version(local)
+    if r_nums != l_nums:
+        return r_nums > l_nums
+    if bool(r_suf) != bool(l_suf):
+        return not r_suf  # release beats prerelease at equal numbers
+    return r_suf > l_suf
 
 
 # ---------------------------------------------------------------------------
