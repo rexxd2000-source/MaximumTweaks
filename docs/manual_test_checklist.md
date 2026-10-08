@@ -1,10 +1,12 @@
 # Manual test checklist — installer & release flow
 
-The NSIS installer had **never been compiled or run anywhere** before
-`release.yml` took over building it (no release ever carried an installer
-asset). This checklist is the evidence trail for proving the flow works.
-Automated tests cover the Python side only; everything below needs a real
-Windows box or VM.
+The NSIS installer was **never compiled or run anywhere** before this audit
+(no release ever carried an installer asset). It has since been compiled
+locally (`makensis MaximumTweaks-Setup.nsi`), silent-installed, uninstalled
+and reinstalled on a real machine, and `release.yml` now builds it on every
+tagged release. This checklist is the evidence trail for proving the flow
+works. Automated tests cover the Python side only; everything below needs a
+real Windows box or VM.
 
 ## Setup
 
@@ -117,17 +119,24 @@ Push a tag and watch the Release workflow:
 
 1. Builds the exe with the pinned toolchain (Python 3.14 + requirements
    pins) — CI output is the authoritative artifact, never a local build.
-2. Compiles the installer (`makensis /DVERSION=<tag version>`) — the log
+2. Runs both test suites (app + auth), the validation-drift check and the
+   catalogue release gate, then smokes the frozen exe (`stats`, `show`,
+   `search`, removed-id exit 1, `apply <id> --dry-run` preview).
+3. Fails before building anything if the tag (minus `v`) does not match
+   `APP_VERSION` in `config/app_config.py` exactly.
+4. Compiles the installer (`makensis /DVERSION=<tag version>`) — the log
    prints the resolved `makensis` path and fails loudly if missing.
-3. Step summary **"Report artifact hashes and sizes"** shows byte size +
+5. Step summary **"Report artifact hashes and sizes"** shows byte size +
    SHA-256 for both artifacts — paste these lines into the release notes
-   or the audit report.
-4. **Manifest gate**: `auth_backend\web\update.json` must contain
+   or the audit report. `SHA256SUMS.txt` covers both files in one
+   `sha256sum -c`-compatible list (per-file `.sha256` assets stay for the
+   in-app updater).
+6. **Manifest gate**: `auth_backend\web\update.json` must contain
    `installer_url` plus `installer_checksum_url` (or `installer_sha256`),
    or the workflow fails *before* creating the release.
-5. Release created with `prerelease: true` for tags containing `-`
-   (e.g. `v2.5.3-rc1`), otherwise a stable release; four assets
-   (exe + setup, each with `.sha256`).
+7. Release created with `prerelease: true` for tags containing `-`
+   (e.g. `v2.5.4-rc1`), otherwise a stable release; five assets
+   (exe + setup + `SHA256SUMS.txt`, each exe with its `.sha256`).
 
 ## Release prep (before pushing a tag)
 

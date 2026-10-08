@@ -170,4 +170,18 @@ data/       state.json — tracks which tweaks you applied
   explicit opt-in.
 - "Guidance" tweaks only print recommendations (they never change the system).
 - Reboot after applying for the full effect; all tweaks are revertible.
-\n## Releasing a new version\n\n1. Update CHANGELOG.md with release notes.\n2. Create and push git tag: git tag vX.Y.Z && git push --tags\n3. GitHub Actions builds installer MaximumTweaks-Setup-<version>.exe with SHA256 checksum and creates a release.\n4. In-app updater verifies SHA256 before installing.\n
+
+## Releasing a new version
+
+1. Update `CHANGELOG.md` with release notes (New / Fixed / Updated).
+2. Publish with the script — it bumps `APP_VERSION`, regenerates
+   `auth_backend\web\update.json`, commits both, tags `vX.Y.Z` and pushes
+   the tag:
+   ```powershell
+   .\release.ps1 -Version X.Y.Z
+   ```
+3. Pushing the tag triggers the Release workflow, which verifies the tag
+   matches `APP_VERSION` exactly, runs both test suites plus the catalogue
+   gate, builds the exe and installer, publishes their hashes
+   (`SHA256SUMS.txt` + per-file `.sha256`) and creates the GitHub Release.
+4. The in-app updater verifies SHA-256 before installing.
