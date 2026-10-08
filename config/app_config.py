@@ -277,3 +277,4 @@ try:
     AUTH_API_URL = os.getenv("AUTH_API_URL", LICENSE_API_URL)
 except Exception:
     AUTH_API_URL = LICENSE_API_URL
+
