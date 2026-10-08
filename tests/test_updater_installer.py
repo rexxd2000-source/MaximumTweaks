@@ -316,3 +316,29 @@ def test_data_dir_falls_back_to_localappdata(monkeypatch, tmp_path):
     d = updater.data_dir()
     assert d == (tmp_path / "local" / "MaximumTweaks" / "updates").resolve()
     assert d.is_dir()
+
+
+def test_setup_launch_shows_the_visible_update_wizard(tmp_path):
+    """The updater must launch the setup with /UPDATE and a shown window, so
+    the user watches the file-copy progress like a normal installation instead
+    of getting a silent background swap."""
+    info = updater._build_shell_info(tmp_path / SETUP)
+    assert info.lpParameters == "/UPDATE"
+    assert info.nShow == 5  # SW_SHOWNORMAL - a visible wizard, not SW_HIDE
+
+
+def test_nsi_relaunches_app_on_every_install_path():
+    """Regression for "press Restart and the app never opens": after an
+    install the setup must launch the app in all three modes - /S (legacy
+    2.5.4 updaters), /UPDATE (current updater), and a manual double-click
+    (Finish page with a checked Launch box)."""
+    nsi = (ROOT / "MaximumTweaks-Setup.nsi").read_text(encoding="utf-8")
+    # manual wizard: Finish page offers a checked Launch box
+    assert 'MUI_FINISHPAGE_RUN "$INSTDIR\\${EXENAME}"' in nsi
+    # /UPDATE skips welcome + directory so the copy progress shows first
+    assert '${GetOptions} $R0 "/UPDATE" $R1' in nsi
+    assert "Function SkipIfUpdateMode" in nsi
+    # silent + update mode both relaunch and quit; manual mode falls through
+    # to the Finish page
+    assert "IfSilent silent_run 0" in nsi
+    assert 'StrCmp $UpdateMode "1" silent_run interactive_done' in nsi

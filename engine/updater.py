@@ -10,11 +10,12 @@ Pure-stdlib (urllib) so the updater works in the frozen exe without extra
 dependencies. Two install strategies exist, and the artifact picks one:
 
 * **NSIS install** (registry ``InstallDir`` contains the running exe): the
-  downloaded ``MaximumTweaks-Setup-*.exe`` is launched silently (``/S``).
-  It self-elevates (``RequestExecutionLevel admin``), so Program Files is
+  downloaded ``MaximumTweaks-Setup-*.exe`` is launched in update mode
+  (``/UPDATE``): the wizard shows the visible file-copy progress, it
+  self-elevates (``RequestExecutionLevel admin``) so Program Files is
   writable even when this process is unelevated; its ``.onInit`` kills this
-  instance before overwriting, and its silent branch relaunches the freshly
-  installed exe — no batch waiter needed.
+  instance before overwriting, and it relaunches the freshly installed exe
+  when the copy finishes — no batch waiter needed.
 * **Portable** (anything else): the running .exe cannot overwrite itself, so
   a tiny batch stub waits for this process to exit, replaces
   ``MaximumTweaks.exe`` in place and relaunches it, then deletes itself.
@@ -670,20 +671,33 @@ class _ShellExecuteInfo(ctypes.Structure):
     ]
 
 
-def _shell_execute_setup(setup: Path) -> None:
-    """Launch the downloaded NSIS setup silently (``/S``).
+def _build_shell_info(setup: Path) -> "_ShellExecuteInfo":
+    """Describe how the downloaded NSIS setup is launched.
 
-    ``lpVerb=None`` lets the shell honour the setup's own
-    ``RequestExecutionLevel admin`` manifest: already-elevated processes run
-    it directly, unelevated ones get the standard UAC consent prompt.
+    ``/UPDATE`` puts the wizard straight on the visible file-copy progress
+    page (the setup skips its welcome/directory pages for that flag) and
+    relaunches the app when the copy finishes - the user watches the install
+    instead of getting a silent background swap. ``nShow = SW_SHOWNORMAL``
+    because there is a real window to show now.
     """
     info = _ShellExecuteInfo()
     info.cbSize = ctypes.sizeof(_ShellExecuteInfo)
     info.fMask = 0x00000040  # SEE_MASK_NOCLOSEPROCESS
     info.lpFile = str(setup)
-    info.lpParameters = "/S"
+    info.lpParameters = "/UPDATE"
     info.lpDirectory = str(setup.parent)
-    info.nShow = 0  # SW_HIDE - the silent installer draws nothing itself
+    info.nShow = 5  # SW_SHOWNORMAL - the wizard shows the copying progress
+    return info
+
+
+def _shell_execute_setup(setup: Path) -> None:
+    """Launch the downloaded NSIS setup in update mode (see above).
+
+    ``lpVerb=None`` lets the shell honour the setup's own
+    ``RequestExecutionLevel admin`` manifest: already-elevated processes run
+    it directly, unelevated ones get the standard UAC consent prompt.
+    """
+    info = _build_shell_info(setup)
     ok = ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info))
     err = ctypes.windll.kernel32.GetLastError() if not ok else 0
     if info.hProcess:
@@ -701,10 +715,11 @@ def _install_via_setup(setup: Path) -> Path:
     """Run the downloaded NSIS setup and let it replace + relaunch the app.
 
     State is flushed first because the installer's ``.onInit`` force-kills
-    this process before overwriting the exe; the silent install branch then
-    relaunches the new build, so no batch waiter is needed here.
+    this process before overwriting the exe; the wizard then copies the new
+    files (progress on screen, ``/UPDATE``) and relaunches the new build, so
+    no batch waiter is needed here.
     """
-    logger.info("updater: launching NSIS setup for silent install")
+    logger.info("updater: launching NSIS setup (visible update wizard)")
     _flush_state()
     _shell_execute_setup(setup)
     logger.info(f"updater: NSIS setup launched ({setup})")
@@ -715,8 +730,9 @@ def install_and_restart(new_exe: Path):
     """Prepare + launch the update, then the caller quits the app.
 
     The artifact picks the strategy: ``MaximumTweaks-Setup-*.exe`` runs the
-    NSIS installer silently (it self-elevates and relaunches the app), any
-    other executable goes through the in-place batch-stub swap.
+    NSIS installer's visible update wizard (it self-elevates, shows the file
+    copy and relaunches the app), any other executable goes through the
+    in-place batch-stub swap.
 
     On success returns the launched path; callers should terminate the
     current process (os._exit / QApplication.quit) right after.

@@ -94,12 +94,13 @@ New builds are **pushed to users without a reinstall**:
    server is down or refuses the request, the check automatically falls back
    to the GitHub releases API, so one broken server can never block updates.
 2. When a release is newer than the installed build, the user presses
-   **Restart & Update** — the app downloads the new build in the background
+   **Restart & Update** - the app downloads the new build in the background
    and installs it: **NSIS installs** (registered in the registry) download
-   `MaximumTweaks-Setup-<version>.exe`, verify its SHA-256 and run it
-   silently (the installer self-elevates, replaces the Program Files copy
-   and relaunches the app); **portable copies** swap the exe in place via a
-   batch stub.
+   `MaximumTweaks-Setup-<version>.exe`, verify its SHA-256 and run it in
+   **update mode** - the wizard opens straight on the visible file-copy
+   progress (it self-elevates, replaces the Program Files copy and
+   relaunches the app when the copy finishes); **portable copies** swap the
+   exe in place via a batch stub.
 
 ### Publish an update
 
