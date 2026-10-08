@@ -154,7 +154,12 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,          # keep console so --cli still works; set False for a windowed build
+    # Windowed: no console window may ever appear when the GUI opens (a
+    # console=True build pops one for the whole onefile extraction before any
+    # Python code can hide it). The CLI keeps working: --cli launched from a
+    # terminal attaches to the caller's console (main.py) and exit codes are
+    # unaffected by the subsystem.
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

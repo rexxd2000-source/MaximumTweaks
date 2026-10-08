@@ -27,6 +27,20 @@ if "--cli" not in sys.argv[1:] and getattr(sys, "frozen", False):
                 _ct.windll.user32.ShowWindow(_console, 0)  # SW_HIDE
     except Exception:  # noqa: BLE001
         pass
+elif "--cli" in sys.argv[1:] and getattr(sys, "frozen", False) \
+        and sys.stdout is None:
+    # Windowed build: the CLI has no console of its own, so a terminal user
+    # (or a spawned job) would see print() vanish. Attach to the launching
+    # console when there is one (double-click has none - stay silent there).
+    try:
+        import ctypes as _ct
+        if _ct.windll.kernel32.AttachConsole(-1):  # ATTACH_PARENT_PROCESS
+            sys.stdout = open("CONOUT$", "w", encoding="utf-8",
+                              errors="replace", buffering=1)
+            sys.stderr = open("CONOUT$", "w", encoding="utf-8",
+                              errors="replace", buffering=1)
+    except Exception:  # noqa: BLE001
+        pass
 
 from database import BY_ID, CATEGORIES, TWEAKS
 

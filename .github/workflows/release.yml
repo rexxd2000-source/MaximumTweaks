@@ -89,17 +89,31 @@ jobs:
       - name: Smoke test frozen exe
         shell: pwsh
         run: |
+          # The exe is windowed (console=False), so PowerShell's `&` neither
+          # waits for it nor gives it stdio - run each command through
+          # Start-Process with redirected handles, which both waits and makes
+          # print() output capturable.
           $exe = "dist\MaximumTweaks.exe"
-          & $exe --cli stats
-          if ($LASTEXITCODE -ne 0) { Write-Error "cli stats failed"; exit 1 }
-          & $exe --cli show perf-005
-          if ($LASTEXITCODE -ne 0) { Write-Error "cli show failed"; exit 1 }
-          & $exe --cli search superfetch
-          if ($LASTEXITCODE -ne 0) { Write-Error "cli search failed"; exit 1 }
-          & $exe --cli show power-006
-          if ($LASTEXITCODE -ne 1) { Write-Error "removed tweak must exit 1, got $LASTEXITCODE"; exit 1 }
-          $out = (& $exe --cli apply perf-005 --dry-run 2>&1 | Out-String)
-          if ($LASTEXITCODE -ne 0) { Write-Error "cli dry-run exited $LASTEXITCODE"; exit 1 }
+          function Invoke-Cli {
+            param([string[]]$Cli, [int]$Expect)
+            $out = Join-Path $env:TEMP "mt_smoke_out.txt"
+            $err = Join-Path $env:TEMP "mt_smoke_err.txt"
+            Remove-Item $out, $err -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath $exe -ArgumentList $Cli -Wait -PassThru `
+                 -RedirectStandardOutput $out -RedirectStandardError $err
+            $text = (Get-Content $out -Raw -ErrorAction SilentlyContinue) + `
+                    (Get-Content $err -Raw -ErrorAction SilentlyContinue)
+            if ($p.ExitCode -ne $Expect) {
+              Write-Error "cli $($Cli -join ' ') exited $($p.ExitCode), expected $Expect`n$text"
+              exit 1
+            }
+            return $text
+          }
+          Invoke-Cli @('--cli','stats') 0 | Out-Null
+          Invoke-Cli @('--cli','show','perf-005') 0 | Out-Null
+          Invoke-Cli @('--cli','search','superfetch') 0 | Out-Null
+          Invoke-Cli @('--cli','show','power-006') 1 | Out-Null
+          $out = Invoke-Cli @('--cli','apply','perf-005','--dry-run') 0
           if ($out -notmatch "Dry-run:") { Write-Error "cli dry-run did not preview: $out"; exit 1 }
           Write-Host "smoke OK"
 

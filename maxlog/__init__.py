@@ -38,10 +38,14 @@ def _make_logger() -> logging.Logger:
     )
     logger.addHandler(file_handler)
 
-    console = logging.StreamHandler(sys.stdout)
-    console.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"))
-    console.setLevel(logging.INFO)
-    logger.addHandler(console)
+    # Windowed (console=False) builds have no stdout - every GUI launch runs
+    # that way, so only mirror to a console when one actually exists.
+    _con = sys.stdout or sys.stderr
+    if _con:
+        console = logging.StreamHandler(_con)
+        console.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-7s | %(message)s"))
+        console.setLevel(logging.INFO)
+        logger.addHandler(console)
 
     _initialized = True
     return logger
