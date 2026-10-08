@@ -102,16 +102,26 @@ New builds are **pushed to users without a reinstall**:
 ### Publish an update
 
 ```powershell
-# one command: bumps version, builds dist\MaximumTweaks.exe, tags, creates the
-# GitHub Release and uploads the exe
+# bumps APP_VERSION, regenerates auth_backend\web\update.json, commits both,
+# pushes main, tags vX.Y.Z and pushes the tag
 .\release.ps1 -Version 2.0.1
 ```
+
+Pushing the tag triggers the **Release workflow**, which is the single
+source of truth for published artifacts: it builds the exe with the pinned
+toolchain, compiles the NSIS installer, prints byte sizes + SHA-256 for both
+artifacts in the job summary, refuses to release if the update manifest is
+missing `installer_url`/checksum fields, and creates the GitHub Release
+(marked prerelease when the tag contains `-`).
 
 Requirements for publishing:
 
 - `GITHUB_REPO` set in `config/app_config.py` (e.g. `"you/MaximumTweaks"`).
-- A GitHub Personal Access Token in `$env:GITHUB_TOKEN` (scope: `repo`).
-- GitHub CLI (`gh`) is **not** required — the script uses `curl`.
+- An authenticated `git push` to origin (your normal GitHub login). No PAT
+  and no token are used by the script — the workflow publishes with its
+  built-in `GITHUB_TOKEN`.
+- The local build is for smoke tests only; never upload it as a release
+  asset. The artifact users download is the CI-built one.
 
 > **Private repos**: if `GITHUB_REPO` is private, you must set the
 > `GITHUB_TOKEN` environment variable to a GitHub PAT (scope: `repo`) in the

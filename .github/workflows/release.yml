@@ -8,6 +8,10 @@ on:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    # The built-in GITHUB_TOKEN needs permission to create the release and
+    # upload assets; workflows default to read-only on many repos.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout

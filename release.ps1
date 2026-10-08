@@ -1,25 +1,32 @@
-# Maximum Tweaks - build + publish a live-updatable release.
+# Maximum Tweaks - cut a release (CI does the build + publish).
 #
 # Usage:
-#   .\release.ps1 -Version 2.4.3            # bump APP_VERSION, build, tag, release
-#   .\release.ps1 -Version 2.4.3 -SkipBuild # only tag + publish the existing exe
+#   .\release.ps1 -Version 2.5.3            # bump, manifest, commit, tag, push
+#   .\release.ps1 -Version 2.5.3 -SkipBuild # skip the local PyInstaller build
 #
 # Requirements:
-#   - Python 3.10+, pip install pyinstaller
-#   - GITHUB_REPO set in config/app_config.py (e.g. "you/MaximumTweaks")
-#   - A GitHub PAT with `repo` scope in $env:GITHUB_TOKEN
+#   - Python 3.14 + pinned requirements (README "Build the .exe") unless -SkipBuild
+#   - GITHUB_REPO set in config/app_config.py
+#   - An authenticated `git push` to origin (your normal GitHub login).
+#     NO PAT and no token are used anywhere in this script: pushing the tag
+#     triggers .github/workflows/release.yml, which builds the exe + NSIS
+#     installer, publishes sizes and SHA-256 hashes in the job summary,
+#     validates the update manifest, and creates the GitHub Release with its
+#     built-in GITHUB_TOKEN.
 #
 # What it does:
 #   1. Bumps APP_VERSION in config/app_config.py
-#   2. PyInstaller build -> dist\MaximumTweaks.exe (one-file)
-#   3. Creates tag v<VERSION> + a GitHub Release
-#   4. Uploads MaximumTweaks.exe to the release
-#   5. Prints the update source the app will check when GITHUB_REPO matches.
+#   2. (unless -SkipBuild) PyInstaller build -> dist\MaximumTweaks.exe for a
+#      local smoke test only - the published artifact is the CI-built one
+#   3. Regenerates auth_backend\web\update.json. Prerelease versions
+#      (containing "-") keep the stable manifest version and only ensure the
+#      installer fields exist, so stable users are never offered an rc.
+#   4. Commits steps 1+3, pushes main, creates tag v<VERSION>, pushes it
+#   5. CI validates + publishes; watch the Actions tab
 #
-# SECURITY: the update token is used ONLY inside this script (env var) for the
-# tag push / release / asset upload. It is NEVER written into any config file
-# or bundled into the exe. The repo itself is public, so client update checks
-# require no token at all.
+# SECURITY: the workflow's GITHUB_TOKEN is scoped to the workflow run and
+# never leaves GitHub. Nothing is read from a local token file and nothing
+# secret is bundled into the exe.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
@@ -51,53 +58,57 @@ function Set-Version {
     Write-Host "[1/5] APP_VERSION -> $Version" -ForegroundColor Cyan
 }
 
-function Get-Checksum {
-    # Hash the built exe and publish it next to it as <exe>.sha256 so the
-    # in-app updater can verify downloads (returns the bare hex digest).
-    if (-not (Test-Path $exePath)) {
-        Write-Warning "No exe at $exePath - manifest will be published without a checksum."
-        return ""
-    }
-    $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
-    Set-Content -Path "$exePath.sha256" -Value "$hash  $exeName" -Encoding ascii
-    Write-Host "      sha256: $hash" -ForegroundColor DarkGray
-    return $hash
-}
-
 function Update-Manifest {
-    param([string]$Sha256 = "")
+    param([string]$Repo)
     # Regenerate the served /update.json (auth_backend\web\update.json) so the
     # desktop app's built-in UPDATE_MANIFEST_URL points at this new build.
     # NOTE: the canonical GitHub asset path is /releases/download/... - the
     # shorter /download/... form 404s.
+    $manifest = Join-Path $root "auth_backend\web\update.json"
     $dl = "https://github.com/$Repo/releases/download/v$Version/$exeName"
-    $m = @{
-        version = $Version
-        notes   = "Maximum Tweaks v$Version - see the in-app changelog for details."
-        url     = $dl
-    }
-    if ($Sha256) {
-        $m["sha256"] = $Sha256
-        $m["checksum_url"] = "$dl.sha256"
-    }
-    # NSIS-installed copies update by re-running the setup instead of the
-    # in-place exe swap (Program Files is not writable unelevated). The
-    # installer itself is built + checksummed by CI (release.yml) from the
-    # same tag, so its asset URL is deterministic here.
     $setupName = "MaximumTweaks-Setup-$Version.exe"
     $setupDl = "https://github.com/$Repo/releases/download/v$Version/$setupName"
-    $m["installer_url"] = $setupDl
-    $m["installer_checksum_url"] = "$setupDl.sha256"
+
+    if ($Version -match '-') {
+        # Prerelease: keep the manifest's version/url on the current stable
+        # build so stable users are never offered an rc. Only make sure the
+        # installer fields exist - the CI release gate requires them (they are
+        # never fetched while the manifest version is unchanged).
+        try {
+            $m = Get-Content $manifest -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "Could not parse ${manifest}: $_"
+        }
+        if (-not $m.installer_url) {
+            $m | Add-Member -NotePropertyName installer_url -NotePropertyValue $setupDl
+        }
+        if (-not ($m.installer_checksum_url -or $m.installer_sha256)) {
+            $m | Add-Member -NotePropertyName installer_checksum_url -NotePropertyValue "$setupDl.sha256"
+        }
+        $m | ConvertTo-Json | Set-Content $manifest -Encoding UTF8 -ErrorAction Stop
+        Write-Host "      manifest: prerelease - stable version kept, installer fields ensured" -ForegroundColor DarkGray
+        return
+    }
+
+    $m = @{
+        version                = $Version
+        notes                  = "Maximum Tweaks v$Version - see the in-app changelog for details."
+        url                    = $dl
+        # CI publishes the .sha256 files next to the artifacts it builds; a
+        # hash of the local (dev-only) build would not match what users
+        # download, so only the checksum URL is recorded.
+        checksum_url           = "$dl.sha256"
+        installer_url          = $setupDl
+        installer_checksum_url = "$setupDl.sha256"
+    }
     $m = $m | ConvertTo-Json
-    $manifest = Join-Path $root "auth_backend\web\update.json"
-    Set-Content $manifest $m -Encoding UTF8
+    Set-Content $manifest $m -Encoding UTF8 -ErrorAction Stop
     Write-Host "      manifest -> auth_backend\web\update.json (version $Version)" -ForegroundColor DarkGray
 }
 
 function Build-Exe {
-    # SECURITY: no token/file is written into the project or the exe. Update
-    # authentication (if any) is consumed at runtime via the environment only.
-    Write-Host "[2/5] Building one-file exe (PyInstaller)..." -ForegroundColor Cyan
+    Write-Host "[2/5] Building one-file exe (PyInstaller, local smoke test only)..." -ForegroundColor Cyan
     # Spec imports config.app_config, so build from the project root.
     Push-Location $root
     try {
@@ -122,85 +133,53 @@ function Get-Repo {
     return $repo
 }
 
-function Publish-Release {
+function Publish-Tag {
     param([string]$Repo)
     if (-not $Repo) {
         Write-Warning "GITHUB_REPO is empty - set it in config/app_config.py to enable update checks."
         return
     }
-    if (-not $env:GITHUB_TOKEN) {
-        throw "GITHUB_TOKEN not set. Create one at https://github.com/settings/tokens (scope: repo)."
-    }
     $tag = "v$Version"
-    $api = "https://api.github.com/repos/$Repo/releases"
 
-    Write-Host "[4/5] Ensuring tag $tag exists..." -ForegroundColor Cyan
-    $tagLines = & $git -C $root ls-remote --tags origin "refs/tags/$tag" 2>$null
-    $tagExists = [bool]$tagLines
-    if (-not $tagExists) {
-        & $git -C $root tag $tag
-        # Pass the token through environment-scoped git config so it never
-        # shows up in the command line, shell history, or git's error output
-        # (the previous https://user:token@... push URL did all three).
-        $b64 = [Convert]::ToBase64String(
-            [Text.Encoding]::UTF8.GetBytes("x-access-token:$env:GITHUB_TOKEN"))
-        $env:GIT_CONFIG_COUNT = "1"
-        $env:GIT_CONFIG_KEY_0 = "http.https://github.com/.extraheader"
-        $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $b64"
-        try {
-            & $git -C $root push origin $tag
-            if ($LASTEXITCODE -ne 0) {
-                throw "git push of tag $tag failed (exit $LASTEXITCODE)"
-            }
-        }
-        finally {
-            Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
-        }
+    # Commit the release edits before tagging, otherwise the tag (and the CI
+    # build it triggers) would not contain the version bump or the manifest.
+    Write-Host "[3/5] Committing release changes..." -ForegroundColor Cyan
+    & $git -C $root add -- "config/app_config.py" "auth_backend/web/update.json"
+    $dirty = & $git -C $root status --porcelain -- "config/app_config.py" "auth_backend/web/update.json"
+    if ($dirty) {
+        & $git -C $root commit -m "release: v$Version"
+        if ($LASTEXITCODE -ne 0) { throw "git commit failed (exit $LASTEXITCODE)" }
     }
-    else {
+
+    Write-Host "[4/5] Pushing main..." -ForegroundColor Cyan
+    & $git -C $root push origin HEAD
+    if ($LASTEXITCODE -ne 0) {
+        throw "git push failed (exit $LASTEXITCODE). Push main yourself, then re-run."
+    }
+
+    Write-Host "[5/5] Tagging $tag and pushing..." -ForegroundColor Cyan
+    $tagLines = & $git -C $root ls-remote --tags origin "refs/tags/$tag" 2>$null
+    if ($tagLines) {
         Write-Host "      tag $tag already present - skipping." -ForegroundColor DarkGray
     }
-
-    Write-Host "[5/5] Creating GitHub Release $tag ..." -ForegroundColor Cyan
-    $body = @{ tag_name = $tag; name = "Maximum Tweaks v$Version"; body = "Maximum Tweaks v$Version - see the in-app changelog for details." } | ConvertTo-Json -Compress
-    $bodyFile = Join-Path $env:TEMP "release_$Version.json"
-    [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
-    $release = curl.exe -s -X POST $api -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Accept: application/vnd.github+json" --data-binary "@$bodyFile" | ConvertFrom-Json
-    if (-not $release.id) {
-        # Release may already exist for the tag; fetch its id.
-        $existing = curl.exe -s "$api/$tag" -H "Authorization: Bearer $env:GITHUB_TOKEN" | ConvertFrom-Json
-        $release = $existing
-    }
-    Remove-Item $bodyFile -ErrorAction SilentlyContinue
-    if (-not $release.id) {
-        throw "Could not create release for $tag"
-    }
-
-    Write-Host "[6/5] Uploading $exeName ..." -ForegroundColor Cyan
-    $upload = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$exeName"
-    curl.exe -s -X POST $upload -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$exePath" | Out-Null
-    $shaPath = "$exePath.sha256"
-    if (Test-Path $shaPath) {
-        $uploadSha = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$exeName.sha256"
-        curl.exe -s -X POST $uploadSha -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$shaPath" | Out-Null
-        Write-Host "      uploaded: $shaPath" -ForegroundColor Green
-    }
-    Write-Host "      uploaded: $exePath" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Update source (the app auto-checks this when GITHUB_REPO matches):" -ForegroundColor Yellow
-    if ($env:GITHUB_TOKEN) {
-        Write-Host "  https://api.github.com/repos/$Repo/releases/latest  (token set in publish env ONLY - never bundled in the exe)" -ForegroundColor Yellow
-    }
     else {
-        Write-Host "  https://github.com/$Repo/releases/latest  (public repo - no auth needed)" -ForegroundColor Yellow
+        & $git -C $root tag $tag
+        if ($LASTEXITCODE -ne 0) { throw "git tag failed (exit $LASTEXITCODE)" }
+        # Plain push with your normal git credentials - no token in the
+        # command line, no token in git config, no token anywhere.
+        & $git -C $root push origin $tag
+        if ($LASTEXITCODE -ne 0) { throw "git push of tag $tag failed (exit $LASTEXITCODE)" }
     }
+    Write-Host ""
+    Write-Host "Pushed. The Release workflow now builds the exe + installer," -ForegroundColor Yellow
+    Write-Host "hashes them in the job summary, validates update.json, and" -ForegroundColor Yellow
+    Write-Host "creates the GitHub Release. Watch the Actions tab." -ForegroundColor Yellow
 }
 
 # ---- run ----
 Set-Version
 if (-not $SkipBuild) { Build-Exe }
 $repo = Get-Repo
-$sha256 = Get-Checksum
-Update-Manifest -Sha256 $sha256
-Publish-Release -Repo $repo
-Write-Host "Done. Users on v$Version can click 'Check for Updates' once the next tag is published." -ForegroundColor Green
+Update-Manifest -Repo $repo
+Publish-Tag -Repo $repo
+Write-Host "Done. Users on the previous version see this update once the manifest version exceeds theirs." -ForegroundColor Green
