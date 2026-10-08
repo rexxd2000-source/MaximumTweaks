@@ -27,6 +27,11 @@ def _load_main(db_path):
     import importlib
     previous = os.environ.get("LICENSE_DB_PATH")
     os.environ["LICENSE_DB_PATH"] = db_path
+    # The callback derives the redirect URI from DISCORD_REDIRECT_USER when set.
+    # The tests stub the request, so that env var must exist to skip
+    # request.base_url - never let these tests depend on a local .env.
+    os.environ.setdefault("DISCORD_REDIRECT_USER",
+                          "http://127.0.0.1:8000/auth/discord/callback")
     try:
         for mod in ("main", "db"):
             sys.modules.pop(mod, None)
