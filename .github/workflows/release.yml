@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build-and-release:
@@ -30,6 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r auth_backend/requirements-dev.txt
 
       - name: Extract version from tag
         id: get_version
@@ -40,10 +42,66 @@ jobs:
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
+      # A release must ship exactly what the app reports: tag v2.5.3 requires
+      # APP_VERSION = "2.5.3" (rc tags likewise, e.g. v2.5.3-rc1).
+      - name: Verify tag matches APP_VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = "$env:VERSION"
+          $cfg = Get-Content "config\app_config.py" -Raw
+          if ($cfg -notmatch 'APP_VERSION\s*=\s*"([^"]+)"') {
+            Write-Error "APP_VERSION not found in config\app_config.py"
+            exit 1
+          }
+          $appv = $Matches[1]
+          if ($appv -ne $version) {
+            Write-Error "tag v$version does not match APP_VERSION '$appv' - bump config/app_config.py or fix the tag"
+            exit 1
+          }
+          Write-Host "tag v$version == APP_VERSION $appv"
+
+      - name: Run test suites
+        shell: pwsh
+        run: |
+          $env:PYTHONDONTWRITEBYTECODE = "1"
+          python -m pytest tests -q -p no:cacheprovider
+          if ($LASTEXITCODE -ne 0) { Write-Error "app test suite failed"; exit 1 }
+          Push-Location auth_backend
+          python -m pytest tests -q -p no:cacheprovider
+          $code = $LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { Write-Error "auth test suite failed"; exit 1 }
+
+      - name: Catalogue validation and release gate
+        shell: pwsh
+        run: |
+          python tools/check_validation_drift.py
+          if ($LASTEXITCODE -ne 0) { Write-Error "validation drift check failed"; exit 1 }
+          python tools/audit_tweak_db.py
+          if ($LASTEXITCODE -ne 0) { Write-Error "catalogue release gate failed"; exit 1 }
+
       - name: Build app with PyInstaller
         shell: pwsh
         run: |
           python -m PyInstaller MaximumTweaks.spec --noconfirm
+
+      - name: Smoke test frozen exe
+        shell: pwsh
+        run: |
+          $exe = "dist\MaximumTweaks.exe"
+          & $exe --cli stats
+          if ($LASTEXITCODE -ne 0) { Write-Error "cli stats failed"; exit 1 }
+          & $exe --cli show perf-005
+          if ($LASTEXITCODE -ne 0) { Write-Error "cli show failed"; exit 1 }
+          & $exe --cli search superfetch
+          if ($LASTEXITCODE -ne 0) { Write-Error "cli search failed"; exit 1 }
+          & $exe --cli show power-006
+          if ($LASTEXITCODE -ne 1) { Write-Error "removed tweak must exit 1, got $LASTEXITCODE"; exit 1 }
+          $out = (& $exe --cli apply perf-005 --dry-run 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { Write-Error "cli dry-run exited $LASTEXITCODE"; exit 1 }
+          if ($out -notmatch "Dry-run:") { Write-Error "cli dry-run did not preview: $out"; exit 1 }
+          Write-Host "smoke OK"
 
       - name: Install NSIS
         shell: pwsh
@@ -100,13 +158,17 @@ jobs:
           $exe = "dist\MaximumTweaks.exe"
           $hash2 = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLower()
           "$hash2  MaximumTweaks.exe" | Out-File -FilePath "dist\MaximumTweaks.exe.sha256" -Encoding ascii
+          # Combined checksum file for the release (sha256sum -c SHA256SUMS.txt).
+          @("$hash2  MaximumTweaks.exe",
+            "$hash  $installer") | Out-File -FilePath "SHA256SUMS.txt" -Encoding ascii
 
       - name: Report artifact hashes and sizes
         shell: pwsh
         run: |
           $version = "$env:VERSION"
           foreach ($f in @("dist\MaximumTweaks.exe",
-                           "MaximumTweaks-Setup-$version.exe")) {
+                           "MaximumTweaks-Setup-$version.exe",
+                           "SHA256SUMS.txt")) {
             if (!(Test-Path $f)) { Write-Error "missing artifact: $f"; exit 1 }
             $item = Get-Item $f
             $hash = (Get-FileHash -Path $f -Algorithm SHA256).Hash.ToLower()
@@ -146,6 +208,7 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "manifest OK: version=$($m.version)"
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -158,5 +221,6 @@ jobs:
             dist/MaximumTweaks.exe.sha256
             MaximumTweaks-Setup-${{ steps.get_version.outputs.version }}.exe
             MaximumTweaks-Setup-${{ steps.get_version.outputs.version }}.exe.sha256
+            SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
