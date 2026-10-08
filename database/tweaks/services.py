@@ -7,14 +7,6 @@ T = make_T("Services", win_default="7,8,10,11")
 CATEGORY = "Services"
 
 TWEAKS = validate_module("services", [
-    T("svc-001", "Disable SysMain",
-      "Disables the SysMain (Superfetch) service.",
-      actions=[("sc", "disable", "SysMain")],
-      revert=[("sc", "enable", "SysMain")],
-      why="Preloads and prefetching cause constant disk activity and lock contention on HDD/older systems.",
-      changes="Disables SysMain.",
-      risk="safe", impact="low", recommended="optional", admin=True,
-      tags=["sysmain", "prefetch", "disk"]),
     T("svc-002", "Disable Windows Search",
       "Disables the Windows Search indexer.",
       actions=[("sc", "disable", "WSearch")],

@@ -33,24 +33,18 @@ bg-005,Exclude Game Folders from Defender,Adds common game folders to the Defend
 bg-008,Disable Settings Sync,Disables settings sync via Group Policy.,FREE,foundation,Background,1,True,VERIFIED
 bg-009,Disable Tips and Suggestions,Disables Windows tips background suggestions.,FREE,foundation,Background,1,False,UNVERIFIED
 bg-010,Set Active Hours,Sets Windows Update active hours to cover a typical gaming session.,FREE,foundation,Background,2,True,VERIFIED
-cpu_amd_decrease_policy,Performance Decrease Policy (AMD),"Chooses which signal is allowed to drop the clock back down, which changes how quickly the chip settles after a burst.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_amd_decrease_threshold,Performance Decrease Threshold (AMD),How far utilisation must rise before the clock steps up.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_amd_increase_policy,Performance Increase Policy (AMD),"Chooses which hardware performance boost signal is allowed to raise the clock, instead of letting the CPU decide.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_amd_increase_threshold,Performance Increase Threshold (AMD),How far utilisation must fall before the clock steps down.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
 cpu_amd_unpark_all,Minimum Unparked Cores (100%),"Asks the scheduler to keep every core out of the parked state, so spreading work does not stall on a waking core.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
 cpu_boost_mode_aggressive,Processor Boost Mode,"Sets the hardware turbo behaviour to aggressive, letting the chip exceed its sustained base clock for short bursts.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
 cpu_epp_performance,Energy Performance Preference,Biases the hardware scheduler toward performance over energy saving when it picks between equally valid cores.,FOUNDATION,performance,CPU,1,False,UNVERIFIED
 cpu_hybrid_sched_performant,Heterogeneous Scheduling (Performance),Tells Windows to place long-running threads on the performance cores rather than letting it choose between P-cores and E-cores.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
 cpu_hybrid_short_sched_performant,Short-Thread Scheduling (Performance),"Applies the same performance-core preference to short-running threads, which the long-thread policy deliberately leaves alone.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
 cpu_idle_disable,Disable Processor Idle States,"Stops the processor dropping into its low-power C-states, keeping cores clocked up at the cost of idle power and heat.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_intel_decrease_policy,Performance Decrease Policy (Intel),"Chooses which signal is allowed to drop the clock back down, which changes how quickly the chip settles after a burst.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_intel_decrease_threshold,Performance Decrease Threshold (Intel),How far utilisation must rise before the clock steps up.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_intel_increase_policy,Performance Increase Policy (Intel),"Chooses which hardware performance boost signal is allowed to raise the clock, instead of letting the CPU decide.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
-cpu_intel_increase_threshold,Performance Increase Threshold (Intel),How far utilisation must fall before the clock steps down.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_decrease_threshold,Performance Decrease Threshold,How far utilisation must rise before the clock steps up.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_increase_policy,Performance Increase Policy,"Chooses which hardware performance boost signal is allowed to raise the clock, instead of letting the CPU decide.",MAXIMUM,maximum,CPU,1,False,UNVERIFIED
+cpu_intel_increase_threshold,Performance Increase Threshold,How far utilisation must fall before the clock steps down.  A low value makes the boost policy respond sooner.,MAXIMUM,maximum,CPU,1,False,UNVERIFIED
 cpu_max_state_100,Maximum Processor State,Lets the processor use its full advertised frequency instead of being held below the maximum by the power plan.,FREE,foundation,CPU,1,False,UNVERIFIED
 cpu_min_state_100,Minimum Processor State,"Holds cores at full clock while the system is busy, trading idle power and heat for a floor under clock speed.",FOUNDATION,performance,CPU,1,False,UNVERIFIED
 mmcss_game_priority,MMCSS Game Priority,Marks the game as a high-priority Multimedia Class Scheduler task so audio and video threads get dedicated CPU time.,FOUNDATION,performance,CPU,3,False,UNVERIFIED
-process_priority,Foreground Priority Boost,Gives the foreground app more CPU share than background services when both want the processor.,FOUNDATION,performance,CPU,1,False,UNVERIFIED
 db-001,Remove Default UWP Apps,Uninstalls common pre-installed UWP apps.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
 db-002,Remove Xbox App,Removes the Xbox app.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
 db-003,Remove Windows Mixed Reality,Removes Windows Mixed Reality apps.,FOUNDATION,performance,Debloat,1,False,UNVERIFIED
@@ -74,7 +68,6 @@ dd-011,Disable Game Bar Keyboard Shortcuts,Disables Game Bar keyboard shortcuts 
 dd-012,Optimize Fullscreen Game Priority,Boosts the CPU priority of fullscreen exclusive games.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
 dd-013,Optimize TCP ACK Frequency,Disables delayed ACKs so TCP acknowledgments are sent immediately.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
 dd-014,Disable TCP Nagle Algorithm,Disables Nagle's algorithm so small packets are sent immediately.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
-dd-015,Optimize Network Interrupt Moderation,"Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe).",MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
 dd-016,Optimize DNS Cache Timeout,Reduces DNS cache timeout to refresh DNS entries more frequently.,FOUNDATION,performance,Delay Destroyer,1,False,DANGEROUS
 dd-017,Optimize USB Transfer Timeout,Reduces the USB transfer timeout for faster error recovery.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
 dd-018,Optimize USB Endpoint Response,Reduces USB endpoint error recovery time for faster device responsiveness.,MAXIMUM,maximum,Delay Destroyer,1,False,DANGEROUS
@@ -108,7 +101,6 @@ fpsb-009,Disable Windows Tips and Suggestions,Turns off Windows promotional tips
 fpsb-010,Disable Activity History,Turns off Windows activity tracking to free background CPU and disk I/O.,FREE,foundation,FPS Boost,3,False,UNVERIFIED
 fpsb-012,Disable Spectre/Meltdown Mitigations,Disables CPU vulnerability mitigations for 1-8% FPS improvement.,MAXIMUM,maximum,FPS Boost,2,False,UNVERIFIED
 fpsb-021,Disable PCIe ASPM,Disables PCI Express Active State Power Management for maximum GPU/SSD bandwidth.,FOUNDATION,performance,FPS Boost,2,False,UNVERIFIED
-fpsb-025,Disable NTFS Last Access Timestamps,Stops NTFS from updating file access timestamps to reduce disk I/O.,FREE,foundation,FPS Boost,1,False,UNVERIFIED
 fn-011,Disable Dynamic Shadows,Turns off dynamic character/building shadows in Fortnite's config.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
 fn-012,Lowest Shadow Quality,Forces Fortnite shadow quality to Low.,FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
 fn-013,Disable Post-Processing,"Drops Fortnite post-processing (bloom, DOF, color grading).",FOUNDATION,performance,Fortnite,1,False,UNVERIFIED
@@ -145,7 +137,6 @@ gpu-019,Extend TDR Detection Window,"Widens the time window in which TDR recover
 gpu-020,Extend GPU Hung Timeout,"Raises how long Windows waits before declaring the GPU hung, protecting long shader compiles.",MAXIMUM,maximum,GPU,1,False,UNVERIFIED
 gpu-021,Disable Multi-GPU Switching,Stops Microsoft's hybrid graphics stack from hot-swapping between integrated and discrete adapters.,MAXIMUM,maximum,GPU,1,False,UNVERIFIED
 gpu-022,Prefer Hardware Render Path,Forces the desktop composition stack onto the hardware renderer instead of software fallbacks.,FOUNDATION,performance,GPU,1,False,UNVERIFIED
-gpu-024,Disable DWM Visual Effects,"Cuts DWM visual effects (animations, shadows) for snappier UI redraws on weaker GPUs.",FREE,foundation,GPU,1,False,UNVERIFIED
 gpu-025,Disable Aero Peek,Turns off the Aero Peek taskbar preview animations to save a little composition work.,FREE,foundation,GPU,1,False,UNVERIFIED
 gpu-060,Enable MSI Mode for GPU,Enables Message Signaled Interrupts on the display adapter for lower interrupt latency.,MAXIMUM,maximum,GPU,1,False,UNVERIFIED
 gproc-001,Disable Game Efficiency Mode,Removes EcoQoS execution-speed throttling from the running game process (High QoS). Windows-only for Efficiency Mode behavior.,FOUNDATION,performance,Game Process,1,False,UNVERIFIED
@@ -241,7 +232,7 @@ lap-048,Disable Wake Timers on Battery,Prevent scheduled tasks from waking the l
 lap-049,Disable Adaptive Brightness,Disable ambient light sensor-based brightness adjustment.,FREE,foundation,Laptop,1,False,UNVERIFIED
 lap-050,Moderate C-States on Battery,Allow moderate CPU C-states on battery for power savings.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
 lap-052,Standard Timer on Battery,Use standard timer resolution on battery to save power.,FOUNDATION,performance,Laptop,2,False,UNVERIFIED
-lap-053,Disable DWM Effects on Battery,Disable DWM visual effects on battery to reduce GPU power draw.,FREE,foundation,Laptop,1,False,UNVERIFIED
+lap-053,Disable DWM Visual Effects,Disable DWM visual effects on battery to reduce GPU power draw.,FREE,foundation,Laptop,1,False,UNVERIFIED
 mon-001,Disable Monitor Auto-Detect Sleep,Prevents the display from entering power save during long play sessions.,FREE,foundation,Monitor,1,True,VERIFIED
 mon-006,Disable Adaptive Brightness,Turns off display adaptive brightness in the power plan.,FREE,foundation,Monitor,2,True,VERIFIED
 mouse-002,Disable Cursor Suppression,Stops Windows from hiding the cursor during typing in games.,FREE,foundation,Mouse,1,False,UNVERIFIED
@@ -306,14 +297,12 @@ perf-005,Disable Superfetch (SysMain),Disable Superfetch/SysMain service which c
 perf-008,Disable Hibernation,Disable hibernation to free disk space and reduce overhead.,FREE,foundation,Performance,1,False,UNVERIFIED
 perf-009,Throttle Windows Update During Gaming,Configure Windows Update to avoid downloading during active gaming.,FREE,foundation,Performance,2,False,UNVERIFIED
 perf-012,Disable Toast Notifications,Disable Windows toast notifications to avoid interruptions.,FREE,foundation,Performance,1,False,UNVERIFIED
-perf-013,Disable NIC Interrupt Moderation,"Disables Interrupt Moderation on each active physical network adapter that exposes the setting (detect-first, revert-safe).",MAXIMUM,maximum,Performance,1,False,EXPERIMENTAL
 perf-019,Optimize Interrupt Affinity,Configure interrupt affinity for better CPU load distribution.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
 perf-029,Set MMCSS Gaming Priority,Configure MMCSS to give game processes highest scheduling priority.,FOUNDATION,performance,Performance,4,False,UNVERIFIED
 perf-034,Set Processor Performance Decrease Policy,Configure aggressive processor performance decrease for faster frequency scaling under gaming loads.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
 perf-035,Disable USB Selective Suspend,Disable USB selective suspend to prevent USB device disconnections.,FREE,foundation,Performance,1,False,UNVERIFIED
 perf-037,Force TRIM,Ensure TRIM is always enabled for optimal SSD performance.,FREE,foundation,Performance,1,False,UNVERIFIED
 perf-038,Disable I/O Coalescing,Disable I/O coalescing in the LAN server driver for lower latency.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
-perf-042,Disable Memory Compression (Cmd),Disable Windows Memory Compression via PowerShell to reduce CPU overhead on systems with ample RAM.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
 perf-043,Disable Page Combining (Registry),Disable Windows page combining through registry to reduce memory management overhead.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
 perf-046,Disable Background Maintenance,Disable scheduled maintenance tasks that consume disk and CPU resources during gaming sessions.,FOUNDATION,performance,Performance,1,False,UNVERIFIED
 perf-049,Set IRPStackSize,Increase the I/O Request Packet stack size for better network throughput in LAN gaming scenarios.,MAXIMUM,maximum,Performance,1,False,UNVERIFIED
@@ -324,7 +313,6 @@ power-002,Disable USB Selective Suspend,Prevents USB ports from suspending.,FREE
 power-003,Disable PCI Express ASPM,Prevents PCIe link power saving.,FOUNDATION,performance,Power,1,False,UNVERIFIED
 power-004,Set Sleep to Never,Prevents the system from sleeping.,FREE,foundation,Power,1,False,UNVERIFIED
 power-005,Set Display Off Timeout,Sets display-off timeout to 15 minutes.,FREE,foundation,Power,1,False,UNVERIFIED
-power-006,Disable Hibernation,Turns off hibernation and deletes the hibernation file.,FREE,foundation,Power,1,False,UNVERIFIED
 power-009,Set Minimum Processor State,Keeps the CPU at a high clock floor on AC.,FOUNDATION,performance,Power,1,False,UNVERIFIED
 power-010,Disable Adaptive Brightness,Turns off display adaptive brightness.,FREE,foundation,Power,1,False,UNVERIFIED
 power-011,Disable Hard Disk Sleep,Prevents the disk from idling down.,FREE,foundation,Power,1,False,UNVERIFIED
@@ -358,10 +346,8 @@ priv-010,Disable Notifications,Disables app notification access.,FOUNDATION,perf
 priv-011,Disable Call History Access,Denies call history access.,FREE,foundation,Privacy,1,False,UNVERIFIED
 ram-001,Enable Prefetch,Turns on boot and application prefetching.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
 ram-002,Enable SysMain Service,Sets the SysMain (Superfetch) service to automatic.,FOUNDATION,performance,RAM,2,False,UNVERIFIED
-ram-003,Disable SysMain on SSD,Disables Superfetch on SSD-only systems.,FOUNDATION,performance,RAM,2,False,UNVERIFIED
 ram-004,Disable Superfetch Registry (SSD),Turns off the Superfetch prefetcher at the registry level.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
 ram-005,Enable Superfetch on HDD,Turns on the Superfetch prefetcher for HDD systems.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
-ram-008,Disable Hibernation Reserve,Frees the RAM-space reserved for the hibernation file.,FREE,foundation,RAM,1,False,UNVERIFIED
 ram-009,32-bit Large Address Space,Raises the user address space for 32-bit games.,MAXIMUM,maximum,RAM,1,False,UNVERIFIED
 ram-014,Disable Memory Diagnostics at Boot,Prevents the scheduled memory check at boot.,FREE,foundation,RAM,1,False,UNVERIFIED
 ram-021,Cache Memory-Mapped Images,Lets Windows keep loaded DLL and executable pages in the standby cache.,FOUNDATION,performance,RAM,1,False,UNVERIFIED
@@ -422,7 +408,6 @@ sec-002,Exclude Game Processes,Excludes game executables from scanning.,FOUNDATI
 sec-008,Disable Remote Desktop,Disables RDP if unused.,FREE,foundation,Security & Performance,1,False,UNVERIFIED
 sec-010,Disable PowerShell Script Logging,Disables PowerShell ScriptBlock Logging via Group Policy.,FOUNDATION,performance,Security & Performance,1,True,VERIFIED
 sec-011,Disable Network Discovery,Disables network discovery.,FREE,foundation,Security & Performance,1,False,UNVERIFIED
-svc-001,Disable SysMain,Disables the SysMain (Superfetch) service.,FOUNDATION,performance,Services,1,False,UNVERIFIED
 svc-002,Disable Windows Search,Disables the Windows Search indexer.,FOUNDATION,performance,Services,1,True,VERIFIED
 svc-005,Disable Remote Registry,Disables remote registry access.,FREE,foundation,Services,1,True,VERIFIED
 svc-006,Disable Print Spooler,Disables the print spooler if you have no printers.,FOUNDATION,performance,Services,1,True,VERIFIED
@@ -436,7 +421,6 @@ svc-019,Disable Windows Insider Service,Disables the Windows Insider Preview ser
 start-005,Enable Multi-Core Boot,Uses all CPU cores while booting Windows.,FOUNDATION,performance,Startup,1,False,UNVERIFIED
 start-012,Disable Automatic Sign-in Animations,Disables the Windows logon background image and sign-in animation.,FREE,foundation,Startup,1,True,VERIFIED
 start-016,Disable Maintenance Tasks,Disables the automatic Windows Maintenance scheduler.,FOUNDATION,performance,Startup,1,False,UNVERIFIED
-stor-001,Enable SSD TRIM,Turns on the TRIM command for SSD/NVMe drives.,FREE,foundation,Storage,1,False,UNVERIFIED
 stor-002,Disable 8.3 Short Names,Stops NTFS from generating legacy 8.3 filenames.,FOUNDATION,performance,Storage,1,False,UNVERIFIED
 stor-004,MFT Zone Reservation,Reserves extra space for the NTFS Master File Table.,FOUNDATION,performance,Storage,1,False,UNVERIFIED
 stor-005,Disable HDD Idle Spin-Down,Prevents the hard drive from spinning down during long sessions.,FREE,foundation,Storage,1,True,VERIFIED

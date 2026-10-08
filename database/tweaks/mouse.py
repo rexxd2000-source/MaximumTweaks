@@ -268,12 +268,4 @@ TWEAKS = validate_module("mouse", [
       changes="Prints the mouse device list.",
       risk="safe", impact="very low", recommended="optional",
       tags=["pnp", "device", "mouse"]),
-    T("mouse-059", "Restart Explorer for Pointer UI",
-      "Restarts Explorer so pointer and hover settings take effect in the shell.",
-      actions=[("restart", "explorer")],
-      revert=[("guidance", "No persistent change to revert.")],
-      why="Some shell-level pointer options require Explorer to re-read their registry values.",
-      changes="Restarts explorer.exe.",
-      risk="low", impact="moderate", recommended="optional",
-      tags=["explorer", "restart", "shell"]),
 ])

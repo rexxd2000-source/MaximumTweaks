@@ -3,7 +3,7 @@ _dev/import_tier_review.py, do not edit by hand.
 
 Source review sheet : tweak_tier_review.csv
 Imported            : 2026-10-02 23:18 UTC
-Tweaks covered      : 515
+Tweaks covered      : 499
 
 This is the reviewed, human-signed-off grade for each optimization
 tweak. :func:`database.classification.grade_optimization` returns these
@@ -69,17 +69,12 @@ REVIEWED_GRADES: dict[str, str] = {
     "bg-008": "FREE",
     "bg-009": "FREE",
     "bg-010": "FREE",
-    "cpu_amd_decrease_policy": "MAXIMUM",
-    "cpu_amd_decrease_threshold": "MAXIMUM",
-    "cpu_amd_increase_policy": "MAXIMUM",
-    "cpu_amd_increase_threshold": "MAXIMUM",
     "cpu_amd_unpark_all": "FOUNDATION",
     "cpu_boost_mode_aggressive": "FOUNDATION",
     "cpu_epp_performance": "FOUNDATION",
     "cpu_hybrid_sched_performant": "MAXIMUM",
     "cpu_hybrid_short_sched_performant": "MAXIMUM",
     "cpu_idle_disable": "MAXIMUM",
-    "cpu_intel_decrease_policy": "MAXIMUM",
     "cpu_intel_decrease_threshold": "MAXIMUM",
     "cpu_intel_increase_policy": "MAXIMUM",
     "cpu_intel_increase_threshold": "MAXIMUM",
@@ -108,7 +103,6 @@ REVIEWED_GRADES: dict[str, str] = {
     "dd-012": "FOUNDATION",
     "dd-013": "FOUNDATION",
     "dd-014": "FOUNDATION",
-    "dd-015": "MAXIMUM",
     "dd-016": "FOUNDATION",
     "dd-017": "MAXIMUM",
     "dd-018": "MAXIMUM",
@@ -183,7 +177,6 @@ REVIEWED_GRADES: dict[str, str] = {
     "fpsb-010": "FREE",
     "fpsb-012": "MAXIMUM",
     "fpsb-021": "FOUNDATION",
-    "fpsb-025": "FREE",
     "game-001": "FREE",
     "game-003": "FOUNDATION",
     "gproc-001": "FOUNDATION",
@@ -198,7 +191,6 @@ REVIEWED_GRADES: dict[str, str] = {
     "gpu-020": "MAXIMUM",
     "gpu-021": "MAXIMUM",
     "gpu-022": "FOUNDATION",
-    "gpu-024": "FREE",
     "gpu-025": "FREE",
     "gpu-027": "FREE",
     "gpu-028": "FREE",
@@ -353,14 +345,12 @@ REVIEWED_GRADES: dict[str, str] = {
     "perf-008": "FREE",
     "perf-009": "FREE",
     "perf-012": "FREE",
-    "perf-013": "MAXIMUM",
     "perf-019": "MAXIMUM",
     "perf-029": "FOUNDATION",
     "perf-034": "MAXIMUM",
     "perf-035": "FREE",
     "perf-037": "FREE",
     "perf-038": "FOUNDATION",
-    "perf-042": "FOUNDATION",
     "perf-043": "FOUNDATION",
     "perf-046": "FOUNDATION",
     "perf-049": "MAXIMUM",
@@ -371,7 +361,6 @@ REVIEWED_GRADES: dict[str, str] = {
     "power-003": "FOUNDATION",
     "power-004": "FREE",
     "power-005": "FREE",
-    "power-006": "FREE",
     "power-009": "FOUNDATION",
     "power-010": "FREE",
     "power-011": "FREE",
@@ -403,13 +392,10 @@ REVIEWED_GRADES: dict[str, str] = {
     "priv-009": "FREE",
     "priv-010": "FOUNDATION",
     "priv-011": "FREE",
-    "process_priority": "FOUNDATION",
     "ram-001": "FOUNDATION",
     "ram-002": "FOUNDATION",
-    "ram-003": "FOUNDATION",
     "ram-004": "FOUNDATION",
     "ram-005": "FOUNDATION",
-    "ram-008": "FREE",
     "ram-009": "MAXIMUM",
     "ram-014": "FREE",
     "ram-021": "FOUNDATION",
@@ -473,14 +459,12 @@ REVIEWED_GRADES: dict[str, str] = {
     "start-005": "FOUNDATION",
     "start-012": "FREE",
     "start-016": "FOUNDATION",
-    "stor-001": "FREE",
     "stor-002": "FOUNDATION",
     "stor-004": "FOUNDATION",
     "stor-005": "FREE",
     "stor-006": "FOUNDATION",
     "stor-007": "FREE",
     "stor-016": "FREE",
-    "svc-001": "FOUNDATION",
     "svc-002": "FOUNDATION",
     "svc-005": "FREE",
     "svc-006": "FOUNDATION",
@@ -553,9 +537,9 @@ REVIEWED_GRADES: dict[str, str] = {
 
 #: Import-time tally, so a truncated or duplicated sheet is obvious.
 REVIEWED_COUNTS: dict[str, int] = {
-    "FREE": 293,
-    "FOUNDATION": 167,
-    "MAXIMUM": 55,
+    "FREE": 288,
+    "FOUNDATION": 163,
+    "MAXIMUM": 48,
 }
 
 

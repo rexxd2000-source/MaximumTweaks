@@ -7,15 +7,6 @@ T = make_T("Storage", win_default="7,8,10,11")
 CATEGORY = "Storage"
 
 TWEAKS = validate_module("storage", [
-    T("stor-001", "Enable SSD TRIM",
-      "Turns on the TRIM command for SSD/NVMe drives.",
-      actions=[("cmd", "fsutil behavior set DisableDeleteNotify 0")],
-      revert=[("cmd", "fsutil behavior set DisableDeleteNotify 1")],
-      why="TRIM lets SSDs reclaim deleted blocks, keeping write speed high over time.",
-      changes="Enables DeleteNotify (TRIM).",
-      risk="safe", impact="moderate", recommended="recommended", admin=True,
-      when={"ssd": True},
-      tags=["trim", "ssd", "maintenance"]),
     T("stor-002", "Disable 8.3 Short Names",
       "Stops NTFS from generating legacy 8.3 filenames.",
       actions=[("reg", "HKLM", r"SYSTEM\CurrentControlSet\Control\FileSystem", "NtfsDisable8dot3NameCreation", 1, "DWORD")],

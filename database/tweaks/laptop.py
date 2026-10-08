@@ -669,9 +669,9 @@ TWEAKS = validate_module("laptop", [
       admin=True,
       tags=["timer", "battery", "power"]),
 
-    # ── Desktop Composition on Battery ─────────────────────────────
-    T("lap-053", "Disable DWM Effects on Battery",
-      "Disable DWM visual effects on battery to reduce GPU power draw.",
+    # ── Desktop Composition ───────────────────────────────────────
+    T("lap-053", "Disable DWM Visual Effects",
+      "Disables DWM visual effects (animations, shadows) for snappier UI redraws and lower GPU load.",
       actions=[
           ("reg", "HKLM", r"SOFTWARE\Microsoft\Windows\DWM", "ForceEffectMode", 5, "DWORD"),
       ],
@@ -679,10 +679,10 @@ TWEAKS = validate_module("laptop", [
           ("regdel", "HKLM", r"SOFTWARE\Microsoft\Windows\DWM", "ForceEffectMode"),
       ],
       why="DWM composition effects (transparency, animations) keep "
-          "the GPU active.  Disabling them on battery reduces GPU "
-          "power consumption noticeably.",
-      changes="Disables DWM visual effects on battery.",
+          "the GPU active.  Disabling them frees GPU headroom for games "
+          "and noticeably cuts desktop power draw.",
+      changes="Disables DWM visual effects (ForceEffectMode = 5).",
       risk="safe", impact="low", recommended="optional",
       admin=True,
-      tags=["dwm", "gpu", "battery"]),
+      tags=["dwm", "gpu", "battery", "effects"]),
 ])

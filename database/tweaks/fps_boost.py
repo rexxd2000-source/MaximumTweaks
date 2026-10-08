@@ -282,25 +282,6 @@ TWEAKS = validate_module("fps_boost", [
 
     # ── Disable Notifications ───────────────────────────────────────
 
-    # ── NTFS Last Access ────────────────────────────────────────────
-    T(
-        "fpsb-025", "Disable NTFS Last Access Timestamps",
-        "Stops NTFS from updating file access timestamps to reduce disk I/O.",
-        actions=[
-            ("cmd", "fsutil behavior set disablelastaccess 1"),
-        ],
-        revert=[
-            ("cmd", "fsutil behavior set disablelastaccess 0"),
-        ],
-        why="NTFS updates the last access timestamp for every file read, "
-            "adding disk I/O overhead that can cause hitches during "
-            "asset streaming.",
-        changes="Disables NTFS last access timestamp updates.",
-        risk="low", impact="low", recommended="optional",
-        admin=True,
-        tags=["ntfs", "disk", "io", "timestamp"],
-    ),
-
     # ── Resizable BAR ───────────────────────────────────────────────
     T(
         "fpsb-026", "Resizable BAR Review",

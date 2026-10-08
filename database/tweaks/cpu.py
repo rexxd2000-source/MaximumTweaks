@@ -24,7 +24,6 @@ T = make_T("CPU", win_default="7,8,10,11")
 CATEGORY = "CPU"
 
 # ── Shared registry paths ───────────────────────────────────────────────
-_PRIORITY_CONTROL = r"SYSTEM\CurrentControlSet\Control\PriorityControl"
 _GAMES_TASKS = (
     r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia"
     r"\SystemProfile\Tasks\Games"
@@ -32,7 +31,6 @@ _GAMES_TASKS = (
 
 # ── CPU family tags used by when.cpu_family ─────────────────────────────
 AMD_ALL = ("amd_am4", "amd_am4_x3d", "amd_am5", "amd_am5_x3d")
-INTEL_LEGACY = ("intel_legacy",)
 INTEL_HYBRID = ("intel_hybrid", "intel_core_ultra")
 
 _PLAN_CONFLICT = (
@@ -42,27 +40,7 @@ _PLAN_CONFLICT = (
 
 TWEAKS = validate_module("cpu", [
 
-    # ── 1) Foreground Priority Boost ────────────────────────────────────
-    # Sole owner of Win32PrioritySeparation for this category.  The former
-    # "foreground_priority" card wrote the identical value and was removed.
-
-    T(
-        "process_priority", "Foreground Priority Boost",
-        "Gives the foreground app more CPU share than background services "
-        "when both want the processor.",
-        actions=[
-            ("reg", "HKLM", _PRIORITY_CONTROL, "Win32PrioritySeparation", 26, "DWORD"),
-        ],
-        revert=[("regdel", "HKLM", _PRIORITY_CONTROL, "Win32PrioritySeparation")],
-        sub_category="gaming",
-        risk="low", impact="moderate", recommended="recommended",
-        admin=True,
-        when={"cpu_vendor": ["amd", "intel"]},
-        why="26 favours foreground work over background services during contention.",
-        changes="HKLM\\...\\PriorityControl\\Win32PrioritySeparation = 26",
-    ),
-
-    # ── 2) MMCSS Game Priority ──────────────────────────────────────────
+    # ── 1) MMCSS Game Priority ──────────────────────────────────────────
     # Sole owner of the MMCSS Games task for this category.  The former
     # "game_process_priority" card wrote the identical value and was removed.
 
@@ -218,8 +196,13 @@ TWEAKS = validate_module("cpu", [
         changes="Processor power management / Minimum unparked cores = 100% (AC)",
     ),
 
+    # ── 5) Shared boost-policy cards (every family) ─────────────────────
+    # Formerly two family-gated twins (AMD / Intel) per setting with an
+    # identical power action; consolidated into one unfiltered card each so
+    # every CPU vendor sees the same control exactly once.
+
     T(
-        "cpu_amd_increase_policy", "Performance Increase Policy (AMD)",
+        "cpu_intel_increase_policy", "Performance Increase Policy",
         "Chooses which hardware performance boost signal is allowed to raise "
         "the clock, instead of letting the CPU decide.",
         actions=[("power", "perf_increase_policy", 3, "AC")],
@@ -227,7 +210,6 @@ TWEAKS = validate_module("cpu", [
         sub_category="power",
         risk="advanced", impact="low", recommended="optional",
         admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(AMD_ALL)},
         # 0 Ideal, 1 Single, 2 Rocket, 3 IdealAggressive. The active Maximum
         # Power Plan already sits on 2, so 3 is the first index that changes
         # anything - proposing 2 would be a guaranteed no-op there.
@@ -237,23 +219,7 @@ TWEAKS = validate_module("cpu", [
     ),
 
     T(
-        "cpu_amd_decrease_policy", "Performance Decrease Policy (AMD)",
-        "Chooses which signal is allowed to drop the clock back down, which "
-        "changes how quickly the chip settles after a burst.",
-        actions=[("power", "perf_decrease_policy", 2, "AC")],
-        revert=[("power", "perf_decrease_policy", 1, "AC")],
-        sub_category="power",
-        risk="advanced", impact="low", recommended="optional",
-        admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(AMD_ALL)},
-        # 0 Ideal, 1 Single, 2 Rocket. The active plan already sits on 1.
-        why="2 (Rocket) lets the clock drop fastest once work subsides.",
-        changes="Processor power management / Performance decrease policy = 2 (AC)",
-        updated="2026-09-29",
-    ),
-
-    T(
-        "cpu_amd_increase_threshold", "Performance Increase Threshold (AMD)",
+        "cpu_intel_increase_threshold", "Performance Increase Threshold",
         "How far utilisation must fall before the clock steps down.  A low "
         "value makes the boost policy respond sooner.",
         actions=[("power", "perf_increase_threshold", 10, "AC")],
@@ -261,14 +227,13 @@ TWEAKS = validate_module("cpu", [
         sub_category="power",
         risk="advanced", impact="low", recommended="optional",
         admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(AMD_ALL)},
         why="Expressed as a percentage; the active plan already sets 10 on "
             "this machine, so this card is a no-op until that changes.",
         changes="Processor power management / Performance increase threshold = 10% (AC)",
     ),
 
     T(
-        "cpu_amd_decrease_threshold", "Performance Decrease Threshold (AMD)",
+        "cpu_intel_decrease_threshold", "Performance Decrease Threshold",
         "How far utilisation must rise before the clock steps up.  A low "
         "value makes the boost policy respond sooner.",
         actions=[("power", "perf_decrease_threshold", 10, "AC")],
@@ -276,71 +241,6 @@ TWEAKS = validate_module("cpu", [
         sub_category="power",
         risk="advanced", impact="low", recommended="optional",
         admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(AMD_ALL)},
-        why="Expressed as a percentage; the active plan already sets 10 on "
-            "this machine, so this card is a no-op until that changes.",
-        changes="Processor power management / Performance decrease threshold = 10% (AC)",
-    ),
-
-    # ── 5) Intel legacy (non-hybrid) power cards ────────────────────────
-    # No parking control here: the old universal parking card was removed
-    # because parking is an AMD-side behaviour, not an Intel one.
-
-    T(
-        "cpu_intel_increase_policy", "Performance Increase Policy (Intel)",
-        "Chooses which hardware performance boost signal is allowed to raise "
-        "the clock, instead of letting the CPU decide.",
-        actions=[("power", "perf_increase_policy", 3, "AC")],
-        revert=[("power", "perf_increase_policy", 2, "AC")],
-        sub_category="power",
-        risk="advanced", impact="low", recommended="optional",
-        admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(INTEL_LEGACY)},
-        why="3 is IdealAggressive; the default plan value is 2 (Rocket).",
-        changes="Processor power management / Performance increase policy = 3 (AC)",
-        updated="2026-09-29",
-    ),
-
-    T(
-        "cpu_intel_decrease_policy", "Performance Decrease Policy (Intel)",
-        "Chooses which signal is allowed to drop the clock back down, which "
-        "changes how quickly the chip settles after a burst.",
-        actions=[("power", "perf_decrease_policy", 2, "AC")],
-        revert=[("power", "perf_decrease_policy", 1, "AC")],
-        sub_category="power",
-        risk="advanced", impact="low", recommended="optional",
-        admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(INTEL_LEGACY)},
-        why="2 (Rocket) lets the clock drop fastest once work subsides.",
-        changes="Processor power management / Performance decrease policy = 2 (AC)",
-        updated="2026-09-29",
-    ),
-
-    T(
-        "cpu_intel_increase_threshold", "Performance Increase Threshold (Intel)",
-        "How far utilisation must fall before the clock steps down.  A low "
-        "value makes the boost policy respond sooner.",
-        actions=[("power", "perf_increase_threshold", 10, "AC")],
-        revert=[("power", "perf_increase_threshold", 10, "AC")],
-        sub_category="power",
-        risk="advanced", impact="low", recommended="optional",
-        admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(INTEL_LEGACY)},
-        why="Expressed as a percentage; the active plan already sets 10 on "
-            "this machine, so this card is a no-op until that changes.",
-        changes="Processor power management / Performance increase threshold = 10% (AC)",
-    ),
-
-    T(
-        "cpu_intel_decrease_threshold", "Performance Decrease Threshold (Intel)",
-        "How far utilisation must rise before the clock steps up.  A low "
-        "value makes the boost policy respond sooner.",
-        actions=[("power", "perf_decrease_threshold", 10, "AC")],
-        revert=[("power", "perf_decrease_threshold", 10, "AC")],
-        sub_category="power",
-        risk="advanced", impact="low", recommended="optional",
-        admin=True, power_strict=True, warn=_PLAN_CONFLICT,
-        when={"cpu_family": list(INTEL_LEGACY)},
         why="Expressed as a percentage; the active plan already sets 10 on "
             "this machine, so this card is a no-op until that changes.",
         changes="Processor power management / Performance decrease threshold = 10% (AC)",

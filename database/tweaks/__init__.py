@@ -46,7 +46,7 @@ _DIAGNOSTIC_IDS = frozenset({
     "diag-new-001", "diag-new-002", "diag-new-003", "diag-new-004",
     "diag-new-005", "dx-001", "dx-003", "eth-012", "eth-013", "expl-014",
     "fpsb-026", "gpu-047", "gpu-048", "mon-003", "mon-014", "mouse-055",
-    "mouse-056", "mouse-057", "mouse-058", "mouse-059", "net-014",
+    "mouse-056", "mouse-057", "mouse-058", "net-014",
     "net-015", "net-016", "net-new-001", "net-new-002", "perf-new-001",
     "ram-012", "rep-001", "rep-002", "rep-003", "rep-004", "rep-007",
     "rep-008", "rep-009", "rep-013", "rep-014", "sec-009", "start-001",
@@ -56,7 +56,7 @@ _DIAGNOSTIC_IDS = frozenset({
 
 _SYSTEM_TOOL_IDS = frozenset({
     "expl-014", "gpu-048", "mouse-055", "mouse-056", "mouse-057",
-    "mouse-058", "mouse-059",
+    "mouse-058",
 })
 
 for _t in TWEAKS:

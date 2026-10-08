@@ -79,10 +79,10 @@ TWEAKS = validate_module("performance", [
     T("perf-004", "Disable Memory Compression",
       "Disable Windows Memory Compression which can add CPU overhead.",
       actions=[
-          ("cmd", "Disable-MMAgent -MemoryCompression"),
+          ("cmd", 'powershell -NoProfile -Command "Disable-MMAgent -MemoryCompression"'),
       ],
       revert=[
-          ("cmd", "Enable-MMAgent -MemoryCompression"),
+          ("cmd", 'powershell -NoProfile -Command "Enable-MMAgent -MemoryCompression"'),
       ],
       why="Memory Compression uses CPU cycles to compress memory pages. "
           "On systems with enough RAM (16GB+), disabling it frees CPU for games.",
@@ -166,34 +166,6 @@ TWEAKS = validate_module("performance", [
       changes="Disables Windows toast notifications.",
       risk="safe", impact="low", recommended="optional",
       tags=["notifications", "toast", "ui"]),
-
-    # ── Interrupt Moderation (adapter-specific, experimental) ──────
-    # Replaces the old netsh autotune/chimney pair (which never touched
-    # interrupt moderation at all) and the blanket regall write: the netadp
-    # engine op only touches active physical adapters that actually expose the
-    # Interrupt Moderation property, using driver-valid values only.
-    T("perf-013", "Disable NIC Interrupt Moderation",
-      "Disables Interrupt Moderation on each active physical network "
-      "adapter that exposes the setting (detect-first, revert-safe).",
-      actions=[
-          ("netadp", "interrupt_moderation"),
-      ],
-      revert=[
-          ("netadp", "interrupt_moderation_revert"),
-      ],
-      why="Interrupt moderation batches interrupts to save CPU, adding a "
-          "little latency per packet. On Realtek adapters under heavy "
-          "packet load that can show as input/network jitter, but results "
-          "are hardware-specific - so this is experimental and you should "
-          "benchmark before/after.",
-      changes="Disables Interrupt Moderation only where the adapter exposes "
-              "it, with driver-valid values (global netsh tuning untouched).",
-      risk="low", impact="low", recommended="experimental",
-      admin=True,
-      warn="Adapter-specific and experimentally beneficial - some drivers "
-           "raise CPU use with moderation off; benchmark before/after.",
-      tags=["network", "interrupt", "moderation", "latency", "experimental", "adapter"],
-      updated="2026-09-27"),
 
     # ── Interrupt Affinity ─────────────────────────────────────────
     T("perf-019", "Optimize Interrupt Affinity",
@@ -347,24 +319,6 @@ TWEAKS = validate_module("performance", [
     # ── Service Priority ──── REMOVED (causes priority inversion) ──
     # ── Prefetch ──── REMOVED (duplicate of ram-001) ──
     # ── Superfetch (Registry) ──── REMOVED (duplicate of perf-005) ──
-
-    # ── Memory Compression (Cmd) ─────────────────────────────────
-    T("perf-042", "Disable Memory Compression (Cmd)",
-      "Disable Windows Memory Compression via PowerShell to reduce CPU "
-      "overhead on systems with ample RAM.",
-      actions=[
-          ("cmd", "Disable-MMAgent -MemoryCompression"),
-      ],
-      revert=[
-          ("cmd", "Enable-MMAgent -MemoryCompression"),
-      ],
-      why="Memory Compression uses CPU cycles to compress/decompress memory "
-          "pages. Disabling it frees CPU resources for gaming on systems "
-          "with 16 GB+ RAM.",
-      changes="Disables Windows Memory Compression via PowerShell.",
-      risk="low", impact="moderate", recommended="optional",
-      admin=True,
-      tags=["memory", "compression", "cpu", "powershell"]),
 
     # ── Page Combining (Registry) ────────────────────────────────
     T("perf-043", "Disable Page Combining (Registry)",

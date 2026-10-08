@@ -105,14 +105,14 @@ def test_verified_non_mutating_count_is_pinned():
     """Verified non-mutating = read-only diagnostics + transient one-shots.
     Every one of them now lives in the Diagnostics / System Tools categories,
     because guidance and informational text is no longer shipped."""
-    assert len(VERIFIED_NON_MUTATING) == 80
+    assert len(VERIFIED_NON_MUTATING) == 78
 
 
 def test_verified_and_mutating_partition_the_verified_set():
     verified = [t for t in TWEAKS if t.get("verified")]
     ids = {t["id"] for t in verified}
     assert ids == VM_IDS | {t["id"] for t in VERIFIED_NON_MUTATING}
-    assert len(ids) == len(VERIFIED_MUTATING) + len(VERIFIED_NON_MUTATING) == 145
+    assert len(ids) == len(VERIFIED_MUTATING) + len(VERIFIED_NON_MUTATING) == 143
 
 
 def test_no_cmd_action_that_writes_is_classified_as_read_only():
@@ -403,13 +403,13 @@ def test_report_never_lists_a_diagnostic_as_a_mutating_verified_tweak(report):
 
 def test_report_counts_diagnostics_separately(report):
     kinds = report["verified_kinds"]
-    assert kinds["guidance"] + kinds["read_only"] + kinds["transient"] == 80
+    assert kinds["guidance"] + kinds["read_only"] + kinds["transient"] == 78
     assert kinds["guidance"] == 0
 
 
 def test_report_rows_cover_the_catalogue_exactly_once(report):
     ids = [r["id"] for r in report["rows"]]
-    assert len(ids) == len(set(ids)) == len(TWEAKS) == 595
+    assert len(ids) == len(set(ids)) == len(TWEAKS) == 577
 
 
 def test_report_marks_non_mutating_rows_reversible_na(report):

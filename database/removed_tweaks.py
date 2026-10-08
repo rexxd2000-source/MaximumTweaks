@@ -6,6 +6,10 @@ They are kept so the reason for each removal stays reviewable long after the
 tweak itself is gone from the modules. Nothing here is loaded into BY_ID; this
 file exists purely for history.
 
+The 2026-10-08 final-release audit removed a second batch (see the block at
+the end of REMOVED_TWEAKS): duplicate consolidation to strictly-exactly-once,
+plus the svc-001 REWRITE resolution.
+
 Each record carries:
   * the canonical tweak that still ships the same (target, value) pair, when
     the removal was a duplicate consolidation (``canonical`` is not None);
@@ -820,4 +824,60 @@ REMOVED_TWEAKS: dict[str, dict[str, str | None]] = {
     "wifi-014": {"name": 'Disable Preferred Network Promotion',
                 "reason": 'Purely informational entry: guidance/advice text with no PC modification and no diagnostic check. Removed so every remaining catalogue entry either applies a real change or performs a real check.',
                 "canonical": None},
+
+    # ── Final release audit, 2026-10-08 ────────────────────────────
+    "cpu_amd_decrease_policy": {"name": "Performance Decrease Policy (AMD)",
+                "reason": "Vendor-gated duplicate of `perf-034` (same boost decrease-policy value); perf-034 ships as the single shared card.",
+                "canonical": "perf-034"},
+    "cpu_amd_decrease_threshold": {"name": "Performance Decrease Threshold (AMD)",
+                "reason": "Vendor-gated duplicate of `cpu_intel_decrease_threshold` (same target and value); the shared cross-vendor card ships instead.",
+                "canonical": "cpu_intel_decrease_threshold"},
+    "cpu_amd_increase_policy": {"name": "Performance Increase Policy (AMD)",
+                "reason": "Vendor-gated duplicate of `cpu_intel_increase_policy` (same target and value); the shared cross-vendor card ships instead.",
+                "canonical": "cpu_intel_increase_policy"},
+    "cpu_amd_increase_threshold": {"name": "Performance Increase Threshold (AMD)",
+                "reason": "Vendor-gated duplicate of `cpu_intel_increase_threshold` (same target and value); the shared cross-vendor card ships instead.",
+                "canonical": "cpu_intel_increase_threshold"},
+    "cpu_intel_decrease_policy": {"name": "Performance Decrease Policy (Intel)",
+                "reason": "Exact duplicate of `perf-034` (same boost decrease-policy value); perf-034 ships instead.",
+                "canonical": "perf-034"},
+    "dd-015": {"name": "Optimize Network Interrupt Moderation",
+                "reason": "Exact duplicate of `net-020` (same adapter interrupt-moderation actions); net-020 ships instead.",
+                "canonical": "net-020"},
+    "diag-002": {"name": "Open DirectX Diagnostic",
+                "reason": "Exact duplicate of `dx-001` (both launch dxdiag); dx-001 ships instead.",
+                "canonical": "dx-001"},
+    "fpsb-025": {"name": "Disable NTFS Last Access Timestamps",
+                "reason": "Exact duplicate of `stor-016` (same fsutil last-access target); stor-016 ships instead.",
+                "canonical": "stor-016"},
+    "gpu-024": {"name": "Disable DWM Visual Effects",
+                "reason": "Gated duplicate of `lap-053` (same DWM ForceEffectMode value); lap-053 ships ungated with an honest name.",
+                "canonical": "lap-053"},
+    "mouse-059": {"name": "Restart Explorer for Pointer UI",
+                "reason": "Exact duplicate of `expl-014` (same explorer restart); expl-014 ships instead.",
+                "canonical": "expl-014"},
+    "perf-013": {"name": "Disable NIC Interrupt Moderation",
+                "reason": "Exact duplicate of `net-020` (same adapter interrupt-moderation actions); net-020 ships instead.",
+                "canonical": "net-020"},
+    "perf-042": {"name": "Disable Memory Compression (Cmd)",
+                "reason": "Exact duplicate of `perf-004` (same MMAgent target); perf-004 ships instead with its commands fixed to run under PowerShell.",
+                "canonical": "perf-004"},
+    "power-006": {"name": "Disable Hibernation",
+                "reason": "Exact duplicate of `perf-008` (`powercfg /hibernate off`); perf-008 ships instead.",
+                "canonical": "perf-008"},
+    "process_priority": {"name": "Foreground Priority Boost",
+                "reason": "Exact duplicate of `adv-006` (same Win32PrioritySeparation target and value); adv-006 ships instead.",
+                "canonical": "adv-006"},
+    "ram-003": {"name": "Disable SysMain on SSD",
+                "reason": "Duplicate SysMain disable (SSD-gated); `perf-005` ships as the single canonical disable.",
+                "canonical": "perf-005"},
+    "ram-008": {"name": "Disable Hibernation Reserve",
+                "reason": "Duplicate hibernation-off card (laptop-gated `powercfg /h`); `perf-008` ships instead.",
+                "canonical": "perf-008"},
+    "stor-001": {"name": "Enable SSD TRIM",
+                "reason": "Exact duplicate of `perf-037` (same fsutil TRIM target and value); perf-037 ships instead.",
+                "canonical": "perf-037"},
+    "svc-001": {"name": "Disable SysMain",
+                "reason": "Duplicate SysMain disable (audit REWRITE resolution); `perf-005` ships as the single canonical disable.",
+                "canonical": "perf-005"},
 }
