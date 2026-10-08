@@ -1,11 +1,14 @@
-﻿!define VERSION "2.5.2"
+﻿; VERSION can be overridden by the release workflow (/DVERSION=x.y.z);
+; the fallback below is only used for local compiles.
+!ifndef VERSION
+  !define VERSION "2.5.2"
+!endif
 !define APPNAME "Maximum Tweaks"
 !define APPNAME_SHORT "MaximumTweaks"
 !define EXENAME "MaximumTweaks.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 
 !include "MUI2.nsh"
-!include "nsProcess.nsh"
 
 Name "${APPNAME}"
 OutFile "MaximumTweaks-Setup-${VERSION}.exe"
@@ -35,9 +38,11 @@ Var BrandingText
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
-  ${nsProcess::FindProcess} "${EXENAME}" $0
-  StrCmp $0 0 0 +2
-  ${nsProcess::KillProcess} "${EXENAME}" $0
+  # Kill any running copy with stock taskkill - nsProcess is a third-party
+  # plugin that a stock/choco NSIS install does not provide, and its absence
+  # broke the installer compile. taskkill exits 128 when nothing is running,
+  # which we ignore.
+  ExecWait '"$SYSDIR\taskkill.exe" /F /IM "${EXENAME}"'
   Sleep 1000
 
   ReadRegStr $INSTDIR HKCU "Software\${APPNAME}" "InstallDir"
@@ -51,8 +56,6 @@ FunctionEnd
 Section "Install"
   SetOutPath "$INSTDIR"
   File /r "dist\MaximumTweaks.exe"
-  SetOutPath "$INSTDIR\ui"
-  SetOutPath "$INSTDIR"
 
   WriteRegStr HKCU "Software\${APPNAME}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\${APPNAME}" "Version" "${VERSION}"
@@ -73,18 +76,23 @@ Section "Install"
   SetRegView 32
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
-  IfSilent 0 +3
-    Exec '"$INSTDIR\${EXENAME}"'
-    Quit
-
+  # Shortcuts are created for every mode. The silent branch used to Quit
+  # before this point, so the first silent (updater-triggered) install left
+  # the machine with no Start Menu or desktop shortcut at all.
   CreateShortCut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${EXENAME}"
   CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\${EXENAME}"
+
+  # Silent installs relaunch the freshly installed app; the interactive
+  # wizard does not. Explicit labels - no fragile +N offsets.
+  IfSilent silent_run interactive_done
+silent_run:
+  Exec '"$INSTDIR\${EXENAME}"'
+  Quit
+interactive_done:
 SectionEnd
 
 Section "Uninstall"
-  ${nsProcess::FindProcess} "${EXENAME}" $0
-  StrCmp $0 0 0 +2
-  ${nsProcess::KillProcess} "${EXENAME}" $0
+  ExecWait '"$SYSDIR\taskkill.exe" /F /IM "${EXENAME}"'
   Sleep 500
 
   # Remove only the files this installer created. User data that the app
@@ -105,24 +113,3 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APPNAME}.lnk"
   Delete "$DESKTOP\${APPNAME}.lnk"
 SectionEnd
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

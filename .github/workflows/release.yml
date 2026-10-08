@@ -55,7 +55,34 @@ jobs:
             Write-Error "NSIS script $nsi not found"
             exit 1
           }
-          makensis /DVERSION=$version $nsi
+          # choco does not refresh PATH for the current session, and the
+          # installer location varies (Program Files vs Program Files (x86)).
+          $candidates = @(
+            "$env:ProgramFiles\NSIS\makensis.exe",
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          )
+          $makensis = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $makensis) {
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+              [System.Environment]::GetEnvironmentVariable("Path","User")
+            $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $makensis = $cmd.Source }
+          }
+          if (-not $makensis) {
+            Write-Error "makensis.exe not found (checked Program Files and PATH)"
+            exit 1
+          }
+          Write-Host "using $makensis"
+          & $makensis /DVERSION=$version $nsi
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "makensis failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          $setup = "MaximumTweaks-Setup-$version.exe"
+          if (!(Test-Path $setup)) {
+            Write-Error "makensis reported success but $setup is missing"
+            exit 1
+          }
 
       - name: Generate SHA256 checksums
         shell: pwsh
@@ -84,6 +111,36 @@ jobs:
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$line``"
           }
 
+      # A release without installer fields in the served manifest would strand
+      # every NSIS-installed copy (the updater prefers installer_url when the
+      # app sits in the registered install folder). release.ps1's
+      # Update-Manifest writes these fields; this gate makes skipping it
+      # impossible. Checks presence only - rc tags intentionally keep the
+      # stable manifest version, and the assets this points at are created by
+      # this very run.
+      - name: Validate update manifest installer fields
+        shell: pwsh
+        run: |
+          $path = "auth_backend\web\update.json"
+          if (!(Test-Path $path)) {
+            Write-Host "::error::$path not found"
+            exit 1
+          }
+          $m = Get-Content $path -Raw | ConvertFrom-Json
+          $errors = @()
+          if (-not $m.version)       { $errors += "version missing" }
+          if (-not $m.url)           { $errors += "url missing" }
+          if (-not $m.installer_url) { $errors += "installer_url missing" }
+          if (-not ($m.installer_sha256 -or $m.installer_checksum_url)) {
+            $errors += "installer_sha256 or installer_checksum_url missing"
+          }
+          if ($errors.Count -gt 0) {
+            foreach ($e in $errors) { Write-Host "::error::$path - $e" }
+            exit 1
+          }
+          Write-Host "manifest OK: version=$($m.version); installer_url=$($m.installer_url)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "manifest OK: version=$($m.version)"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -91,7 +148,7 @@ jobs:
           name: Maximum Tweaks v${{ steps.get_version.outputs.version }}
           body_path: CHANGELOG.md
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/MaximumTweaks.exe
             dist/MaximumTweaks.exe.sha256
