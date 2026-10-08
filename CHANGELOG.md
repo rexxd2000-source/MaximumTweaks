@@ -1,5 +1,24 @@
 ﻿# Changelog
 
+## v2.5.4 — 2026-10-08
+
+### New
+- **Updater resilience**: if the update-manifest server is unreachable or
+  refuses the request, the app now falls back to the GitHub releases API, so
+  one server outage can never block updates again. NSIS-installed copies
+  still resolve and checksum-verify the matching
+  `MaximumTweaks-Setup-<version>.exe` from the release assets (regression
+  tests cover the fallback for installed and portable copies).
+
+### Fixed
+- Installed builds no longer fail update checks with "update server refused
+  the request (HTTP 502)" when `update.json` on the manifest host is missing
+  or stale — the fallback resolves the latest release directly from GitHub.
+
+### Updated
+- Version bump to **2.5.4** everywhere (`APP_VERSION`, NSIS fallback; no
+  manifest change until the release cut regenerates it).
+
 ## v2.5.3 — 2026-10-08
 
 ### New

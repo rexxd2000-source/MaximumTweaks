@@ -1,7 +1,7 @@
 ﻿; VERSION can be overridden by the release workflow (/DVERSION=x.y.z);
 ; the fallback below is only used for local compiles.
 !ifndef VERSION
-  !define VERSION "2.5.3"
+  !define VERSION "2.5.4"
 !endif
 !define APPNAME "Maximum Tweaks"
 !define APPNAME_SHORT "MaximumTweaks"
