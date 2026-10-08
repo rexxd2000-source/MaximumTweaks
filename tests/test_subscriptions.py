@@ -442,7 +442,7 @@ def test_no_orphaned_validation_overrides():
 
     This used to be only a RuntimeWarning, and the warning fired on *any*
     partial list (a one-element sample reported all 295 overrides as stale).
-    Real drift now must not exist at all - _dev/check_validation_drift.py
+    Real drift now must not exist at all - tools/check_validation_drift.py
     lists the offenders for cleanup.
     """
     orphan = V.orphaned_overrides()
