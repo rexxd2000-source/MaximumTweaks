@@ -1,5 +1,7 @@
 {
   "version": "2.5.2",
   "notes": "- Update fixes",
-  "url": "https://github.com/rexxd2000-source/MaximumTweaks/releases/download/v2.5.2/MaximumTweaks.exe"
+  "url": "https://github.com/rexxd2000-source/MaximumTweaks/releases/download/v2.5.2/MaximumTweaks.exe",
+  "installer_url": "https://github.com/rexxd2000-source/MaximumTweaks/releases/download/v2.5.3-rc1/MaximumTweaks-Setup-2.5.3-rc1.exe",
+  "installer_checksum_url": "https://github.com/rexxd2000-source/MaximumTweaks/releases/download/v2.5.3-rc1/MaximumTweaks-Setup-2.5.3-rc1.exe.sha256"
 }
