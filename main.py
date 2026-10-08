@@ -15,6 +15,19 @@ import argparse
 import os
 import sys
 
+if "--cli" not in sys.argv[1:] and getattr(sys, "frozen", False):
+    try:
+        import ctypes as _ct
+        _console = _ct.windll.kernel32.GetConsoleWindow()
+        if _console:
+            _title_buf = _ct.create_unicode_buffer(512)
+            _ct.windll.kernel32.GetConsoleTitleW(_title_buf, 512)
+            _exe_name = os.path.basename(sys.executable or "").lower()
+            if _exe_name and (_title_buf.value or "").lower().endswith(_exe_name):
+                _ct.windll.user32.ShowWindow(_console, 0)  # SW_HIDE
+    except Exception:  # noqa: BLE001
+        pass
+
 from database import BY_ID, CATEGORIES, TWEAKS
 
 RISK_ORDER = {"safe": 0, "low": 1, "moderate": 2, "advanced": 3}
