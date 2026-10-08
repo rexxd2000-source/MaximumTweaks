@@ -1,7 +1,7 @@
 ﻿; VERSION can be overridden by the release workflow (/DVERSION=x.y.z);
 ; the fallback below is only used for local compiles.
 !ifndef VERSION
-  !define VERSION "2.5.2"
+  !define VERSION "2.5.3"
 !endif
 !define APPNAME "Maximum Tweaks"
 !define APPNAME_SHORT "MaximumTweaks"
@@ -25,8 +25,6 @@ ManifestSupportedOS all
 
 
 !define MUI_ABORTWARNING
-
-Var BrandingText
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
