@@ -156,7 +156,9 @@ _UPDATE_MANIFEST_FILE = os.path.join(_WEB_DIR, "update.json")
 @app.get("/update.json", include_in_schema=False)
 def update_manifest():
     try:
-        with open(_UPDATE_MANIFEST_FILE, "r", encoding="utf-8") as fh:
+        # utf-8-sig: tolerate a UTF-8 BOM (PowerShell writes one) — a BOM'd
+        # manifest 502'd every update check before this.
+        with open(_UPDATE_MANIFEST_FILE, "r", encoding="utf-8-sig") as fh:
             data = json.load(fh)
     except Exception:  # noqa: BLE001
         logger.warning("update manifest: missing/unreadable update.json")

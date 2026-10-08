@@ -254,7 +254,10 @@ def _get_json_once(url: str, timeout: float = 15.0, token: str = "") -> dict:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             try:
-                return json.loads(resp.read().decode("utf-8"))
+                # utf-8-sig: tolerate a UTF-8 BOM (PowerShell-generated
+                # manifests ship one) — plain utf-8 decoding makes json.loads
+                # raise, which would fail the check.
+                return json.loads(resp.read().decode("utf-8-sig"))
             except Exception as exc:  # noqa: BLE001
                 raise _HttpError(f"invalid JSON from {url}") from exc
     except urllib.error.HTTPError as exc:

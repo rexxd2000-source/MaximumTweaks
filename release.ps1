@@ -58,6 +58,14 @@ function Set-Version {
     Write-Host "[1/5] APP_VERSION -> $Version" -ForegroundColor Cyan
 }
 
+function Write-JsonNoBom {
+    param([string]$Path, [string]$Content)
+    # PowerShell 5.1's Set-Content -Encoding UTF8 writes a BOM, which
+    # json.load/json.loads reject — that 502'd /update.json for every user.
+    [System.IO.File]::WriteAllText($Path, $Content,
+        (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Update-Manifest {
     param([string]$Repo)
     # Regenerate the served /update.json (auth_backend\web\update.json) so the
@@ -86,7 +94,7 @@ function Update-Manifest {
         if (-not ($m.installer_checksum_url -or $m.installer_sha256)) {
             $m | Add-Member -NotePropertyName installer_checksum_url -NotePropertyValue "$setupDl.sha256"
         }
-        $m | ConvertTo-Json | Set-Content $manifest -Encoding UTF8 -ErrorAction Stop
+        Write-JsonNoBom -Path $manifest -Content ($m | ConvertTo-Json)
         Write-Host "      manifest: prerelease - stable version kept, installer fields ensured" -ForegroundColor DarkGray
         return
     }
@@ -103,7 +111,7 @@ function Update-Manifest {
         installer_checksum_url = "$setupDl.sha256"
     }
     $m = $m | ConvertTo-Json
-    Set-Content $manifest $m -Encoding UTF8 -ErrorAction Stop
+    Write-JsonNoBom -Path $manifest -Content $m
     Write-Host "      manifest -> auth_backend\web\update.json (version $Version)" -ForegroundColor DarkGray
 }
 

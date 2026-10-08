@@ -1,5 +1,6 @@
 """NSIS-installed copies must update by re-running the setup, not by
 swapping the exe (Program Files is not writable from an unelevated app)."""
+import json
 import sys
 from pathlib import Path
 
@@ -93,6 +94,31 @@ def test_manifest_and_github_down_raises(monkeypatch):
     monkeypatch.setattr(updater, "_get_json", _down)
     with pytest.raises(updater.UpdaterError, match="HTTP 502"):
         updater.fetch_update()
+
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self, *a, **k):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_get_json_tolerates_utf8_bom_manifest(monkeypatch):
+    """A BOM'd manifest (release.ps1 used to write one) must still parse —
+    plain utf-8 decoding raised and failed the check."""
+    payload = json.dumps({"version": "9.9.9", "url": "https://cdn/x.exe"})
+    monkeypatch.setattr(
+        updater.urllib.request, "urlopen",
+        lambda *a, **k: _FakeResp(payload.encode("utf-8-sig")))
+    data = updater._get_json_once("https://example.test/update.json")
+    assert data["version"] == "9.9.9"
 
 
 def test_is_nsis_installed_by_exe_location(monkeypatch, tmp_path):
