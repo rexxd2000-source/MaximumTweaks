@@ -51,7 +51,7 @@ _NPI_EXE = "NVIDIA Profile Inspector.exe"
 # move / be installed elsewhere, so the hardcoded dev path is only the first
 # candidate — never the sole assumption.
 _NPI_CANDIDATES = [
-    Path(r"C:\Users\Admin\Documents\NVIDIA-Profile-Inspector\dist") / _NPI_EXE,
+    Path.home() / "Documents" / "NVIDIA-Profile-Inspector" / "dist" / _NPI_EXE,
     Path(r"C:\Program Files\NVIDIA Profile Inspector") / _NPI_EXE,
     Path(r"C:\Program Files (x86)\NVIDIA Profile Inspector") / _NPI_EXE,
 ]

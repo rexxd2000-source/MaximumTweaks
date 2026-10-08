@@ -67,7 +67,7 @@ class TestNotifyStaff:
             return True
 
         m.discord_bot_send_message = fake_send
-        m.DISCORD_REGISTRATION_CHANNEL_ID = "1556361665719697489"
+        m.DISCORD_REGISTRATION_CHANNEL_ID = "111111111111111111"
         m.DISCORD_BOT_TOKEN = "bot-token"
 
         ok = m._discord_notify_staff(
@@ -75,7 +75,7 @@ class TestNotifyStaff:
             discord_id="1545177212255346784", account_id="MO-89A3A7",
             tier="foundation", status="active", server_membership="CONFIRMED")
         assert ok is True
-        assert seen["channel"] == "1556361665719697489"
+        assert seen["channel"] == "111111111111111111"
         assert "rex2yd." in seen["content"]
 
     def test_skips_and_warns_when_unconfigured(self):

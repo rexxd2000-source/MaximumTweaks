@@ -107,7 +107,7 @@ class TestEndUserCallbackPages:
         m._discord_user = lambda t: {"id": "9" * 19, "username": "probe"}
         m.discord_bot_add_member = lambda g, u, a: joined
         m._discord_notify_staff = lambda **k: True
-        m.DISCORD_GUILD_ID = "1438996702756475063"
+        m.DISCORD_GUILD_ID = "222222222222222222"
         return _client(m)
 
     def test_confirmed_join_says_they_are_in_the_server(self):

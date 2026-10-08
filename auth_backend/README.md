@@ -227,7 +227,7 @@ as-is, so always pair it with a throwaway `TEST_DATABASE_URL`.
   `https://discord.com/developers/applications`, enable OAuth2, add the redirect
   URI `https://maximumtweaks.onrender.com/admin/discord/callback`, then set
   `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_ADMIN_IDS`
-  (`458618658390933507,924289061907218462`) and optionally
+  (comma-separated user snowflakes, e.g. `123456789012345678`) and optionally
   `DISCORD_ADMIN_NAMES` in the Render environment. Until they are set, the
   server keeps reporting `auth: "token"` and the panel shows the
   operator-token box.
