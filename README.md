@@ -90,7 +90,9 @@ Run the resulting exe as **Administrator** to apply admin-requiring tweaks
 New builds are **pushed to users without a reinstall**:
 
 1. Users run the app; at startup and from **Settings → Update → Check for
-   Updates** it asks the server if a newer version exists.
+   Updates** it asks the server if a newer version exists. If the update
+   server is down or refuses the request, the check automatically falls back
+   to the GitHub releases API, so one broken server can never block updates.
 2. When a release is newer than the installed build, the user presses
    **Restart & Update** — the app downloads the new build in the background
    and installs it: **NSIS installs** (registered in the registry) download

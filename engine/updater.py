@@ -313,8 +313,29 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
     sha256 = ""
     kind = "exe"
     filename = ""
-    if UPDATE_MANIFEST_URL:
-        data = _get_json(UPDATE_MANIFEST_URL.strip(), timeout)
+    manifest_url = (UPDATE_MANIFEST_URL or "").strip()
+    if manifest_url:
+        try:
+            data = _get_json(manifest_url, timeout)
+        except _HttpError:
+            # One broken update server must never block updates — fall back
+            # to the GitHub releases API (last resort).
+            logger.info(
+                f"updater: manifest server unreachable, falling back to the "
+                f"GitHub releases API ({GITHUB_REPO})")
+            data = None
+    else:
+        data = None
+
+    if data is None:
+        data = _get_json(_github_api_url(), timeout, token=GITHUB_TOKEN)
+        tag = str(data.get("tag_name") or "").strip().lstrip("v")
+        if not tag:
+            raise UpdaterError("The release has no version tag.")
+        version = tag
+        notes = str(data.get("body") or "")
+        url = ""
+    else:
         version = str(data.get("version") or "").strip()
         url = str(data.get("url") or "").strip()
         notes = str(data.get("notes") or "")
@@ -338,14 +359,6 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         else:
             filename = (base if base.lower().endswith(".exe")
                         else UPDATE_EXE_NAME)
-    else:
-        data = _get_json(_github_api_url(), timeout, token=GITHUB_TOKEN)
-        tag = str(data.get("tag_name") or "").strip().lstrip("v")
-        if not tag:
-            raise UpdaterError("The release has no version tag.")
-        version = tag
-        notes = str(data.get("body") or "")
-        url = ""
 
     if not is_newer(version, APP_VERSION):
         logger.info(f"updater: up to date (latest is v{version})")

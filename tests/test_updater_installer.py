@@ -39,6 +39,62 @@ def _patch_github(monkeypatch, release, installed):
     monkeypatch.setattr(updater, "is_nsis_installed", lambda *a, **k: installed)
 
 
+def _patch_manifest_down_github(monkeypatch, release, installed):
+    """Manifest server returns 502; _fetch_update must fall back to GitHub."""
+    monkeypatch.setattr(updater, "UPDATE_MANIFEST_URL",
+                        "https://example.test/update.json")
+    monkeypatch.setattr(updater, "GITHUB_TOKEN", "")
+
+    def _fake_get_json(url, *a, **k):
+        if "api.github.com" in url:
+            return dict(release)
+        raise updater._HttpError(
+            "The update server refused the request (HTTP 502).", 502)
+
+    monkeypatch.setattr(updater, "_get_json", _fake_get_json)
+    monkeypatch.setattr(updater, "is_nsis_installed", lambda *a, **k: installed)
+
+
+def test_manifest_down_falls_back_to_github_setup(monkeypatch):
+    _patch_manifest_down_github(monkeypatch, _github_release(), installed=True)
+    res = updater._fetch_update()
+    assert res["url"] == f"https://gh.example/{SETUP}"
+    assert res["checksum_url"] == f"https://gh.example/{SETUP}.sha256"
+    assert res["kind"] == "setup"
+    assert res["filename"] == SETUP
+
+
+def test_manifest_down_falls_back_to_github_exe(monkeypatch):
+    _patch_manifest_down_github(monkeypatch, _github_release(), installed=False)
+    res = updater._fetch_update()
+    assert res["url"] == f"https://gh.example/{EXE}"
+    assert res["checksum_url"] == f"https://gh.example/{EXE}.sha256"
+    assert res["kind"] == "exe"
+    assert res["filename"] == EXE
+
+
+def test_manifest_down_falls_back_to_github_up_to_date(monkeypatch):
+    release = _github_release()
+    release["tag_name"] = "v2.5.3"
+    monkeypatch.setattr(updater, "APP_VERSION", "2.5.3")
+    _patch_manifest_down_github(monkeypatch, release, installed=True)
+    assert updater._fetch_update() is None
+
+
+def test_manifest_and_github_down_raises(monkeypatch):
+    monkeypatch.setattr(updater, "UPDATE_MANIFEST_URL",
+                        "https://example.test/update.json")
+    monkeypatch.setattr(updater, "GITHUB_TOKEN", "")
+
+    def _down(url, *a, **k):
+        raise updater._HttpError(
+            "The update server refused the request (HTTP 502).", 502)
+
+    monkeypatch.setattr(updater, "_get_json", _down)
+    with pytest.raises(updater.UpdaterError, match="HTTP 502"):
+        updater.fetch_update()
+
+
 def test_is_nsis_installed_by_exe_location(monkeypatch, tmp_path):
     install_dir = tmp_path / "Maximum Tweaks"
     installed_exe = install_dir / EXE
