@@ -100,21 +100,32 @@ def run_gui():
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # Single instance: a second launch would double every scanner/auditor and
-    # flood the machine with child command processes. Exit quietly instead.
-    import ctypes as _ct
-    _h = _ct.windll.kernel32.CreateMutexW(None, False,
-                                          "Local\\MaximumTweaks.SingleInstance")
-    if _ct.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        try:
-            from config.app_config import APP_NAME, APP_VERSION
-            hwnd = _ct.windll.user32.FindWindowW(
-                None, f"{APP_NAME} v{APP_VERSION}")
-            if hwnd:
-                _ct.windll.user32.ShowWindow(hwnd, 9)   # SW_RESTORE
-                _ct.windll.user32.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
+    # flood the machine with child command processes. The guard is version
+    # aware - it brings an already-running copy that is at least as new as this
+    # build to the front and only takes over (terminating) stale older copies,
+    # so a lingering pre-update instance can no longer swallow the freshly
+    # installed build after an update.
+    from config.app_config import APP_NAME, APP_VERSION
+    try:
+        from engine import single_instance
+        _proceed = single_instance.enforce_single_instance(APP_NAME, APP_VERSION)
+    except Exception:  # noqa: BLE001
+        # Never let the guard itself block startup: fall back to the plain
+        # mutex check.
+        import ctypes as _ct
+        _ct.windll.kernel32.CreateMutexW(None, False,
+                                         "Local\\MaximumTweaks.SingleInstance")
+        _proceed = _ct.windll.kernel32.GetLastError() != 183
+    if not _proceed:
         return
+
+    # A stale HKCU autostart entry aimed at an old/portable copy would bring a
+    # pre-update build back on the next login - repoint it at this exe.
+    try:
+        from engine import autostart
+        autostart.repair_stale_autostart()
+    except Exception:  # noqa: BLE001
+        pass
 
     from config.app_config import APP_VERSION, LICENSE_API_URL
     from engine import license as license_mgr

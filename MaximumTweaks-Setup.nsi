@@ -109,6 +109,15 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${EXENAME}"
   CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\${EXENAME}"
 
+  # If the user already had our autostart entry, aim it at this install. An
+  # entry left pointing at an old/portable copy (e.g. a Desktop build) would
+  # relaunch a pre-update copy on the next login. Never create the entry when
+  # it did not exist.
+  ReadRegStr $R2 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APPNAME_SHORT}"
+  StrCmp $R2 "" autostart_done 0
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APPNAME_SHORT}" '"$INSTDIR\${EXENAME}" --minimized'
+autostart_done:
+
   # Launch the freshly installed app afterwards:
   #   /S      - silent install (2.5.4 and older updaters run this): relaunch
   #   /UPDATE - current updater: progress page was visible, relaunch + close
