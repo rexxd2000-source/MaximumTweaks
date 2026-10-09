@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "Maximum Tweaks"
-APP_VERSION = "2.5.10"
+APP_VERSION = "2.5.11"
 APP_TAGLINE = "Detect -> Analyze -> Recommend -> Optimize -> Measure -> Revert"
 ENGINE_NAME = "Maximum Engine"
 BOT_NAME = "Maximum"
@@ -278,6 +278,7 @@ try:
     AUTH_API_URL = os.getenv("AUTH_API_URL", LICENSE_API_URL)
 except Exception:
     AUTH_API_URL = LICENSE_API_URL
+
 
 
 
