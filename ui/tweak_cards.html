@@ -225,7 +225,7 @@
   .card{
     position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px;
     padding:20px; overflow:hidden; transform-style:preserve-3d; will-change:transform;
-    display:flex; flex-direction:column;
+    display:flex; flex-direction:column; cursor:pointer;
     transition: transform .12s ease-out, border-color .2s ease, box-shadow .2s ease;
   }
   .card::before{
@@ -263,6 +263,10 @@
      The tilt itself is untouched and still runs on every card. */
   .card.locked.performance{ --c:var(--perf); border-color:#4cc9f040; background:linear-gradient(180deg,#0f1c2c,var(--panel) 65%); }
   .card.locked.maximum{ --c:var(--max); border-color:#ffb54745; background:linear-gradient(180deg,#25190c,var(--panel) 65%); }
+  /* A locked card that is not yet applied has no toggle (only its Unlock
+     button acts), so the card body itself does not advertise a click. */
+  .card.locked{ cursor:default; }
+  .card.locked .unlock, .card.locked .btn-apply{ cursor:pointer; }
   .card.locked::before{
     content:''; position:absolute; left:0; top:0; right:0; height:3px; border-radius:0; opacity:1;
     background: linear-gradient(90deg, transparent, var(--c), transparent);
@@ -308,20 +312,47 @@
   .card.locked .c-bottom{ flex-direction:column; align-items:stretch; gap:12px; }
   .card:not(.locked) .c-bottom{ justify-content:flex-end; }
 
-  /* "N tweaks need a higher plan" banner, above the grid */
+  /* "N tweaks need a higher plan" banner, above the grid.
+     Layout mirrors the reference plan banner: a lock tile, the copy with a
+     real split bar + legend, and a purple "View plans" call to action. The two
+     plan accents here are the reference's own (blue #38bdf8 / orange #f5a524),
+     scoped to the banner only so the locked cards keep their tier colours. */
   .tier-banner{
-    display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:20px;
-    padding:12px 18px; border-radius:12px; border:1px solid var(--line);
-    background: linear-gradient(90deg,#4cc9f012,#ffb54712);
+    display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:18px;
+    margin-bottom:20px; padding:14px 18px; border-radius:16px; position:relative; overflow:hidden;
+    background: linear-gradient(120deg,#1b1433,var(--panel) 60%);
+    border:1px solid var(--line);
   }
   .tier-banner[hidden]{ display:none; }
-  .tier-banner b{ margin-right:auto; }
-  .bt{
-    display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:12px;
-    padding:5px 12px; border-radius:999px; border:1px solid;
+  .tier-banner::before{
+    content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background: linear-gradient(#38bdf8,#f5a524);
   }
-  .bt.performance{ color:var(--perf); border-color:#4cc9f066; }
-  .bt.maximum{ color:var(--max); border-color:#ffb54766; }
+  .tb-lock{
+    width:42px; height:42px; border-radius:12px; display:grid; place-items:center;
+    background:#241a45; border:1px solid #3b2d6b; color:#c9bdf5;
+  }
+  .tb-mid{ min-width:0; }
+  .tb-mid b{ font-size:15px; font-weight:700; }
+  .tb-mid small{ display:block; color:var(--dim); margin-top:1px; font-size:13px; }
+  .tb-split{ display:flex; height:6px; border-radius:99px; overflow:hidden; background:#1e1833; margin-top:10px; max-width:420px; }
+  .tb-split i{ display:block; height:100%; }
+  .tb-split .p{ background:#38bdf8; }
+  .tb-split .m{ background:#f5a524; }
+  .tb-legend{ display:flex; gap:16px; margin-top:8px; font-size:12px; color:var(--dim); }
+  .tb-legend em{ font-style:normal; color:var(--text); }
+  .tb-legend .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .tb-cta{
+    background:var(--lav); border:0; color:#fff; font:600 13.5px var(--sans);
+    padding:11px 18px; border-radius:10px; cursor:pointer; white-space:nowrap;
+    transition:filter .15s ease, transform .15s ease;
+  }
+  .tb-cta:hover{ filter:brightness(1.12); transform:translateY(-1px); }
+  .tb-cta:focus-visible{ outline:2px solid var(--text); outline-offset:2px; }
+  @media (max-width:700px){
+    .tier-banner{ grid-template-columns:auto 1fr; }
+    .tb-cta{ grid-column:1/-1; }
+  }
 
   .c-top{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; }
   .c-icon{
@@ -937,14 +968,28 @@ function renderTierBanner(list){
     el.innerHTML = '';
     return;
   }
+  /* The bar is drawn from the real per-tier counts, not a fixed ratio, so it
+     always reflects the cards currently on screen. A tier with no locked
+     cards contributes no legend entry and a 0-width bar segment. */
+  const pPct = Math.round(n.performance / tot * 100);
+  const mPct = 100 - pPct;
+  const legend = [
+    n.performance ? '<span><span class="dot" style="background:#38bdf8"></span><em>' +
+      n.performance + '</em> need ' + tierName('performance') + '</span>' : '',
+    n.maximum ? '<span><span class="dot" style="background:#f5a524"></span><em>' +
+      n.maximum + '</em> need ' + tierName('maximum') + '</span>' : ''
+  ].join('');
   el.hidden = false;
-  el.innerHTML = '<b>' + tot + ' tweak' + (tot > 1 ? 's' : '') +
-    ' on this page need a higher plan</b>' +
-    ['performance','maximum'].filter(function(k){ return n[k]; })
-      .map(function(k){
-        return '<span class="bt ' + k + '">' + tierIcon(k) +
-               n[k] + ' need ' + tierName(k) + '</span>';
-      }).join('');
+  el.innerHTML =
+    '<div class="tb-lock">' + lockSvg + '</div>' +
+    '<div class="tb-mid">' +
+      '<b>' + tot + ' tweak' + (tot > 1 ? 's' : '') + ' on this page need a higher plan</b>' +
+      '<small>Upgrade to unlock them.</small>' +
+      '<div class="tb-split"><i class="p" style="width:' + pPct + '%"></i>' +
+        '<i class="m" style="width:' + mPct + '%"></i></div>' +
+      (legend ? '<div class="tb-legend">' + legend + '</div>' : '') +
+    '</div>' +
+    '<button class="tb-cta" type="button">View plans</button>';
 }
 
 function setActive(id, value, force){
@@ -1683,13 +1728,20 @@ grid.addEventListener('click', (e) => {
     else toast('warn', 'Upgrade to ' + tierName(tier) + ' to unlock this');
     return;
   }
-  const btn = e.target.closest('.btn-apply');
-  if(!btn || busy) return;
-  const card = btn.closest('.card');
+  if(busy) return;
+  /* The whole card is the toggle: a click anywhere applies an inactive tweak
+     or reverts an active one, exactly as pressing its APPLY / APPLIED button. */
+  const card = e.target.closest('.card');
   if(!card) return;
+  const btn = card.querySelector('.btn-apply');
+  if(!btn || btn.disabled) return;
   const id = card.dataset.id;
   const t = tweaks.find(x => x.id === id);
   if(!t) return;
+  /* A locked tweak that is not applied is unlocked from its own button
+     (handled above), so its card body is not a toggle. A locked-but-applied
+     tweak keeps its REVERT button - revoking is never gated. */
+  if(t.locked && !t.active) return;
   const a = ui();
   if(!a || !a.apply) return;
   btn.disabled = true;
@@ -1698,6 +1750,14 @@ grid.addEventListener('click', (e) => {
   }else{
     a.apply(id);
   }
+});
+
+/* "View plans" on the tier banner: same destination as a locked card's Unlock
+   button. Delegated because the banner's inner HTML is rebuilt on every render. */
+document.getElementById('tierBanner').addEventListener('click', (e) => {
+  if(!e.target.closest('.tb-cta')) return;
+  const a = ui();
+  if(a && a.viewPlans) a.viewPlans();
 });
 
 document.getElementById('q').addEventListener('input', () => render());

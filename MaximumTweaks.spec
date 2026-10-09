@@ -24,6 +24,7 @@ datas.append((str(ROOT / "engine/netmonitor/cloud_regions.json"), "engine/netmon
 # woff2; JetBrains Mono comes from assets/fonts bundled above).
 datas.append((str(ROOT / "ui/smart_debloater.html"), "ui"))
 datas.append((str(ROOT / "ui/tweak_cards.html"), "ui"))
+datas.append((str(ROOT / "ui/tools.html"), "ui"))
 datas.append((str(ROOT / "ui/diagnostics.html"), "ui"))
 datas.append((str(ROOT / "ui/dock_nav.html"), "ui"))
 datas.append((str(ROOT / "ui/controller.html"), "ui"))

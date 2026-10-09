@@ -118,10 +118,11 @@ NAV_LUCIDE = {
                       '<path d="M2 8h20"/><path d="M6 4v4"/><path d="M10 4v4"/>',
     "route_analyzer": '<circle cx="12" cy="12" r="9"/>'
                      '<path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
-    # Frameless person: every other rectangular key draws a frame, so the
-    # silhouette itself keeps this one distinct at 22px.
-    "profiles": '<circle cx="12" cy="8" r="4"/>'
-                '<path d="M4 21v-1a7 7 0 0 1 14 0v1"/>',
+    # Clean frameless "user-round" silhouette (lucide): a single round head
+    # over one smooth shoulder arc. Kept frameless so it stays distinct from
+    # the framed rectangular keys at 22px.
+    "profiles": '<circle cx="12" cy="8" r="5"/>'
+                '<path d="M20 21a8 8 0 0 0-16 0"/>',
     # Frameless gamepad wings: a rounded-rect pad here collided head-on with
     # the keyboard's rounded-rect frame (0.72 IoU at 22px).
     "controller": '<path d="M7.5 7h9a5.5 5.5 0 0 1 5.4 6.6l-.7 3.4a3.1 3.1 0 0 1-5.5 1.4'
@@ -130,14 +131,19 @@ NAV_LUCIDE = {
                   '<circle cx="16" cy="11.5" r=".8"/><circle cx="18" cy="13.5" r=".8"/>',
     "fortnite": '<path d="M6 3v18M6 3h10l-3 4 3 4H6"/>',
     "chat": '<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',
-    # Full 4-lug gear. The bottom half of this path was missing upstream (it
-    # stopped at "A7 7 0 005 12"), which rendered as a half-gear with no
-    # bottom ring; the second half below is the vertical mirror of the first.
-    "settings": '<circle cx="12" cy="12" r="3"/>'
-                '<path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2'
-                'L14 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12'
-                'a7 7 0 00.3 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2l.4 2.6h4'
-                'l.6-2.6a7 7 0 002-1.2l2.3-.9 2 3.4-2-1.5a7 7 0 00.1-1.2z"/>',
+    # Canonical lucide "settings" gear: eight even teeth around a centred ring,
+    # so it reads as a real gear at 22px instead of the uneven-toothed, lopsided
+    # blob the previous hand-patched path produced.
+    "settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25'
+                'a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73'
+                'l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73'
+                'l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73'
+                'V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25'
+                'a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73'
+                'l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73'
+                'l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73'
+                'V4a2 2 0 0 0-2-2z"/>'
+                '<circle cx="12" cy="12" r="3"/>',
     # Added for the bottom dock, which needs a few glyphs the old sidebar
     # never drew. Same lucide geometry, same stroke-width, same family.
     # "monitor" is the dock's Windows/System category orb (distinct from the

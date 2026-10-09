@@ -10,7 +10,7 @@ The dock is a single fixed element inside the page (``bottom:0``, horizontally
 centred, ``z-index`` 999). This widget is therefore *not* part of any layout: it
 is a plain child of the window, raised above the page stack.
 
-The widget is created at one fixed size (560x340) and is **never resized**. A
+The widget is created at one fixed size (680x340) and is **never resized**. A
 QWebEngineView only re-lays-out and re-rasterises its content after a resize, so
 resizing the widget during an open or close leaves the DOM painting its old
 frame for a few frames while the widget has already moved on - that is what drew
@@ -64,7 +64,7 @@ BRAND_FIELD = (0x0F, 0x08, 0x1A)  # the logo's field colour, matches .logo in CS
 # is bottom-anchored at 0; this is the one place the 24px gap is set.
 BOTTOM_GAP = 24
 # The page's fixed element is intrinsically this wide (the popover width).
-DOCK_W = 560
+DOCK_W = 680
 # Bar height (plus its shadow pocket), used only to place the closed mask and to
 # tell floating UI where the bar's top edge is.
 DOCK_BAR_H = 110
@@ -430,7 +430,7 @@ class DockNav(QWidget):
         Chromium supports the property, it would simply have nothing to read.
         So the blur is produced on the Qt side: grab the part of the page stack
         the dock covers, shrink it, grow it back, and hand the result to the
-        document as its background. Measured at ~7ms for the 560x340 region.
+        document as its background. Measured at ~7ms for the 680x340 region.
 
         Only the stack is grabbed, never the window, so the dock cannot end up
         photographing itself.

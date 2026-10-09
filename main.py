@@ -48,6 +48,34 @@ RISK_ORDER = {"safe": 0, "low": 1, "moderate": 2, "advanced": 3}
 IMPACT_ORDER = {"very low": 0, "low": 1, "moderate": 2, "high": 3, "extreme": 4}
 REC_ORDER = {"recommended": 0, "optional": 1, "experimental": 2, "advanced": 3, "guide": 4, "not_recommended": 5}
 
+# PyInstaller's onefile bootloader exports its extraction dir to child processes
+# so they reuse it instead of extracting again. A long-lived detached child that
+# inherits these keeps the parent's _MEI temp dir locked after the GUI exits, so
+# the onefile cleanup fails and pops up "Failed to remove temporary directory".
+# Strip them for the background heartbeat so it owns and cleans up its own dir.
+_PYI_BOOTSTRAP_ENV = (
+    "_PYI_APPLICATION_HOME_DIR",
+    "_PYI_ARCHIVE_FILE",
+    "_PYI_PARENT_PROCESS_LEVEL",
+    "_MEIPASS2",
+)
+
+
+def _clean_child_env(environ=None):
+    """Return a copy of the environment without PyInstaller bootstrap vars."""
+    env = dict(os.environ if environ is None else environ)
+    for key in _PYI_BOOTSTRAP_ENV:
+        env.pop(key, None)
+    return env
+
+
+# Drop the bootstrap vars from our own environment too: every child we spawn
+# (the background heartbeat, an elevated self-relaunch, ...) must extract and
+# own its own _MEI dir so it never keeps ours locked after this window closes.
+for _pyi_key in _PYI_BOOTSTRAP_ENV:
+    os.environ.pop(_pyi_key, None)
+del _pyi_key
+
 
 def run_gui():
     from PySide6.QtCore import Qt, QTimer
@@ -261,7 +289,10 @@ def run_gui():
     # headless background heartbeat so the admin panel keeps this PC online
     # for as long as the machine stays on. It runs <this exe> --heartbeat with
     # no GUI and deliberately skips the single-instance mutex (the GUI owns
-    # that), so it coexists with us and keeps running after we exit.
+    # that), so it coexists with us and keeps running after we exit. We pass a
+    # cleaned env (_clean_child_env) so the child extracts its own _MEI temp dir
+    # instead of reusing ours — otherwise it locks ours and PyInstaller's
+    # on-exit cleanup shows "Failed to remove temporary directory".
     try:
         import subprocess as _spd
         import sys as _spd_sys
@@ -269,6 +300,7 @@ def run_gui():
         _exe = _spd_sys.executable
         _spd.Popen(
             [_exe, "--cli", "heartbeat", "--minutes", "5"],
+            env=_clean_child_env(),
             creationflags=getattr(_spd, "DETACHED_PROCESS", 0x00000008)
             | getattr(_spd, "CREATE_NO_WINDOW", 0x08000000)
             | getattr(_spd, "CREATE_NEW_PROCESS_GROUP", 0x00000200),

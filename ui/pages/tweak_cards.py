@@ -115,6 +115,11 @@ class _TweakCardsBridge(QObject):
         """
         self._page.open_upgrade(tier)
 
+    @Slot()
+    def viewPlans(self):
+        """The tier banner's "View plans" button: open the pricing page."""
+        self._page.view_plans()
+
 
 # ---------------------------------------------------------------- page
 
@@ -503,6 +508,14 @@ class TweakCardsPage(QWidget):
             QDesktopServices.openUrl(QUrl(DISCORD_INVITE_URL))
         toast(f"Opening Discord to unlock {label}.",
               "info", self, "Your ticket message is copied - just paste it in.")
+
+    def view_plans(self):
+        """Open Discord from the tier banner's "View plans" button.
+
+        Same destination as a locked card's Unlock button: the server invite
+        opens and a prefilled ticket is copied to the clipboard.
+        """
+        self.open_upgrade(current_tier())
 
     def _upgrade_ticket(self, tier: str, label: str) -> str:
         """Prefilled Discord ticket: who they are and what they want.

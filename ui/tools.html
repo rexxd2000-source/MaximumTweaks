@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tools – Maximum Tweaks</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#0b0912;--card:#14111f;--line:#241f36;--tx:#f1eefb;--mut:#8b84a6;--pri:#8b5cf6;--pri2:#a78bfa;--warn:#f5a524}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 400px at 10% -10%,#1d1236,transparent),var(--bg);color:var(--tx);font:14px/1.4 Inter,Segoe UI,system-ui,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:26px}.sub{color:var(--mut);margin-top:2px}
+button{font:inherit;color:inherit;cursor:pointer}
+.top button{background:var(--card);border:1px solid var(--line);padding:8px 14px;border-radius:10px;margin-left:6px}
+.top button:hover{border-color:var(--pri)}
+.search{margin:20px 0 14px;display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0 14px}
+.search:focus-within{border-color:var(--pri)}
+.search input{flex:1;background:none;border:0;outline:0;color:var(--tx);padding:13px 0;font:inherit}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.tab{white-space:nowrap;background:transparent;border:1px solid var(--line);padding:6px 14px;border-radius:99px;color:var(--mut)}
+.tab.on{background:var(--pri);border-color:var(--pri);color:#fff}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin:26px 0 10px}
+.quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.q{background:linear-gradient(160deg,#2a1b52,#171226);border:1px solid #3a2c6b;border-radius:14px;padding:14px;text-align:left;transition:.15s}
+.q:hover{transform:translateY(-2px);border-color:var(--pri2)}
+.q b{display:block;margin-bottom:2px}.q span{color:var(--mut);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.t{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.t:hover{border-color:#3b3160}
+.ic{width:34px;height:34px;flex:none;border-radius:9px;display:grid;place-items:center;background:#1e1833;color:var(--pri2);font-weight:700;font-size:13px}
+.tx{flex:1;min-width:0}.tx b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx span{color:var(--mut);font-size:12px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm{font-size:10px;color:var(--warn);border:1px solid #6b4a12;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.run{background:#1e1833;border:1px solid var(--line);border-radius:8px;padding:6px 14px}
+.run:hover{background:var(--pri);border-color:var(--pri)}
+.empty{color:var(--mut);text-align:center;padding:40px}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);background:#1e1833;border:1px solid var(--pri);padding:10px 18px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style></head><body><div class="wrap">
+<header><div><h1>Tools</h1><div class="sub" id="count"></div></div>
+<div class="top"><button data-act="scan">Scan Hardware</button><button data-act="logs">Logs</button></div></header>
+<label class="search"><span>⌕</span><input id="q" placeholder="Search tools…" autocomplete="off"></label>
+<div class="tabs" id="tabs"></div>
+<div id="quickBox"><h2>Quick launch</h2><div class="quick" id="quick"></div></div>
+<div id="list"></div><div id="toast"></div></div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+/* Data is pushed by the host (Python) from the real tweak database:
+   window.mxSetTools({tools:[{id,name,desc,cat,admin}...], quick:[{..,label}...]}). */
+const cats=["All","System","Network","Storage","Display","Hardware","Repair","Input","Audio","USB","Startup"];
+let tools=[],quick=[],cat="All",term="";
+const $=s=>document.querySelector(s),toast=$("#toast");
+function say(m){toast.textContent=m;toast.classList.add("show");clearTimeout(say.t);say.t=setTimeout(()=>toast.classList.remove("show"),1800)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function tabs(){$("#tabs").innerHTML=cats.map(c=>`<button class="tab ${c==cat?"on":""}" data-c="${c}">${c}</button>`).join("")}
+function row(t){return `<div class="t"><div class="ic">${esc(t.name[0])}</div><div class="tx"><b>${esc(t.name)}${t.admin?'<span class="adm">ADMIN</span>':""}</b><span>${esc(t.desc)}</span></div><button class="run" data-id="${esc(t.id)}">Run</button></div>`}
+function render(){
+ const f=tools.filter(t=>(cat=="All"||t.cat==cat)&&(t.name+t.desc).toLowerCase().includes(term));
+ $("#count").textContent=f.length+" of "+tools.length+" tools";
+ $("#quickBox").style.display=(cat=="All"&&!term)?"":"none";
+ $("#quick").innerHTML=quick.map(t=>`<button class="q" data-id="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc(t.label)} →</span></button>`).join("");
+ if(!f.length){$("#list").innerHTML='<div class="empty">No tools found.</div>';return}
+ const by={};f.forEach(t=>(by[t.cat]=by[t.cat]||[]).push(t));
+ $("#list").innerHTML=Object.keys(by).map(k=>`<h2>${esc(k)} · ${by[k].length}</h2><div class="grid">${by[k].map(row).join("")}</div>`).join("");
+}
+document.addEventListener("click",e=>{
+ const a=e.target.closest(".tab");if(a){cat=a.dataset.c;tabs();render();return}
+ const act=e.target.closest("[data-act]");
+ if(act){const api=(window.pywebview&&window.pywebview.api)||null,go=act.dataset.act;
+  if(go==="scan"&&api&&api.scanHardware)api.scanHardware();
+  if(go==="logs"&&api&&api.logs)api.logs();return}
+ const r=e.target.closest("[data-id]");if(r){const id=r.dataset.id;
+  const t=tools.find(x=>x.id===id)||quick.find(x=>x.id===id);
+  if(t)say("Running: "+t.name+"…");
+  const api=(window.pywebview&&window.pywebview.api)||null;
+  if(api&&api.run)api.run(id);}
+});
+$("#q").addEventListener("input",e=>{term=e.target.value.toLowerCase().trim();render()});
+window.mxSetTools=function(p){tools=(p&&p.tools)||[];quick=(p&&p.quick)||[];tabs();render()};
+/* Bridge bootstrap: inside the app the page runs in QtWebEngine and the api
+   object arrives through QWebChannel; window.pywebview then calls it. */
+(function(){
+  if(window.qt&&window.qt.webChannelTransport&&window.QWebChannel){
+    new QWebChannel(window.qt.webChannelTransport,function(ch){
+      window.pywebview=window.pywebview||{};
+      window.pywebview.api=ch.objects.api;});
+  }
+  window.pywebview=window.pywebview||{};
+  tabs();render();
+})();
+</script></body></html>

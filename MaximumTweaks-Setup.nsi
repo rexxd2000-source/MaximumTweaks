@@ -1,7 +1,7 @@
-﻿; VERSION can be overridden by the release workflow (/DVERSION=x.y.z);
+; VERSION can be overridden by the release workflow (/DVERSION=x.y.z);
 ; the fallback below is only used for local compiles.
 !ifndef VERSION
-  !define VERSION "2.5.5"
+  !define VERSION "2.5.6"
 !endif
 !define APPNAME "Maximum Tweaks"
 !define APPNAME_SHORT "MaximumTweaks"
@@ -19,6 +19,9 @@ InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
 
 RequestExecutionLevel admin
 ManifestSupportedOS all
+
+!define MUI_ICON "assets\app.ico"
+!define MUI_UNICON "assets\app.ico"
 
 # Set to 1 when launched with /UPDATE by the in-app updater: the welcome and
 # directory pages are skipped so the wizard opens straight on the file-copy

@@ -1,82 +1,165 @@
-"""Tools page — Diagnostics-style clean layout.
+"""Tools page — renders ``ui/tools.html`` (the redesign) inside an embedded
+QtWebEngine view, and exposes a QWebChannel bridge under
+``window.pywebview.api`` exactly like the other HTML pages.
 
-A single centered column: header (title + dot stats + slim actions),
-one search line, then the tools grouped into mono-labelled glass lists.
-One row per tool: icon chip, name, one-line description, action button.
-No pills, no card grid, no pagination — everything scrolls.
+The page's data is the real tool set: the five quick-launch shortcuts plus
+every tool in the ``tools`` DB group, mapped onto the redesign's user-facing
+categories (System, Network, Storage, Display, Hardware, Repair, Input, Audio,
+USB, Startup). Python pushes it to the page as ``window.mxSetTools(payload)``.
+
+Running a tool is unchanged: a ``ToolRunner`` QThread calls the same
+``engine.tools_runner`` entry points as before, a failed launch raises the
+native error toast, and guidance-only tweaks still open the native info dialog.
+The page shows the transient "Running: <name>…" pill itself.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QRadialGradient
-from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
+import json
+import sys
+from pathlib import Path
 
-from config.app_config import THEME as T
+from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
+from PySide6.QtGui import QColor
+from PySide6.QtWebChannel import QWebChannel  # noqa: F401 - registers qtwebchannel.js
+from PySide6.QtWidgets import QMessageBox, QVBoxLayout, QWidget
+
+from config.app_config import ROOT
 from engine.tools_runner import launch_tool, run_tweak
 from ui.categories import group_tweaks
+from ui.pages._web import make_webview
 from ui.widgets import toast
 
-_BG = "#08060F"
-_VIOLET = "#8B6BFF"
-_INK_100 = "#F6F4FC"
-_INK_400 = "#928AAD"
-_INK_600 = "#514A70"
-_BORDER = "rgba(255,255,255,0.09)"
-_BORDER_SOFT = "rgba(255,255,255,0.06)"
-_GLASS = "rgba(255,255,255,0.03)"
-_DISPLAY = '"Segoe UI", sans-serif'
-_MONO = '"JetBrains Mono", monospace'
+HTML_REL = "ui/tools.html"
 
-ALL_KEY = "__all__"
-QL_KEY = "Quick Launch"
-CAT_ORDER = [QL_KEY, "System Tools", "Diagnostics", "Repair"]
-
-TOOL_META = {
-    QL_KEY: ("\u25c9", "#FFB454"),
-    "System Tools": ("\u2699", "#6C93FF"),
-    "Diagnostics": ("\u2661", "#4BE8D8"),
-    "Repair": ("\u2692", "#FFB454"),
-}
+# Pills row, left to right. "All" always leads.
+CATEGORY_TABS = [
+    "All", "System", "Network", "Storage", "Display", "Hardware",
+    "Repair", "Input", "Audio", "USB", "Startup",
+]
 
 QUICK_LAUNCH = [
     {"name": "Windows Version",
      "desc": "Check your Windows edition and OS build details.",
-     "btn_text": "Check Version", "launch_key": "winver"},
+     "launch_key": "winver"},
     {"name": "System Information",
      "desc": "Open the full CPU, motherboard and hardware summary.",
-     "btn_text": "Open System Info", "launch_key": "msinfo32"},
+     "launch_key": "msinfo32"},
     {"name": "DirectX Diagnostics",
      "desc": "Launch dxdiag for GPU, driver and feature-level info.",
-     "btn_text": "Run dxdiag", "launch_key": "dxdiag"},
+     "launch_key": "dxdiag"},
     {"name": "Device Manager",
      "desc": "Manage drivers and connected hardware devices.",
-     "btn_text": "Open Device Manager", "launch_key": "devmgmt"},
+     "launch_key": "devmgmt"},
     {"name": "Network Tools",
      "desc": "Flush the DNS cache and reset resolver state.",
-     "btn_text": "Flush DNS", "launch_key": "flushdns"},
+     "launch_key": "flushdns"},
 ]
+
+# Quick-launch tile order + the action label shown under each name.
+_QUICK_TILE = [
+    ("ql_winver", "Check Version"),
+    ("ql_msinfo32", "Open Info"),
+    ("ql_dxdiag", "Run dxdiag"),
+    ("ql_devmgmt", "Open"),
+    ("ql_flushdns", "Flush DNS"),
+]
+
+# Tool id -> the redesign's user-facing category. The quick-launch shortcuts and
+# every DB tool are listed so the page never has to guess (and a newly added
+# tool falls back to "System").
+_CAT_BY_ID = {
+    # quick launch
+    "ql_winver": "System",
+    "ql_msinfo32": "System",
+    "ql_dxdiag": "Display",
+    "ql_devmgmt": "System",
+    "ql_flushdns": "Network",
+    # Diagnostics
+    "audio-033": "Audio",
+    "audio-034": "Audio",
+    "bios-001": "Hardware",
+    "db-014": "Storage",
+    "diag-001": "System",
+    "diag-003": "Storage",
+    "diag-004": "Repair",
+    "diag-005": "Hardware",
+    "diag-006": "Hardware",
+    "diag-007": "Repair",
+    "diag-008": "Startup",
+    "diag-010": "Hardware",
+    "diag-011": "System",
+    "diag-012": "Display",
+    "diag-014": "Startup",
+    "dx-001": "Display",
+    "dx-003": "Display",
+    "eth-012": "Network",
+    "eth-013": "Network",
+    "fpsb-026": "Hardware",
+    "gpu-047": "Display",
+    "mon-003": "Display",
+    "mon-014": "Display",
+    "net-014": "Network",
+    "net-015": "Network",
+    "net-016": "Network",
+    "rep-001": "Repair",
+    "rep-002": "Repair",
+    "rep-004": "Repair",
+    "rep-007": "Repair",
+    "rep-008": "Repair",
+    "rep-009": "Repair",
+    "rep-013": "Repair",
+    "rep-014": "Storage",
+    "sec-009": "Repair",
+    "start-001": "Startup",
+    "stor-008": "Storage",
+    "stor-009": "Storage",
+    "stor-010": "Storage",
+    "sys-008": "Repair",
+    "perf-new-001": "Display",
+    "usb-003": "USB",
+    "usb-004": "USB",
+    "usb-012": "USB",
+    "wifi-004": "Network",
+    "wifi-008": "Network",
+    "wifi-012": "Network",
+    # Repair
+    "rep-005": "Repair",
+    "rep-015": "Repair",
+    # System Tools
+    "expl-014": "System",
+    "gpu-048": "System",
+    "mouse-055": "Input",
+    "mouse-056": "Input",
+    "mouse-057": "Input",
+    "mouse-058": "Input",
+    "tools-001": "System",
+    "tools-002": "System",
+    "tools-003": "System",
+    "tools-004": "System",
+    "tools-005": "System",
+    "tools-006": "System",
+    "tools-007": "System",
+    "tools-008": "System",
+    "tools-009": "System",
+    "tools-010": "Storage",
+    "tools-011": "System",
+    "tools-012": "System",
+    "tools-013": "System",
+    "tools-014": "Network",
+}
+
+
+def _html_path() -> Path:
+    meipass = getattr(sys, "_MEIPASS", None)
+    base = Path(meipass) if meipass else ROOT
+    return base / HTML_REL
 
 
 def _quick_launch_items() -> list[dict]:
     return [
-        {**q, "id": "ql_" + q["launch_key"], "category": QL_KEY}
+        {**q, "id": "ql_" + q["launch_key"], "category": "Quick Launch"}
         for q in QUICK_LAUNCH
     ]
-
-
-def _has_cmd(tweak: dict) -> bool:
-    return any(isinstance(a, (tuple, list)) and a and a[0] == "cmd"
-               for a in tweak.get("actions", []))
 
 
 def _dedupe(items: list[dict]) -> list[dict]:
@@ -89,6 +172,25 @@ def _dedupe(items: list[dict]) -> list[dict]:
         seen.add(k)
         out.append(t)
     return out
+
+
+def _tool_rows() -> list[dict]:
+    """The 74 tools, sorted into the redesign's category order."""
+    order = {c: i for i, c in enumerate(CATEGORY_TABS)}
+    items = _dedupe(_quick_launch_items() + group_tweaks("tools"))
+    return sorted(
+        items,
+        key=lambda t: order.get(_CAT_BY_ID.get(t["id"], "System"), 99))
+
+
+def _row(t: dict) -> dict:
+    return {
+        "id": t["id"],
+        "name": t["name"],
+        "desc": t.get("desc", ""),
+        "cat": _CAT_BY_ID.get(t["id"], "System"),
+        "admin": bool(t.get("admin")),
+    }
 
 
 class ToolRunner(QThread):
@@ -114,332 +216,110 @@ class ToolRunner(QThread):
         self.finished_ok.emit(ok, kind)
 
 
-class _Atmosphere(QWidget):
-    def paintEvent(self, _):
-        p = QPainter(self)
-        w, h = self.width(), self.height()
-        p.fillRect(self.rect(), QColor(_BG))
-        ga = QRadialGradient(QPointF(340, 20), 420)
-        ga.setColorAt(0.0, QColor(255, 180, 84, 16))
-        ga.setColorAt(1.0, QColor(255, 180, 84, 0))
-        p.fillRect(self.rect(), ga)
-        gb = QRadialGradient(QPointF(w - 120, h), 440)
-        gb.setColorAt(0.0, QColor(139, 107, 255, 20))
-        gb.setColorAt(1.0, QColor(139, 107, 255, 0))
-        p.fillRect(self.rect(), gb)
-        cx, cy = 0.6 * w, 0.18 * h
-        rx, ry = 0.7 * w, 0.6 * h
-        if rx > 0 and ry > 0:
-            y = 17.0
-            while y < h:
-                x = 17.0
-                while x < w:
-                    t = (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2) ** 0.5
-                    if t < 0.85:
-                        a = int(40 * (1.0 - t / 0.85))
-                        if a > 3:
-                            p.setPen(QColor(200, 190, 240, a))
-                            p.drawPoint(QPointF(x, y))
-                    x += 34.0
-                y += 34.0
-        p.end()
+class _ToolsBridge(QObject):
+    """Registered as ``window.pywebview.api`` on the page's QWebChannel."""
 
+    def __init__(self, page, parent=None):
+        super().__init__(parent)
+        self._page = page
 
-class _DotStat(QLabel):
-    def __init__(self, color, text):
-        super().__init__()
-        self.color = color
-        self.setText(text)
+    @Slot(str)
+    def run(self, tool_id):
+        self._page.run_tool(tool_id)
 
-    def setText(self, text):
-        self.setTextFormat(Qt.RichText)
-        QLabel.setText(
-            self,
-            f"<span style='color:{self.color};'>\u25cf</span>"
-            f"<span style='color:{_INK_400};'>&nbsp; {text}</span>")
+    @Slot()
+    def scanHardware(self):
+        self._page.open_detect()
 
-
-class _ToolRow(QFrame):
-    clicked = Signal(dict)
-
-    def __init__(self, item):
-        super().__init__()
-        self.item = item
-        self.setToolTip(
-            item["name"] + " — " + (item.get("desc") or ""))
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setObjectName("TRow")
-        self.setStyleSheet(
-            "#TRow{background:transparent;border:none;border-bottom:1px "
-            "solid " + _BORDER_SOFT + ";}"
-            "#TRow:hover{background:rgba(255,255,255,0.02);}")
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(22, 13, 22, 13)
-        lay.setSpacing(14)
-        cat = item.get("category") or QL_KEY
-        glyph, color = TOOL_META.get(cat, ("\u2699", _VIOLET))
-        ic = QLabel(glyph)
-        ic.setFixedSize(30, 30)
-        ic.setAlignment(Qt.AlignCenter)
-        ic.setStyleSheet(
-            "QLabel{font-size:13px;color:" + color + ";"
-            "background:rgba(255,255,255,0.03);"
-            "border:1px solid " + _BORDER + ";border-radius:8px;}")
-        lay.addWidget(ic, 0, Qt.AlignVCenter)
-        box = QVBoxLayout()
-        box.setSpacing(2)
-        nm = QLabel(item["name"])
-        nm.setStyleSheet(
-            "font-size:14px;font-weight:600;color:" + _INK_100
-            + ";background:transparent;")
-        de = QLabel(item.get("desc", ""))
-        de.setStyleSheet(
-            "font-size:12px;color:" + _INK_600 + ";background:transparent;")
-        de.setWordWrap(False)
-        self._full_desc = item.get("desc", "")
-        self._de = de
-        box.addWidget(nm)
-        box.addWidget(de)
-        lay.addLayout(box, 1)
-        if item.get("admin"):
-            ad = QLabel("ADMIN")
-            ad.setStyleSheet(
-                "font-family:" + _MONO + ";font-size:9px;color:#FFB454;"
-                "background:rgba(255,180,84,0.08);"
-                "border:1px solid rgba(255,180,84,0.28);border-radius:6px;"
-                "padding:3px 7px;")
-            lay.addWidget(ad, 0, Qt.AlignVCenter)
-        text = item.get("btn_text") or ("Run" if _has_cmd(item) else "Guide")
-        self.btn = QPushButton(text)
-        self.btn.setObjectName("Secondary")
-        self.btn.setFixedHeight(30)
-        self.btn.clicked.connect(
-            lambda _=False, it=item: self.clicked.emit(it))
-        lay.addWidget(self.btn, 0, Qt.AlignVCenter)
-
-    def _elide(self):
-        from PySide6.QtGui import QFontMetrics
-        avail = max(60, self._de.width())
-        fm = QFontMetrics(self._de.font())
-        self._de.setText(
-            fm.elidedText(self._full_desc, Qt.ElideRight, avail))
-
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        self._elide()
-
-    def mousePressEvent(self, ev):
-        if ev.button() == Qt.LeftButton and self.btn.isEnabled():
-            self.clicked.emit(self.item)
-            return
-        super().mousePressEvent(ev)
+    @Slot()
+    def logs(self):
+        self._page.open_logs()
 
 
 class ToolsPage(QWidget):
+    """Embedded-webview port of the Tools redesign."""
+
     def __init__(self, ctx, navigate, parent=None):
         super().__init__(parent)
         self.ctx = ctx
         self.navigate = navigate
-        self.key = ALL_KEY
-        self._orig_text: dict[str, str] = {}
+        self._items: dict[str, dict] = {}
         self._workers: list[ToolRunner] = []
-        self._rows: dict[str, _ToolRow] = {}
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-        self._atmo = _Atmosphere(self)
-        self._atmo.lower()
+        self._web = make_webview(self)
+        self._web.setStyleSheet("background:#0b0912; border:none;")
+        self._web.page().setBackgroundColor(QColor("#0b0912"))
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self._web)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            "QScrollArea{background:transparent;border:none;}"
-            "QScrollArea>QWidget>QWidget{background:transparent;}")
-        body = QWidget()
-        root = QVBoxLayout(body)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        scroll.setWidget(body)
-        outer.addWidget(scroll, 1)
+        settings = self._web.settings()
+        settings.setAttribute(
+            settings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(
+            settings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
+        settings.setAttribute(
+            settings.WebAttribute.JavascriptCanOpenWindows, False)
 
-        col = QWidget()
-        cl = QVBoxLayout(col)
-        cl.setContentsMargins(44, 40, 44, 60)
-        cl.setSpacing(0)
-        wrap = QHBoxLayout()
-        wrap.addWidget(col)
-        root.addLayout(wrap)
+        self._bridge = _ToolsBridge(self, self)
+        self._channel = QWebChannel(self)
+        self._channel.registerObject("api", self._bridge)
+        self._web.page().setWebChannel(self._channel)
 
-        # ---- header
-        bar = QHBoxLayout()
-        bar.setSpacing(10)
-        hbox = QVBoxLayout()
-        hbox.setSpacing(4)
-        title = QLabel("Tools")
-        title.setStyleSheet(
-            "font-family:" + _DISPLAY + ";font-size:26px;font-weight:600;"
-            "color:" + _INK_100 + ";background:transparent;")
-        hbox.addWidget(title)
-        self.stats = QHBoxLayout()
-        self.stats.setSpacing(16)
-        self.stat_count = _DotStat("#FFB454", "0 tools")
-        self.stats.addWidget(self.stat_count)
-        hbox.addLayout(self.stats)
-        bar.addLayout(hbox, 1)
-        for label, obj, slot in (
-                ("Scan Hardware", "Secondary", "detect"),
-                ("Quick Optimize", "Secondary", "optimize"),
-                ("Logs", "Secondary", "logs")):
-            b = QPushButton(label)
-            b.setObjectName(obj)
-            b.setFixedHeight(34)
-            b.clicked.connect(lambda _=False, s=slot: self.navigate(s))
-            bar.addWidget(b)
-        cl.addLayout(bar)
-        cl.addSpacing(20)
-
-        # ---- search
-        search_row = QHBoxLayout()
-        search_row.setSpacing(10)
-        box = QFrame()
-        box.setFixedHeight(38)
-        box.setAttribute(Qt.WA_StyledBackground, True)
-        box.setObjectName("SearchBox")
-        box.setStyleSheet(
-            "#SearchBox{background:" + _GLASS + ";border:1px solid "
-            + _BORDER + ";border-radius:10px;}")
-        bl = QHBoxLayout(box)
-        bl.setContentsMargins(12, 0, 10, 0)
-        bl.setSpacing(8)
-        ico = QLabel("\u2315")
-        ico.setStyleSheet(
-            "font-size:13px;color:" + _INK_600 + ";background:transparent;")
-        bl.addWidget(ico)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search tools\u2026")
-        self.search.setClearButtonEnabled(True)
-        self.search.setStyleSheet(
-            "QLineEdit{background:transparent;border:none;font-size:13px;"
-            "color:" + _INK_100 + ";}"
-            "QLineEdit::placeholder{color:" + _INK_600 + ";}")
-        self.search.textChanged.connect(lambda _: self.refresh())
-        bl.addWidget(self.search, 1)
-        search_row.addWidget(box)
-        cl.addLayout(search_row)
-        cl.addSpacing(22)
-
-        self._list_host = QVBoxLayout()
-        self._list_host.setSpacing(22)
-        cl.addLayout(self._list_host)
-        cl.addStretch()
-
-        self.refresh()
-
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        self._atmo.setGeometry(self.rect())
-        self._atmo.lower()
-
-    # ---------------- data ----------------
-
-    def select(self, key: str):
-        self.key = key
-        self.search.clear()
-        self.refresh()
-
-    def _visible(self) -> list[dict]:
-        if self.key == ALL_KEY:
-            tools = _quick_launch_items() + group_tweaks("tools")
-        elif self.key == QL_KEY:
-            tools = _quick_launch_items()
+        html = _html_path()
+        if html.is_file():
+            self._web.load(QUrl.fromLocalFile(str(html)))
         else:
-            tools = [t for t in group_tweaks("tools")
-                     if t.get("category") == self.key]
-        text = self.search.text().strip().lower()
-        if not text:
-            return _dedupe(tools)
-        return _dedupe([
-            t for t in tools
-            if text in t["id"].lower()
-            or text in t["name"].lower()
-            or text in (t.get("desc") or "").lower()
-            or text in (t.get("category") or "").lower()
-        ])
+            self._web.setHtml(
+                "<body style='background:#0b0912;color:#8b84a6;"
+                "font-family:sans-serif;padding:40px;'>"
+                f"tools.html not found at<br><code>{html}</code>"
+                "</body>")
+        self._web.loadFinished.connect(self._on_load_finished)
 
-    # ---------------- render ----------------
+    # ------------------------------------------------------- JS transport
+    def _js(self, script: str):
+        self._web.page().runJavaScript(script)
 
-    def refresh(self):
-        tools = self._visible()
-        self.stat_count.setText(f"{len(tools)} tools")
-        for i in reversed(range(self._list_host.count())):
-            it = self._list_host.takeAt(i)
-            if it and it.widget():
-                it.widget().setParent(None)
-                it.widget().deleteLater()
-        self._rows.clear()
-        if not tools:
-            e = QLabel("No tools match this search.")
-            e.setAlignment(Qt.AlignCenter)
-            e.setStyleSheet(
-                "font-size:13px;color:" + _INK_600 + ";"
-                "background:transparent;padding:26px;")
-            self._list_host.addWidget(e)
+    def _on_load_finished(self, _ok):
+        self.push()
+
+    # ------------------------------------------------------- data payload
+    def _payload(self) -> dict:
+        items = _tool_rows()
+        self._items = {t["id"]: t for t in items}
+        quick = []
+        for tid, label in _QUICK_TILE:
+            t = self._items.get(tid)
+            if t is not None:
+                quick.append({**_row(t), "label": label})
+        return {"tools": [_row(t) for t in items], "quick": quick}
+
+    def push(self):
+        try:
+            payload = self._payload()
+        except Exception as exc:  # noqa: BLE001 - surfaced via the log
+            from maxlog import logger
+            logger.warn(f"tools: payload failed: {exc}")
             return
-        grouped: dict[str, list[dict]] = {}
-        for t in tools:
-            grouped.setdefault(
-                t.get("category") or "Tools", []).append(t)
-        order = [c for c in CAT_ORDER if c in grouped]
-        order += [c for c in grouped if c not in order]
-        for cat in order:
-            items = grouped[cat]
-            label = QLabel(cat.upper())
-            f = QFont(label.font())
-            f.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
-            label.setFont(f)
-            label.setStyleSheet(
-                "font-family:" + _MONO + ";font-size:11px;color:"
-                + _INK_400 + ";background:transparent;")
-            host = QVBoxLayout()
-            host.setSpacing(10)
-            card = QFrame()
-            card.setAttribute(Qt.WA_StyledBackground, True)
-            card.setObjectName("TList")
-            card.setStyleSheet(
-                "#TList{background:" + _GLASS + ";border:1px solid "
-                + _BORDER + ";border-radius:16px;}")
-            cl2 = QVBoxLayout(card)
-            cl2.setContentsMargins(0, 0, 0, 0)
-            cl2.setSpacing(0)
-            for i, it in enumerate(items):
-                row = _ToolRow(it)
-                row.clicked.connect(self._run)
-                cl2.addWidget(row)
-                if i < len(items) - 1:
-                    sep = QFrame()
-                    sep.setFixedHeight(1)
-                    sep.setStyleSheet(
-                        "background:" + _BORDER_SOFT + ";border:none;")
-                    cl2.addWidget(sep)
-                self._rows[it["id"]] = row
-            host.addWidget(label)
-            host.addWidget(card)
-            w = QWidget()
-            w.setLayout(host)
-            self._list_host.addWidget(w)
+        self._js("window.mxSetTools && window.mxSetTools({})".format(
+            json.dumps(payload, ensure_ascii=False)))
 
-    # ---------------- run ----------------
+    # ------------------------------------------------------- navigation
+    def open_detect(self):
+        if self.navigate:
+            self.navigate("detect")
 
-    def _run(self, item: dict):
-        row = self._rows.get(item["id"])
-        if row is None:
+    def open_logs(self):
+        if self.navigate:
+            self.navigate("logs")
+
+    # ------------------------------------------------------- run
+    def run_tool(self, tool_id: str):
+        item = self._items.get(tool_id)
+        if item is None:
             return
-        self._orig_text[item["id"]] = row.btn.text()
-        row.btn.setEnabled(False)
-        row.btn.setText("Running\u2026")
         worker = ToolRunner(item)
         worker.finished_ok.connect(self._finish_slot)
         worker.finished.connect(self._on_worker_finished)
@@ -456,10 +336,6 @@ class ToolsPage(QWidget):
         self._workers = [w for w in self._workers if not w.isFinished()]
 
     def _finish(self, key, ok, item, kind="run"):
-        row = self._rows.get(key)
-        if row is not None:
-            row.btn.setEnabled(True)
-            row.btn.setText(self._orig_text.get(key, "Run"))
         name = item["name"]
         if not ok:
             msg = f"Failed to launch {name}."
@@ -469,8 +345,6 @@ class ToolsPage(QWidget):
             return
         if kind == "guidance":
             self._show_guidance(item)
-        else:
-            toast(f"Launched {name} successfully.", "success", self)
 
     def _show_guidance(self, tweak: dict):
         text = ""

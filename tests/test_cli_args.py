@@ -55,3 +55,21 @@ def test_revert_without_dry_run(monkeypatch) -> None:
     calls = _capture_apply(monkeypatch)
     main.main(["--cli", "revert", "perf-005"])
     assert calls == [("perf-005", "revert", False)]
+
+
+def test_clean_child_env_strips_pyinstaller_bootstrap() -> None:
+    env = {
+        "_PYI_APPLICATION_HOME_DIR": r"C:\Temp\_MEI132402",
+        "_PYI_ARCHIVE_FILE": "MaximumTweaks.exe",
+        "_PYI_PARENT_PROCESS_LEVEL": "1",
+        "_MEIPASS2": r"C:\Temp\_MEI132402",
+        "PATH": r"C:\Windows",
+    }
+    cleaned = main._clean_child_env(env)
+    assert cleaned == {"PATH": r"C:\Windows"}
+    assert env["_PYI_APPLICATION_HOME_DIR"]  # caller's dict is untouched
+
+
+def test_clean_child_env_preserves_unrelated() -> None:
+    cleaned = main._clean_child_env({"USERPROFILE": r"C:\Users\Admin"})
+    assert cleaned == {"USERPROFILE": r"C:\Users\Admin"}

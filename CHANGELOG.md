@@ -1,5 +1,31 @@
 ﻿# Changelog
 
+## v2.5.6 - 2026-10-09
+
+### New
+- **Redesigned Tools page**: a searchable, grouped catalogue (FPS, System,
+  Input, Tools, Profiles) with gradient tiles and ADMIN tags. Every action
+  runs the exact same tool it did before - the page just presents them better.
+- **"Higher plan" banner on tweak pages**: shows how many tweaks on the page
+  need a higher plan, split into Performance vs Maximum with a proportional
+  bar, and its **View plans** button opens the Discord upgrade flow.
+- **Dock plan badge**: the footer now shows the star, a "YOUR PLAN" label,
+  the plan name and the app version on one line, tinted with the plan's own
+  accent (Foundation teal, Performance blue, Maximum orange).
+
+### Fixed
+- **"Failed to remove temporary directory" popup on exit**: the background
+  heartbeat no longer inherits PyInstaller's extraction-dir variables, so the
+  onefile temp folder is cleaned up instead of triggering the error dialog.
+- Dock icons: the Profiles glyph is now the clean frameless user silhouette
+  and the Settings gear is the full eight-tooth lucide gear.
+- The installer now shows the app icon on the setup and uninstall windows.
+
+### Updated
+- Tapping anywhere on a tweak card toggles it (the whole card is the target,
+  not just the switch).
+- Version bump to **2.5.6** (`APP_VERSION`, NSI fallback).
+
 ## v2.5.5 - 2026-10-08
 
 ### New
