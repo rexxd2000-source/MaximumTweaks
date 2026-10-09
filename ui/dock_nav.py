@@ -495,13 +495,23 @@ class DockNav(QWidget):
         """
         if self._bd_timer is None:
             self._bd_timer = QTimer(self)
-            self._bd_timer.setInterval(1000)
+            # Slow safety net only. Every tick grabs part of the page stack,
+            # shrinks/grows it, JPEGs it and ships it into the web view, so the
+            # interval is kept loose: the glass only goes stale visually when a
+            # page has live content (the dashboard), and 1.6s of that is
+            # imperceptible while roughly halving the idle cost.
+            self._bd_timer.setInterval(1600)
             self._bd_timer.timeout.connect(self._on_bd_tick)
             self._bd_timer.start()
 
     def _on_bd_tick(self):
         # One refresh in flight: a slow grab must not queue up behind the tick.
         if self._bd_busy:
+            return
+        # No snapshot work while the window is off screen (minimised/hidden):
+        # the grab would still be paid for, but nobody can see the glass.
+        win = self.window()
+        if win is not None and (win.isMinimized() or not win.isVisible()):
             return
         self.refresh_backdrop()
 

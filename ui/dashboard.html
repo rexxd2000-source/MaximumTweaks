@@ -231,7 +231,6 @@
     </div>
     <div class="status">
       <div class="s"><span class="pulse"></span><span id="license-pill">License active</span></div>
-      <div class="s"><span id="telemetry-pill">Telemetry live</span></div>
     </div>
   </div>
 
@@ -659,7 +658,6 @@ window.mx = {
     d = d || {};
     $('welcome').textContent = (d.welcome || 'Welcome back');
     $('license-pill').textContent = d.license || 'License active';
-    $('telemetry-pill').textContent = d.telemetry || 'Telemetry live';
 
     /* real category logos (base64 data URIs from assets/icons) */
     var _logos = {'#cpu-logo':'cpuLogo', '#gpu-logo':'gpuLogo', '#ram-logo':'ramLogo'};

@@ -14,6 +14,9 @@ Enforces three page-level look-and-feel rules across every embedded view:
 Scrollbars are only hidden, not disabled: wheel/touch/keyboard scrolling
 still works. If a page later wants visible scrollbars, replace the injected
 CSS rule here instead of going back to the stock thumb.
+
+Pages also get smooth inertial scrolling, injected here the same way so every
+HTML page shares one implementation (see ``_SMOOTH_SCROLL_JS``).
 """
 from __future__ import annotations
 
@@ -44,6 +47,92 @@ _HIDE_SCROLLBARS_JS = (
     "if(!el){el=document.createElement('style');el.id='mx-no-scrollbars';"
     "document.head.appendChild(el);}"
     "el.textContent=css;"
+    "}catch(e){}"
+    "})();"
+)
+
+# Smooth inertial scrolling, ported from the reference demo's loop()/wheel()/
+# keydown()/scroll() handlers. The demo eases a container's scrollTop toward a
+# wheel/keyboard-driven target; the same idea runs here against whichever
+# element owns the page's scroll: the document when the body scrolls (most
+# pages), or the largest inner scrollable pane when the layout is fixed (the
+# diagnostics rail). Inner scrollers under the cursor keep native behaviour so
+# a page's own scroll boxes are not hijacked. Reduced motion applies the target
+# directly, matching the demo's reduced-motion path.
+_SMOOTH_SCROLL_JS = (
+    "(function(){"
+    "try{"
+    "if(window.__mxSmooth){return;}window.__mxSmooth=true;"
+    "var mq=window.matchMedia?window.matchMedia('(prefers-reduced-motion:reduce)'):null;"
+    "var reduce=mq?mq.matches:false;"
+    "var doc=document.scrollingElement||document.documentElement;"
+    "var scroller=null,target=0,pos=0,last=0,raf=0,maxScroll=0,rzPend=0;"
+    "function winY(){return (window.pageYOffset!=null?window.pageYOffset:(doc.scrollTop||0));}"
+    "function pick(){"
+    "if(doc&&doc.scrollHeight>doc.clientHeight+4){scroller=null;return;}"
+    "var best=null,bestH=0,all=document.querySelectorAll('*');"
+    "for(var i=0;i<all.length;i++){var el=all[i],st=getComputedStyle(el);"
+    "if((st.overflowY==='auto'||st.overflowY==='scroll')&&"
+    "el.scrollHeight>el.clientHeight+4&&el.clientHeight>bestH){best=el;bestH=el.clientHeight;}}"
+    "scroller=best;}"
+    "function curY(){return scroller?scroller.scrollTop:winY();}"
+    # maxScroll is cached, never read from the DOM inside the wheel handler:
+    # reading scrollHeight after writing scrollTop forces a synchronous layout
+    # on every notch. It is refreshed on resize and when the page's content box
+    # changes (ResizeObserver), which is when a long page actually grows.
+    "function measure(){var e=scroller||doc;return Math.max(0,e.scrollHeight-e.clientHeight);}"
+    "function refreshMax(){maxScroll=measure();}"
+    "function maxY(){return maxScroll;}"
+    "function setY(y){if(scroller){scroller.scrollTop=y;}else{window.scrollTo(0,y);}}"
+    "function clamp(v,a,b){return v<a?a:(v>b?b:v);}"
+    "function frame(now){"
+    "var dt=(now-last)/1000;last=now;if(!(dt>0)||dt>0.05){dt=0.016;}"
+    "var prev=pos;"
+    "pos=reduce?target:pos+(target-pos)*(1-Math.exp(-dt*7));"
+    "if(Math.abs(target-pos)<0.1){pos=target;}"
+    "if(pos!==prev){setY(pos);}"
+    "if(Math.abs(target-pos)>0.1){raf=requestAnimationFrame(frame);}else{raf=0;}}"
+    "function start(){if(!raf){last=performance.now();raf=requestAnimationFrame(frame);}}"
+    "function sync(){var y=curY();if(Math.abs(y-pos)>2){pos=target=y;}}"
+    "function nearest(node){"
+    "while(node&&node!==document.body&&node.nodeType===1){"
+    "var st=getComputedStyle(node);"
+    "if((st.overflowY==='auto'||st.overflowY==='scroll')&&"
+    "node.scrollHeight>node.clientHeight+1){return node;}"
+    "node=node.parentElement;}return null;}"
+    "pick();refreshMax();"
+    # Keep the cached maximum fresh without polling. A debounced resize handler
+    # (pick() walks every element and is far too heavy to run per resize event)
+    # plus a ResizeObserver on the body covers late content (the tools page is
+    # filled in by JS after load).
+    "if(window.ResizeObserver){"
+    "window.__mxRO=new ResizeObserver(function(){"
+    "if(rzPend){return;}rzPend=requestAnimationFrame(function(){rzPend=0;refreshMax();});});"
+    "try{window.__mxRO.observe(document.body||document.documentElement);}catch(e){}}"
+    "window.addEventListener('resize',function(){"
+    "if(rzPend){return;}rzPend=requestAnimationFrame(function(){"
+    "rzPend=0;pick();refreshMax();pos=target=curY();});},{passive:true});"
+    "window.addEventListener('wheel',function(e){"
+    "if(e.ctrlKey){return;}"
+    "var near=nearest(e.target);"
+    "if(near&&near!==scroller){return;}"
+    "e.preventDefault();"
+    "var d=(e.deltaMode===1)?e.deltaY*34:e.deltaY;"
+    "target=clamp(target+d,0,maxY());start();},{passive:false});"
+    "document.addEventListener('keydown',function(e){"
+    "var t=e.target,n=t&&t.tagName?t.tagName.toUpperCase():'';"
+    "if(n==='INPUT'||n==='TEXTAREA'||(t&&t.isContentEditable)){return;}"
+    "var k=e.key,h=(scroller?scroller.clientHeight:window.innerHeight)*0.85,s=null;"
+    "if(k==='ArrowDown'){s=120;}else if(k==='ArrowUp'){s=-120;}"
+    "else if(k==='PageDown'){s=h;}else if(k==='PageUp'){s=-h;}"
+    "else if(k===' '){s=e.shiftKey?-h:h;}"
+    "else if(k==='Home'){e.preventDefault();target=0;start();return;}"
+    "else if(k==='End'){e.preventDefault();target=maxY();start();return;}"
+    "if(s!==null){e.preventDefault();target=clamp(target+s,0,maxY());start();}"
+    "},{passive:false});"
+    "var host=scroller||window;"
+    "host.addEventListener('scroll',sync,{passive:true});"
+    "if(host!==window){window.addEventListener('scroll',sync,{passive:true});}"
     "}catch(e){}"
     "})();"
 )
@@ -113,5 +202,6 @@ def make_webview(parent=None) -> QWebEngineView:
             pass
     view.loadFinished.connect(
         lambda _ok: (view.page().runJavaScript(_HIDE_SCROLLBARS_JS),
-                     view.page().runJavaScript(_NO_COPY_JS)))
+                     view.page().runJavaScript(_NO_COPY_JS),
+                     view.page().runJavaScript(_SMOOTH_SCROLL_JS)))
     return view

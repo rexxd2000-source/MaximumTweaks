@@ -156,9 +156,12 @@
   .rec::after{
     content:''; position:absolute; top:0; left:-60%; width:38%; height:100%;
     background:linear-gradient(100deg,transparent,rgba(255,255,255,.6),transparent);
-    transform:skewX(-20deg); animation:mxSweep 3.2s ease-in-out infinite;
+    transform:translateX(0) skewX(-20deg); animation:mxSweep 3.2s ease-in-out infinite;
   }
-  @keyframes mxSweep{ 0%,55%{ left:-60%; } 100%{ left:140%; } }
+  /* translate, not `left`: the sweep is `infinite`, so while a locked card was
+     on screen it relaid out the layer every frame. Same path - 200% of the pill
+     is 526% of the 38%-wide sweep - but composited instead of laid out. */
+  @keyframes mxSweep{ 0%,55%{ transform:translateX(0) skewX(-20deg); } 100%{ transform:translateX(526%) skewX(-20deg); } }
   .rec .gem{
     width:26px; height:26px; border-radius:50%; display:grid; place-items:center; flex-shrink:0;
     background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.9),rgba(255,255,255,.2) 45%,rgba(255,255,255,.08));
@@ -224,7 +227,7 @@
 
   .card{
     position:relative; background:var(--panel); border:1px solid var(--line); border-radius:16px;
-    padding:20px; overflow:hidden; transform-style:preserve-3d; will-change:transform;
+    padding:20px; overflow:hidden; transform-style:preserve-3d;
     display:flex; flex-direction:column; cursor:pointer;
     transition: transform .12s ease-out, border-color .2s ease, box-shadow .2s ease;
   }

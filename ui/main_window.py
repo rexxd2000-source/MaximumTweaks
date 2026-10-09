@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QPoint,
     QPropertyAnimation,
     QTimer,
     Qt,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QGraphicsOpacityEffect,
+    QLabel,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -42,7 +46,18 @@ from ui.pages.app_optimizers import AppOptimizersPage
 from ui.pages.settings import SettingsPage
 from ui.pages.tools import ToolsPage
 from ui.pages.tweak_cards import TweakCardsPage
+from ui.smooth_scroll import install_smooth_scroll, prefers_reduced_motion
 from ui.space import SpaceBackground
+
+
+# A page swap floats a frozen snapshot of the outgoing page (its "lift away").
+# Grabbing the stack is a full-window render: cheap on plain Qt pages, but a
+# QWebEngineView has to be read back from its own surface, which can cost tens
+# of milliseconds on a busy frame. If a grab ever blows the budget the snapshot
+# is dropped for the rest of the session and the swap falls back to the CSS
+# rise-in alone - degrade step 2 of the animation safety net (lose the slide,
+# keep the motion everywhere else) rather than stutter on every navigation.
+_SWAP_SNAP_BUDGET_MS = 16.0
 
 
 def is_admin() -> bool:
@@ -127,6 +142,13 @@ class MainWindow(QWidget):
         self.navigate("dashboard")
         self._nav_ready = True
 
+        # App-wide smooth inertial scrolling on the native pages (the HTML
+        # pages get the same feel from injected JS). One filter on the app,
+        # safe to call more than once.
+        app = QApplication.instance()
+        if app is not None:
+            install_smooth_scroll(app)
+
         # Background system-state audit: reads live registry/power/service
         # state so every toggle reflects the real system, not just what this
         # app has applied. Runs off the UI thread; cards fill in as results land.
@@ -145,7 +167,16 @@ class MainWindow(QWidget):
         # Silent background update check — an update banner appears if the
         # server is ahead of this build, otherwise nothing happens.
         self._update_worker = None
+        # A brand-new session starts with a clean "remind me later" window so a
+        # previously deferred update is offered again now (the spec: prompt on
+        # the next app start or after 24h).
+        try:
+            from engine import state as _state
+            _state.set_meta("update_remind_at", None)
+        except Exception:  # noqa: BLE001
+            pass
         self._check_for_update_background()
+        QTimer.singleShot(2200, self._announce_update_if_any)
 
         self._prewarm_pages()
 
@@ -189,12 +220,36 @@ class MainWindow(QWidget):
         info = payload.get("info")
         if not info:
             return
+        version = str(info.get("version") or "").strip().lstrip("v")
+        try:
+            from engine import state
+            skipped = str(state.get_meta("skipped_update_version") or "").lstrip("v")
+            if version and skipped == version:
+                return  # the user chose to skip this exact version
+            remind_at = state.get_meta("update_remind_at")
+            if remind_at and time.time() < float(remind_at):
+                return  # "Remind me later" — stay quiet until the window passes
+        except Exception:  # noqa: BLE001
+            pass
         from ui.widgets import toast
         toast(
             f"Update available: v{info.get('version', '?')} \u2014 open Settings "
             "\u2192 Update to install.",
             "info", self)
         activity.emit("info", f"Update available: v{info.get('version')}")
+
+    def _announce_update_if_any(self):
+        """One-shot: toast "Updated to vX" after a self-update restart."""
+        try:
+            from engine import state
+            updated = str(state.get_meta("updated_to_version") or "").strip()
+            if updated and updated.lstrip("v") == APP_VERSION.lstrip("v"):
+                from ui.widgets import toast
+                toast(f"Updated to v{updated.lstrip('v')}", "success", self)
+            state.set_meta("updated_to_version", None)
+            state.set_meta("updated_from_version", None)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------------- Pages ----------------
 
@@ -313,6 +368,7 @@ class MainWindow(QWidget):
             if token is not None and token != getattr(self, "_nav_seq", 0):
                 return
             self._clear_widget_fade()
+            self._clear_swap_overlay()
             self._swap_to(page)
 
         if loading:
@@ -323,23 +379,19 @@ class MainWindow(QWidget):
             reveal()
 
     def _swap_to(self, page):
-        """Fade the incoming page up from nothing, without a full-opacity frame.
+        """Swap to ``page`` with the demo's lift-away / rise-in transition.
 
-        _fade_page_in() injects its animation AFTER the page is already visible,
-        so the page used to paint at full opacity for a frame, drop to opacity 0
-        and fade back up - a visible flash on every navigation. Priming the new
-        page to opacity 0 while it is still off screen means the swap itself
-        happens at zero opacity, and the fade only ever runs forwards from there.
+        The incoming page is primed to opacity 0 (web) while still off screen,
+        so the swap itself never paints a full-opacity frame. The outgoing view
+        is snapshotted and floated over the stack; it lifts up and fades out
+        while the incoming page rises and fades in underneath. The snapshot is
+        the page itself, so there is never a blank or solid-colour frame. Under
+        reduced motion the swap is a hard cut.
         """
         web = getattr(page, "_web", None)
 
         def do_swap(_=None):
-            logger.info(f"swap -> {type(page).__name__} "
-                        f"(from {type(self.stack.currentWidget()).__name__})")
-            if self.stack.currentWidget() is not page:
-                self.stack.setCurrentWidget(page)
-            page._mx_revealed = True
-            self._fade_page_in(page)
+            self._do_swap(page)
 
         if web is None:
             do_swap()
@@ -353,7 +405,108 @@ class MainWindow(QWidget):
             "}catch(e){}})()",
             do_swap)
 
-    def _fade_widget_page_in(self, page, ms=320):
+    def _do_swap(self, page):
+        """Perform the swap once the incoming page has been primed."""
+        old = self.stack.currentWidget()
+        logger.info(f"swap -> {type(page).__name__} "
+                    f"(from {type(old).__name__ if old is not None else 'None'})")
+        reduced = prefers_reduced_motion()
+        if old is None or old is page or reduced:
+            self._clear_swap_overlay()
+            if self.stack.currentWidget() is not page:
+                self.stack.setCurrentWidget(page)
+            page._mx_revealed = True
+            self._fade_page_in(page)
+            return
+        # Snapshot the outgoing page before it is hidden, so the transition
+        # covers the swap with real content rather than a blank frame. The grab
+        # is measured; a slow one disables snapshots for the session so the
+        # transition degrades to the CSS rise-in instead of hitching every time.
+        snap = None
+        if getattr(self, "_swap_snapshots", True):
+            started = time.perf_counter()
+            try:
+                snap = self.stack.grab()
+            except Exception:  # noqa: BLE001 - the transition is never fatal
+                snap = None
+            cost = (time.perf_counter() - started) * 1000.0
+            if cost > _SWAP_SNAP_BUDGET_MS or (snap is not None and snap.isNull()):
+                if cost > _SWAP_SNAP_BUDGET_MS:
+                    # Two strikes, not one: a grab can spike once from an
+                    # unlucky frame, and dropping the transition for the whole
+                    # session over a single outlier is worse than the hiccup.
+                    self._swap_snap_slow = getattr(self, "_swap_snap_slow", 0) + 1
+                    if self._swap_snap_slow >= 2:
+                        self._swap_snapshots = False
+                        logger.info(
+                            "page-swap snapshot disabled: stack.grab took "
+                            f"{cost:.1f}ms (> {_SWAP_SNAP_BUDGET_MS:.0f}ms) twice")
+                snap = None
+        self.stack.setCurrentWidget(page)
+        page._mx_revealed = True
+        if snap is not None:
+            self._show_swap_overlay(snap)
+        self._fade_page_in(page)
+
+    def _show_swap_overlay(self, pixmap):
+        """Float a snapshot of the outgoing page over the stack and lift it
+        away: it rises 56px and fades out while the incoming page rises in."""
+        self._clear_swap_overlay()
+        label = QLabel(self.stack)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        label.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        label.setPixmap(pixmap)
+        label.setGeometry(self.stack.rect())
+        label.show()
+        label.raise_()
+        eff = QGraphicsOpacityEffect(label)
+        eff.setOpacity(1.0)
+        label.setGraphicsEffect(eff)
+        self._swap_overlay = label
+        self._swap_overlay_effect = eff
+
+        fade = QPropertyAnimation(eff, b"opacity", self)
+        fade.setDuration(520)
+        fade.setStartValue(1.0)
+        fade.setEndValue(0.0)
+        fade.setEasingCurve(QEasingCurve.OutCubic)
+        move = QPropertyAnimation(label, b"pos", self)
+        move.setDuration(520)
+        move.setStartValue(label.pos())
+        move.setEndValue(label.pos() - QPoint(0, 56))
+        move.setEasingCurve(QEasingCurve.OutCubic)
+        self._swap_overlay_anims = (fade, move)
+
+        def _done():
+            if getattr(self, "_swap_overlay", None) is label:
+                self._swap_overlay = None
+                self._swap_overlay_effect = None
+                self._swap_overlay_anims = None
+            label.deleteLater()
+
+        fade.finished.connect(_done)
+        fade.start()
+        move.start()
+
+    def _clear_swap_overlay(self):
+        """Drop any in-flight swap snapshot, leaving the real page visible."""
+        for anim in getattr(self, "_swap_overlay_anims", None) or ():
+            try:
+                anim.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        self._swap_overlay_anims = None
+        label = getattr(self, "_swap_overlay", None)
+        self._swap_overlay = None
+        self._swap_overlay_effect = None
+        if label is not None:
+            try:
+                label.setGraphicsEffect(None)
+            except Exception:  # noqa: BLE001
+                pass
+            label.deleteLater()
+
+    def _fade_widget_page_in(self, page, ms=620):
         """Fade a plain Qt page in, so it matches the web pages.
 
         Plain Qt pages have no document to animate. ``_fade_page_in`` used to
@@ -381,20 +534,33 @@ class MainWindow(QWidget):
             page.setGraphicsEffect(eff)
         except Exception:  # noqa: BLE001 - never block a navigation on styling
             return
+        # Match the web pages: rise 56px into place while fading in.
+        rise = 56 if not prefers_reduced_motion() else 0
+        end_pos = page.pos()
+        page.move(end_pos + QPoint(0, rise))
         anim = QPropertyAnimation(eff, b"opacity", self)
         anim.setDuration(ms)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.OutCubic)
+        move = QPropertyAnimation(page, b"pos", self)
+        move.setDuration(ms)
+        move.setStartValue(page.pos())
+        move.setEndValue(end_pos)
+        move.setEasingCurve(QEasingCurve.OutCubic)
         # Keep a reference: a QPropertyAnimation with no owner is collected and
         # the fade dies halfway, leaving the page at partial opacity.
         self._widget_fade = anim
+        self._widget_fade_move = move
         self._widget_fade_page = page
+        self._widget_fade_end_pos = end_pos
 
         def _done():
             if getattr(self, "_widget_fade", None) is anim:
                 self._widget_fade = None
+                self._widget_fade_move = None
                 self._widget_fade_page = None
+                self._widget_fade_end_pos = None
             # Clear the effect once done. Left in place it keeps the whole
             # subtree in an offscreen buffer, which is expensive for a card grid
             # and breaks the page's own painting after the animation ends.
@@ -402,9 +568,15 @@ class MainWindow(QWidget):
                 page.setGraphicsEffect(None)
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                page.move(end_pos)
+            except Exception:  # noqa: BLE001
+                pass
 
         anim.finished.connect(_done)
         anim.start()
+        if rise:
+            move.start()
 
     def _clear_widget_fade(self):
         """Drop any in-flight widget fade, leaving the page fully opaque.
@@ -416,19 +588,29 @@ class MainWindow(QWidget):
         the next time it was shown.
         """
         anim = getattr(self, "_widget_fade", None)
+        move = getattr(self, "_widget_fade_move", None)
         page = getattr(self, "_widget_fade_page", None)
-        if anim is not None:
-            try:
-                anim.stop()
-            except Exception:  # noqa: BLE001
-                pass
+        end_pos = getattr(self, "_widget_fade_end_pos", None)
+        for running in (anim, move):
+            if running is not None:
+                try:
+                    running.stop()
+                except Exception:  # noqa: BLE001
+                    pass
         self._widget_fade = None
+        self._widget_fade_move = None
         self._widget_fade_page = None
+        self._widget_fade_end_pos = None
         if page is not None:
             try:
                 page.setGraphicsEffect(None)
             except Exception:  # noqa: BLE001
                 pass
+            if end_pos is not None:
+                try:
+                    page.move(end_pos)
+                except Exception:  # noqa: BLE001
+                    pass
 
     @staticmethod
     def _web_loading(web):
@@ -481,9 +663,10 @@ class MainWindow(QWidget):
             "var sc=getComputedStyle(src);"
             "s.textContent='html{background-color:'+sc.backgroundColor+';"
             "background-image:'+sc.backgroundImage+';}'"
-            "+'body>*.'+k+'{animation:mxPageIn .32s "
-            "cubic-bezier(.22,1,.36,1) both}'"
-            "+'@keyframes mxPageIn{from{opacity:0}}';"
+            "+'body>*.'+k+'{animation:mxPageIn .62s "
+            "cubic-bezier(.16,1,.3,1) both}'"
+            "+'@keyframes mxPageIn{from{opacity:0;"
+            "transform:translateY(56px) scale(.985)}}';"
             "for(var j=0;j<kids.length;j++){var e=kids[j];"
             "e.classList.remove(k);void e.offsetWidth;e.classList.add(k);}"
             "setTimeout(function(){for(var m=0;m<kids.length;m++)"

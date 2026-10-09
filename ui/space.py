@@ -38,7 +38,11 @@ class SpaceBackground(QWidget):
         self._clock = QElapsedTimer()
         self._clock.start()
         self._timer = QTimer(self)
-        self._timer.setInterval(40)
+        # ~15fps. The orbs drift slowly and the stars twinkle gently, so the
+        # extra frames bought nothing visually - but this timer repaints the
+        # whole window (orbs + 90 stars, antialiased, ~3.5ms a frame), and at
+        # 25fps that ran continuously next to every scroll and page-swap frame.
+        self._timer.setInterval(66)
         self._timer.timeout.connect(self._tick)
 
     def showEvent(self, event):
@@ -52,6 +56,12 @@ class SpaceBackground(QWidget):
         self._timer.stop()
 
     def _tick(self):
+        # Skip the repaint entirely while the window is not on screen. This is
+        # the app's most expensive continuous timer, so when it is minimised or
+        # hidden there is no point spending a full-window paint on it.
+        win = self.window()
+        if win is not None and (win.isMinimized() or not win.isVisible()):
+            return
         self.update()
 
     def paintEvent(self, event):
