@@ -52,6 +52,15 @@ class UpdaterError(Exception):
     """Raised for any network/parse/install failure with a user message."""
 
 
+class DownloadCancelled(UpdaterError):
+    """Raised when the user cancels an in-flight download.
+
+    Separate from UpdaterError so the dialog can tell "the user hit Cancel"
+    apart from a real failure and return to the update-available state instead
+    of showing the error screen.
+    """
+
+
 def exe_path() -> Path:
     """Absolute path of the running/installable exe."""
     if getattr(sys, "frozen", False):
@@ -317,6 +326,8 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
     sha256 = ""
     kind = "exe"
     filename = ""
+    size = 0
+    published_at = ""
     manifest_url = (UPDATE_MANIFEST_URL or "").strip()
     if manifest_url:
         try:
@@ -338,11 +349,13 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
             raise UpdaterError("The release has no version tag.")
         version = tag
         notes = str(data.get("body") or "")
+        published_at = str(data.get("published_at") or "")
         url = ""
     else:
         version = str(data.get("version") or "").strip()
         url = str(data.get("url") or "").strip()
         notes = str(data.get("notes") or "")
+        published_at = str(data.get("published_at") or "")
         checksum_url = str(data.get("checksum_url") or "").strip()
         sha256 = _normalize_sha256(str(data.get("sha256") or ""))
         if not version or not url:
@@ -356,6 +369,9 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
                 data.get("installer_checksum_url") or "").strip()
             sha256 = _normalize_sha256(str(data.get("installer_sha256") or ""))
             kind = "setup"
+            size = int(data.get("installer_size") or data.get("size") or 0)
+        else:
+            size = int(data.get("size") or 0)
         base = _url_basename(url)
         if kind == "setup":
             filename = (base if _is_setup_artifact_name(base)
@@ -393,6 +409,7 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         name = str(primary.get("name") or "")
         kind = "setup" if want_setup else "exe"
         filename = name
+        size = int(primary.get("size") or 0)
         # Private repos: download via the authenticated API endpoint.
         asset_id = primary.get("id")
         if asset_id and GITHUB_TOKEN:
@@ -416,6 +433,10 @@ def _fetch_update(timeout: float = 15.0) -> dict | None:
         res["checksum_url"] = checksum_url
     if sha256:
         res["sha256"] = sha256
+    if size:
+        res["size"] = int(size)
+    if published_at:
+        res["published_at"] = published_at
     return res
 
 
@@ -481,10 +502,35 @@ def _verify_sha256(path: Path, expected: str) -> None:
 # Download + install
 # ---------------------------------------------------------------------------
 
+def probe_size(url: str, timeout: float = 10.0) -> int:
+    """Best-effort Content-Length (HEAD) for an artifact, or 0 if unknown.
+
+    Used only to fill the "download size" chip when the manifest / release
+    does not publish a size; never fatal — any failure returns 0 and the UI
+    falls back to a measured size once the download starts.
+    """
+    if not url:
+        return 0
+    req = urllib.request.Request(url, method="HEAD")
+    req.add_header("User-Agent", "MaximumTweaks-updater/1.0")
+    if "api.github.com" in url and GITHUB_TOKEN:
+        req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return int(resp.headers.get("Content-Length") or 0)
+    except Exception:  # noqa: BLE001 - size is optional
+        return 0
+
+
 def download(url: str, progress_cb=None, timeout: float = 60.0,
              checksum_url: str = "", expected_sha256: str = "",
-             filename: str = "") -> Path:
-    """Stream the artifact to data/updates/<filename>. progress_cb(got, total)."""
+             filename: str = "", cancel_cb=None) -> Path:
+    """Stream the artifact to data/updates/<filename>. progress_cb(got, total).
+
+    ``cancel_cb`` (optional callable returning bool) is polled every chunk;
+    when it returns True the partial file is deleted and ``DownloadCancelled``
+    is raised so the caller can return to the update-available state.
+    """
     logger.info("updater: download started")
     dest = data_dir() / _safe_name(filename)
     req = urllib.request.Request(url)
@@ -500,6 +546,8 @@ def download(url: str, progress_cb=None, timeout: float = 60.0,
             chunksize = 1 << 16
             with open(dest, "wb") as fh:
                 while True:
+                    if cancel_cb is not None and cancel_cb():
+                        raise DownloadCancelled("Download cancelled.")
                     chunk = resp.read(chunksize)
                     if not chunk:
                         break
@@ -507,7 +555,12 @@ def download(url: str, progress_cb=None, timeout: float = 60.0,
                     got += len(chunk)
                     if total and progress_cb is not None:
                         progress_cb(got, total)
+    except DownloadCancelled:
+        dest.unlink(missing_ok=True)
+        logger.info("updater: download cancelled by user")
+        raise
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        dest.unlink(missing_ok=True)
         raise UpdaterError(f"Download failed: {exc}") from exc
     size = dest.stat().st_size
     if size == 0:

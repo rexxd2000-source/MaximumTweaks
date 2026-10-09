@@ -1,95 +1,146 @@
-"""Update UI — pixel-accurate port of update_dialog_v2.html.
+"""Update UI — port of update_dialog_v2.html.
 
-Renders the "Check for Updates" popup exactly like the HTML mockup: a frameless
-modal with the brand titlebar, animated version dial, spec chips, "What's
-changed" list with tagged rows, a green status line and the action buttons
-(Remind me later / Skip this version / Update now).
+A frameless, modal update popup that renders the same chrome for every state
+(checking / update available / downloading / installing / up to date / error):
+a round brand-mark logo, the app name, a small purple state label and a close button
+over a 440px (or 520px with the changelog) panel, dimmed by a blurred-looking
+overlay.
 
-The modal sizes itself to its content (height:auto) with a max-height of
-calc(100vh - 48px): compact (440px) while checking / up to date, roomy (520px)
-with the changelog, and it animates between states (250ms ease-out, skipped
-under prefers-reduced-motion). If the content is taller than max-height the
-middle scrolls while the titlebar and footer stay fixed.
+It is a live port, not a mock: the version, download size, progress, speed and
+changelog all come from ``engine.updater``.  The state list mirrors the mockup
+exactly:
 
-Both the update-available state and the up-to-date ("no update") state use the
-same modal chrome so the popup always looks the same, just with different
-content. The "Full changelog" footnote link is intentionally omitted (it would
-open the GitHub repo).
+  * checking     — spinning ring, "Checking for updates…"
+  * available     — version ring, "Tuned up and ready", version row, spec chips,
+                    the changelog, and Remind me later / Skip this version /
+                    Update now
+  * downloading   — progress ring + bar + "x of y MB" + live speed + Cancel
+  * installing    — spinning ring, indeterminate bar, then "Restarting …"
+  * up_to_date    — green check ring, "You're up to date", Done
+  * error         — red ring, the real message, Try again / Close
+
+The modal hugs its content (height auto, capped at ``calc(100vh - 48px)``) and
+animates between states: width 440<->520 and height over 280ms ease-out, the
+new content fades + slides up over 240ms, and opening fades + scales the panel
+over 250ms.  All motion is skipped under the OS reduced-motion setting.
 """
 from __future__ import annotations
 
 import os
+import re
+import time
 
 from PySide6.QtCore import (
     Property as QtProperty,
+    QByteArray,
     QEasingCurve,
     QPointF,
     QRect,
     QRectF,
+    QSize,
     Qt,
     QThread,
     QTimer,
     QPropertyAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QIcon,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import (
-    QAbstractScrollArea,
     QApplication,
     QDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QLayout,
     QScrollArea,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtSvg import QSvgRenderer
 
-from config.app_config import APP_NAME, APP_VERSION, UPDATE_EXE_NAME
-from engine.state import LOGO_CACHE_FILE
+from config.app_config import APP_NAME, APP_VERSION, ROOT, THEME as TH
+from engine.state import LOGO_CACHE_FILE, STATE_DIR
 from maxlog import logger
 
-# Brand logo fetched from the website so the update dialog always shows the
-# current official artwork, even in builds where the bundled asset changed.
-_LOGO_URL = "https://max-opti.co.za/images/app-logo.png"
+# Brand logo: the bundled ``assets/logo-64.png`` artwork (the same mark the dock
+# and dashboard use).  Loaded from disk so the dialog never depends on the
+# network for its identity.
+_LOGO_REL = "assets/logo-64.png"
 _LOGO_CACHE = LOGO_CACHE_FILE
 
+# Checkmark: a proper vector icon (Lucide's ``check``, ISC) fetched from the
+# jsDelivr CDN, cached on disk, and rendered through QtSvg.  The exact same
+# markup is embedded as an offline fallback so the tick always renders.
+_CHECK_SVG_URL = "https://cdn.jsdelivr.net/npm/lucide-static/icons/check.svg"
+_CHECK_CACHE = os.path.join(STATE_DIR, "check_icon.svg")
+_CHECK_SVG = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
+    b'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    b'stroke-linecap="round" stroke-linejoin="round">'
+    b'<path d="M20 6 9 17l-5-5"/></svg>'
+)
+
 # ---------------------------------------------------------------------------
-# Palette — copied verbatim from update_dialog_v2.html :root
+# Palette — the reference's roles mapped onto the app's live THEME tokens.
 # ---------------------------------------------------------------------------
 C = {
-    "bg_page": "#08070d",
-    "surface": "#0e0c16",
-    "surface_2": "#151320",
-    "border": "#211f2e",
-    "border_soft": "#1a1824",
-    "text_1": "#f2f0f8",
-    "text_2": "#8b899c",
-    "text_3": "#5c5a6b",
-    "violet": "#8b7cf6",
-    "violet_grad_a": "#9b8cff",
-    "violet_grad_b": "#7c6df2",
-    "violet_soft": "#2a2440",
-    "teal": "#3ed6c8",
-    "teal_soft": "#173430",
-    "amber": "#e8a94a",
-    "amber_soft": "#3a2b16",
-    "green": "#4ade80",
+    "top": "#171230",          # dialog top (lighter violet)
+    "surface": TH["card"],     # #0C0A16
+    "surface2": TH["card_alt"],   # #12101F
+    "surface3": TH["card_hover"],  # #171428
+    "log": "#0D0A18",
+    "line": TH["border"],      # #1D1B28
+    "line_soft": TH["border_soft"],
+    "edge": "#3A2F63",         # dialog border (violet)
+    "track": "#2A2248",        # ring track
+    "tx": TH["text"],          # #F6F4FC
+    "mut": TH["text_dim"],     # #928AAD
+    "faint": TH["text_faint"],
+    "pri": TH["accent"],       # #8B6BFF
+    "pri2": TH["accent2"],     # #C9C0FF
+    "pri_deep": "#7C4DFF",
+    "ok": TH["success"],       # #3DDC97
+    "err": TH["red"],          # #FF6F6F
 }
 
 SANS = "Segoe UI"
 MONO = "JetBrains Mono"
 
+_TITLES = {
+    "checking": "CHECKING FOR UPDATES",
+    "up_to_date": "UP TO DATE",
+    "available": "UPDATE AVAILABLE",
+    "downloading": "DOWNLOADING",
+    "installing": "INSTALLING",
+    "error": "UPDATE FAILED",
+}
 
-def _mono(pixel: int, weight: QFont.Weight = QFont.Weight.Medium) -> QFont:
-    f = QFont(MONO, 1)
-    f.setPixelSize(pixel)
-    f.setWeight(weight)
-    return f
+# Width per state: roomy (520) when the changelog / progress bar is on screen,
+# compact (440) for checking / up-to-date / installing / error.
+_STATE_WIDTH = {
+    "available": 520, "downloading": 520,
+    "checking": 440, "up_to_date": 440, "installing": 440, "error": 440,
+}
+_HEAD_H = 60
+_BODY_MARGINS = (18, 20, 18, 18)
+_LOG_MIN = 96
+_LOG_MAX = 190
+_RING = 68.0
+_RING_R = 28.0
+_RING_C = 2.0 * 3.141592653589793 * _RING_R  # ~175.93 (matches the mock's 176)
 
 
 def _sans(pixel: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
@@ -99,28 +150,32 @@ def _sans(pixel: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
     return f
 
 
+def _mono(pixel: int, weight: QFont.Weight = QFont.Weight.Medium) -> QFont:
+    f = QFont(MONO, 1)
+    f.setPixelSize(pixel)
+    f.setWeight(weight)
+    return f
+
+
 # -- reduced motion -----------------------------------------------------
-# Honour the OS "show animations" setting (the Windows equivalent of the web
-# prefers-reduced-motion media query) so the size transition is skipped for
-# users who turn animations off. MT_REDUCED_MOTION=1 forces it on for testing.
 _REDUCED_MOTION_CACHE: bool | None = None
 
 
 def _prefers_reduced_motion() -> bool:
+    """Honour the OS "animate controls" setting (the Windows equivalent of the
+    web ``prefers-reduced-motion`` media query). MT_REDUCED_MOTION=1 forces it
+    on for testing."""
     global _REDUCED_MOTION_CACHE
     if _REDUCED_MOTION_CACHE is not None:
         return _REDUCED_MOTION_CACHE
-    import os as _os
-    env = (_os.environ.get("MT_REDUCED_MOTION")
-           or _os.environ.get("REDUCED_MOTION"))
+    env = (os.environ.get("MT_REDUCED_MOTION")
+           or os.environ.get("REDUCED_MOTION"))
     if env is not None:
         _REDUCED_MOTION_CACHE = env.strip().lower() not in ("0", "", "false", "no")
         return _REDUCED_MOTION_CACHE
     reduced = False
     try:
         import ctypes
-        # SPI_GETCLIENTAREAANIMATION -> 0 when "Animate controls and elements
-        # inside windows" is turned off.
         enabled = ctypes.c_int(1)
         ok = ctypes.windll.user32.SystemParametersInfoW(
             0x1042, 0, ctypes.byref(enabled), 0)
@@ -133,7 +188,6 @@ def _prefers_reduced_motion() -> bool:
 
 
 def _no_select(w: QWidget) -> QWidget:
-    """Make a widget's text un-selectable (user-select: none)."""
     try:
         if isinstance(w, QLabel):
             w.setTextInteractionFlags(Qt.NoTextInteraction)
@@ -146,65 +200,141 @@ def _no_select(w: QWidget) -> QWidget:
     return w
 
 
-# ---------------------------------------------------------------------------
-# Version dial — a small ring that draws an animated violet arc.
-# ---------------------------------------------------------------------------
-class _Dial(QWidget):
-    """56px ring: dark track + violet fill arc animated like .dial-fill."""
+# -- bundled assets + SVG icons -----------------------------------------
+def _asset_path(rel: str) -> str:
+    """Resolve a repo-relative asset in dev and frozen (``_MEIPASS``) builds."""
+    import sys
+    base = getattr(sys, "_MEIPASS", None)
+    root = base if base else str(ROOT)
+    return os.path.join(root, *rel.replace("\\", "/").split("/"))
 
-    def __init__(self, text: str, parent=None):
+
+_SVG_PIX_CACHE: dict = {}
+
+
+def _svg_pixmap(svg, size: int, color: str | None = None) -> QPixmap:
+    """Rasterise SVG bytes at ``size`` logical px (HiDPI-crisp), optionally
+    recolouring any ``currentColor`` stroke/fill."""
+    if isinstance(svg, str):
+        svg = svg.encode("utf-8")
+    key = (hash(bytes(svg)), int(size), color)
+    hit = _SVG_PIX_CACHE.get(key)
+    if hit is not None and not hit.isNull():
+        return hit
+    data = bytes(svg)
+    if color:
+        data = data.replace(b"currentColor", color.encode("ascii"))
+    renderer = QSvgRenderer(QByteArray(data))
+    dpr = 1.0
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            dpr = float(app.devicePixelRatio() or 1.0)
+    except Exception:  # noqa: BLE001
+        dpr = 1.0
+    pm = QPixmap(int(round(size * dpr)), int(round(size * dpr)))
+    pm.setDevicePixelRatio(dpr)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    renderer.render(p)
+    p.end()
+    _SVG_PIX_CACHE[key] = pm
+    return pm
+
+
+def _check_svg_bytes() -> bytes:
+    """The fetched check SVG (cached) or the embedded Lucide fallback."""
+    try:
+        if os.path.isfile(_CHECK_CACHE):
+            with open(_CHECK_CACHE, "rb") as f:
+                data = f.read()
+            if b"<svg" in data:
+                return data
+    except OSError:
+        pass
+    return _CHECK_SVG
+
+
+def _check_pixmap(size: int, color: str) -> QPixmap:
+    return _svg_pixmap(_check_svg_bytes(), size, color)
+
+
+def _draw_pm_center(p: QPainter, pm: QPixmap, cx: float, cy: float) -> None:
+    if pm is None or pm.isNull():
+        return
+    dpr = pm.devicePixelRatio() or 1.0
+    w = pm.width() / dpr
+    h = pm.height() / dpr
+    p.drawPixmap(
+        QRectF(cx - w / 2.0, cy - h / 2.0, w, h), pm,
+        QRectF(0.0, 0.0, pm.width(), pm.height()))
+
+
+# ---------------------------------------------------------------------------
+# Ring — 68px progress / spinner ring with a violet (or green / red) arc.
+# ---------------------------------------------------------------------------
+class _Ring(QWidget):
+    """Progress ring.  ``set_progress(0..1)`` fills the arc; ``start_spin()``
+    turns it into an indeterminate spinner; ``set_tone('ok', check=True)`` draws
+    the full green ring with a checkmark, ``'err'`` a red ring."""
+
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._text = text
-        self._fill = 0.0  # 0..1 portion of the arc drawn
-        self._anim = None
-        self._tone = "accent"  # accent | ok
+        self.setFixedSize(int(_RING), int(_RING))
+        self._offset = _RING_C        # fully empty
+        self._tone = "pri"            # pri | ok | err
         self._check = False
+        self._check_pm = None
         self._spin = False
         self._angle = 0.0
         self._spin_anim = None
-        self.setFixedSize(56, 56)
-        w = QLabel(self)
-        w.setFont(_mono(11, QFont.Weight.DemiBold))
-        w.setAlignment(Qt.AlignCenter)
-        w.setAttribute(Qt.WA_TransparentForMouseEvents)
-        w.setGeometry(0, 0, 56, 56)
-        self._label = w
+        self._label = QLabel(self)
+        self._label.setAlignment(Qt.AlignCenter)
+        self._label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._label.setGeometry(0, 0, int(_RING), int(_RING))
+        self._label.setFont(_mono(15, QFont.Weight.DemiBold))
+        self._label.setStyleSheet(f"color:{C['tx']}; background:transparent;")
 
-    def setNumber(self, text: str):
-        self._text = text
-        self._label.setText(text)
-
-    def animate(self, delay_ms: int = 400):
-        self.stop_spin()
-        self._label.setText(self._text)
-        if self._anim is not None:
-            self._anim.stop()
-        self._fill = 0.0
-        anim = QPropertyAnimation(self, b"fill", self)
-        self._anim = anim
-        anim.setDuration(1100)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.InOutCubic)
-        QTimer.singleShot(delay_ms, anim.start)
+    # -- api
+    def set_text(self, text: str):
+        self._label.setText(text or "")
 
     def set_tone(self, tone: str, check: bool = False):
-        """tone: 'accent' (violet) or 'ok' (green). check hides the number and
-        draws a green checkmark in the dial centre."""
         self._tone = tone
         self._check = check
-        self._label.setVisible(not check)
+        if check:
+            # The tick is a real vector icon drawn in paintEvent; never a text
+            # glyph, so it can't collide with a second stroke.
+            self._label.setText("")
+        elif tone == "err":
+            self._label.setFont(_sans(22, QFont.Weight.Bold))
+            self._label.setStyleSheet(f"color:{C['err']}; background:transparent;")
+        else:
+            self._label.setFont(_mono(15, QFont.Weight.DemiBold))
+            self._label.setStyleSheet(f"color:{C['tx']}; background:transparent;")
+        self.update()
+
+    def set_check_pixmap(self, pm) -> None:
+        self._check_pm = pm if (pm and not pm.isNull()) else None
+        self.update()
+
+    def set_progress(self, frac: float):
+        frac = max(0.0, min(1.0, float(frac)))
+        self._offset = _RING_C * (1.0 - frac)
+        self.update()
+
+    def set_offset(self, offset: float):
+        """Direct stroke-dashoffset control (the mock's 22 / 120 values)."""
+        self._offset = max(0.0, min(_RING_C, float(offset)))
         self.update()
 
     def start_spin(self):
-        """Continuous indeterminate spinner for the checking state."""
-        if self._anim is not None:
-            self._anim.stop()
-        self._label.setVisible(False)
-        self._check = False
         if self._spin:
             return
         self._spin = True
+        self._check = False
+        self._label.setText("")
         anim = QPropertyAnimation(self, b"angle", self)
         anim.setDuration(1000)
         anim.setStartValue(0.0)
@@ -214,9 +344,6 @@ class _Dial(QWidget):
         self._spin_anim = anim
         if not _prefers_reduced_motion():
             anim.start()
-        else:
-            self._angle = 0.0
-            self.update()
 
     def stop_spin(self):
         if self._spin_anim is not None:
@@ -233,87 +360,191 @@ class _Dial(QWidget):
 
     angle = QtProperty(float, fget=_get_angle, fset=_set_angle)
 
-    def _get_fill(self) -> float:
-        return self._fill
-
-    def _set_fill(self, v: float):
-        self._fill = max(0.0, min(1.0, v))
-        self.update()
-
-    fill = QtProperty(float, fget=_get_fill, fset=_set_fill)
-
+    # -- paint
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        center = QPointF(28, 28)
-        r = 22.5
-        pen = QPen(QColor(C["surface_2"]), 5)
+        rect = QRectF(6, 6, _RING_R * 2, _RING_R * 2)
+        # track
+        pen = QPen(QColor(C["track"]), 5)
         pen.setCapStyle(Qt.RoundCap)
         p.setPen(pen)
-        p.drawArc(QRectF(center.x() - r, center.y() - r, r * 2, r * 2),
-                  0, 360 * 16)
+        p.drawArc(rect, 0, 360 * 16)
+
+        if self._tone == "ok":
+            arc_color, glow = QColor(C["ok"]), QColor(61, 220, 151, 70)
+            span = 360 * 16
+        elif self._tone == "err":
+            arc_color, glow = QColor(C["err"]), QColor(255, 111, 111, 70)
+            span = int((_RING_C - self._offset) / _RING_C * 360 * 16)
+        else:
+            arc_color, glow = None, QColor(139, 107, 255, 70)
+            span = int((_RING_C - self._offset) / _RING_C * 360 * 16)
+
         if self._spin:
-            spin = QPen(QColor(C["violet"]), 5)
-            spin.setCapStyle(Qt.RoundCap)
-            p.setPen(spin)
-            p.drawArc(QRectF(center.x() - r, center.y() - r, r * 2, r * 2),
-                      int((-90 + self._angle) * 16), int(-110 * 16))
+            span = int(0.32 * 360 * 16)
+
+        if span <= 0:
             p.end()
             return
-        # Violet (update) or green (up-to-date) arc, clockwise from the top,
-        # leaving a small tail gap like the mockup's dash-fill.
-        arc_color = C["green"] if self._tone == "ok" else C["violet"]
-        fill = QPen(QColor(arc_color), 5)
-        fill.setCapStyle(Qt.RoundCap)
-        p.setPen(fill)
-        # For the "ok" state show a full green ring (cleaner feedback).
-        max_span = 360 if (self._tone == "ok" and self._fill >= 1.0) else 328
-        span = int(max_span * 16 * self._fill)
-        if span > 0:
-            p.drawArc(QRectF(center.x() - r, center.y() - r, r * 2, r * 2),
-                      -90 * 16, -span)
-        # Checkmark badge for the up-to-date state.
+
+        p.save()
+        if self._spin:
+            p.translate(_RING / 2, _RING / 2)
+            p.rotate(self._angle)
+            p.translate(-_RING / 2, -_RING / 2)
+
+        # soft outer glow behind the arc
+        gpen = QPen(glow, 10)
+        gpen.setCapStyle(Qt.RoundCap)
+        p.setPen(gpen)
+        p.drawArc(rect, 90 * 16, -span)
+
+        if arc_color is not None:
+            fpen = QPen(arc_color, 5)
+        else:
+            grad = QLinearGradient(0, 0, _RING, _RING)
+            grad.setColorAt(0.0, QColor(C["pri2"]))
+            grad.setColorAt(1.0, QColor(C["pri_deep"]))
+            fpen = QPen(grad, 5)
+        fpen.setCapStyle(Qt.RoundCap)
+        p.setPen(fpen)
+        p.drawArc(rect, 90 * 16, -span)
+
+        p.restore()
+
         if self._check:
-            p.setRenderHint(QPainter.Antialiasing)
-            cpen = QPen(QColor(C["green"]), 3)
-            cpen.setCapStyle(Qt.RoundCap)
-            cpen.setJoinStyle(Qt.RoundJoin)
-            p.setPen(cpen)
-            p.drawPolyline([
-                QPointF(19, 28.5), QPointF(25.5, 34.5), QPointF(37, 22)])
+            pm = self._check_pm
+            if pm is None:
+                pm = _check_pixmap(int(_RING * 0.46), C["ok"])
+            _draw_pm_center(p, pm, _RING / 2.0, _RING / 2.0)
         p.end()
 
 
 # ---------------------------------------------------------------------------
-# Download progress bar — a thin filled track with a rounded violet fill.
+# Progress bar (determinate + indeterminate sweep)
 # ---------------------------------------------------------------------------
-class _ProgressBar(QWidget):
+class _Bar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._frac = 0.0
-        self.setFixedHeight(6)
+        self._ind = False
+        self._sweep = 0.0
+        self._anim = None
+        self.setFixedHeight(8)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def set_frac(self, frac: float):
-        self._frac = max(0.0, min(1.0, frac))
+        self._frac = max(0.0, min(1.0, float(frac)))
         self.update()
+
+    def start_indeterminate(self):
+        if self._ind:
+            return
+        self._ind = True
+        anim = QPropertyAnimation(self, b"sweep", self)
+        anim.setDuration(1300)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setLoopCount(-1)
+        anim.setEasingCurve(QEasingCurve.InOutSine)
+        self._anim = anim
+        if not _prefers_reduced_motion():
+            anim.start()
+        else:
+            self._sweep = 0.5
+            self.update()
+
+    def stop_indeterminate(self):
+        if self._anim is not None:
+            self._anim.stop()
+            self._anim = None
+        self._ind = False
+        self.update()
+
+    def _get_sweep(self) -> float:
+        return self._sweep
+
+    def _set_sweep(self, v: float):
+        self._sweep = float(v)
+        self.update()
+
+    sweep = QtProperty(float, fget=_get_sweep, fset=_set_sweep)
 
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = QRectF(0, 0, self.width(), self.height())
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(C["surface_2"]))
-        p.drawRoundedRect(r, 3, 3)
-        if self._frac > 0:
-            fill = QRectF(0, 0, self.width() * self._frac, self.height())
-            p.setBrush(QColor(C["violet"]))
-            p.drawRoundedRect(fill, 3, 3)
+        p.setBrush(QColor(C["surface2"]))
+        p.drawRoundedRect(r, 4, 4)
+        grad = QLinearGradient(0, 0, self.width(), 0)
+        grad.setColorAt(0.0, QColor(C["pri_deep"]))
+        grad.setColorAt(1.0, QColor(C["pri2"]))
+        if self._ind:
+            w = self.width() * 0.35
+            x = -w + self._sweep * (self.width() + w)
+            p.setBrush(grad)
+            p.drawRoundedRect(QRectF(x, 0, w, self.height()), 4, 4)
+        elif self._frac > 0:
+            p.setBrush(grad)
+            p.drawRoundedRect(QRectF(0, 0, self.width() * self._frac,
+                                     self.height()), 4, 4)
         p.end()
 
 
 # ---------------------------------------------------------------------------
-# Update dialog
+# Logo — 30px circular badge: purple radial gradient with the bundled brand
+# mark (assets/logo-64.png) clipped to the circle, plus a soft violet glow.
+# ---------------------------------------------------------------------------
+class _Logo(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(30, 30)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._pm = None
+        glow = QGraphicsDropShadowEffect(self)
+        glow.setBlurRadius(14)
+        glow.setOffset(0, 0)
+        glow.setColor(QColor(0x8B, 0x5C, 0xF6, 0x66))
+        self.setGraphicsEffect(glow)
+
+    def set_pixmap(self, pm) -> None:
+        self._pm = pm if (pm and not pm.isNull()) else None
+        self.update()
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        r = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
+        grad = QRadialGradient(r.left() + r.width() * 0.32,
+                               r.top() + r.height() * 0.28,
+                               r.width() * 0.95)
+        grad.setColorAt(0.0, QColor(C["pri"]))
+        grad.setColorAt(1.0, QColor("#2A1458"))
+        path = QPainterPath()
+        path.addEllipse(r)
+        p.fillPath(path, grad)
+        if self._pm is not None:
+            clip = QPainterPath()
+            clip.addEllipse(r)
+            p.setClipPath(clip)
+            scaled = self._pm.scaled(self.width(), self.height(),
+                                     Qt.KeepAspectRatioByExpanding,
+                                     Qt.SmoothTransformation)
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            p.drawPixmap(x, y, scaled)
+        else:
+            p.setPen(QColor("#E9DDFF"))
+            p.setFont(_sans(13, QFont.Weight.Bold))
+            p.drawText(self.rect(), Qt.AlignCenter, "M")
+        p.end()
+
+
+# ---------------------------------------------------------------------------
+# Workers
 # ---------------------------------------------------------------------------
 class FetchWorker(QThread):
     """Check for an update in the background."""
@@ -356,23 +587,25 @@ class FetchWorker(QThread):
 class DownloadWorker(QThread):
     """Download the staged update; reports byte progress and 0..1 fraction."""
 
-    bytes = Signal(int, int)  # got bytes, total bytes
-    bytes_total = Signal(int)  # total bytes once known
+    bytes = Signal(int, int)     # got bytes, total bytes
     progress = Signal(float)
-    done = Signal(object, str)  # new_exe path or None, error message
+    done = Signal(object, str)   # new_exe path or None, error message
 
     def __init__(self, url: str, parent=None):
         super().__init__(parent)
         self._url = url
         self._err = ""
         self._dest = None
+        self._cancel = False
         self._checksum_url = ""
         self._sha256 = ""
         self._filename = ""
 
+    def cancel(self):
+        self._cancel = True
+
     def _progress(self, got, total):
         self.bytes.emit(int(got), int(total))
-        self.bytes_total.emit(int(total))
         if total > 0:
             self.progress.emit(min(1.0, got / total))
 
@@ -383,7 +616,11 @@ class DownloadWorker(QThread):
                 self._url, progress_cb=self._progress,
                 checksum_url=self._checksum_url,
                 expected_sha256=self._sha256,
-                filename=self._filename)
+                filename=self._filename,
+                cancel_cb=lambda: self._cancel)
+        except updater.DownloadCancelled:
+            self.done.emit(None, "")
+            return
         except updater.UpdaterError as exc:
             self._err = str(exc)
         except Exception as exc:  # noqa: BLE001
@@ -392,10 +629,32 @@ class DownloadWorker(QThread):
         self.done.emit(self._dest, self._err)
 
 
-class LogoWorker(QThread):
-    """Fetch the app logo from the website into the state cache dir."""
+class SizeWorker(QThread):
+    """Best-effort HEAD probe for the download size when the manifest omits it."""
 
-    done = Signal(str)  # path to the downloaded logo, or "" on failure
+    done = Signal(int)
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self._url = url
+
+    def run(self):
+        from engine import updater
+        try:
+            size = updater.probe_size(self._url)
+        except Exception:  # noqa: BLE001
+            size = 0
+        self.done.emit(int(size))
+
+
+class LogoWorker(QThread):
+    """Fetch the check mark SVG into the state cache dir.
+
+    Kept under its historical name so existing imports keep working; it now
+    services the vector tick used by the ring and the Done button rather than
+    the (bundled) brand logo."""
+
+    done = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -406,104 +665,88 @@ class LogoWorker(QThread):
         import urllib.error
         try:
             req = urllib.request.Request(
-                _LOGO_URL, headers={"User-Agent": "MaximumTweaks-updater/1.0"})
+                _CHECK_SVG_URL,
+                headers={"User-Agent": "MaximumTweaks-updater/1.0"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = resp.read()
-            if data:
-                os.makedirs(os.path.dirname(_LOGO_CACHE) or ".", exist_ok=True)
-                with open(_LOGO_CACHE, "wb") as f:
+            if data and b"<svg" in data:
+                os.makedirs(os.path.dirname(_CHECK_CACHE) or ".", exist_ok=True)
+                with open(_CHECK_CACHE, "wb") as f:
                     f.write(data)
-                self._path = _LOGO_CACHE
+                self._path = _CHECK_CACHE
         except (urllib.error.URLError, OSError) as exc:  # noqa: BLE001
-            logger.warn(f"updater: logo fetch failed: {exc}")
+            logger.warn(f"updater: check icon fetch failed: {exc}")
         self.done.emit(self._path)
 
 
-_RISE_QSS = f"""
-#Modal {{
-    background-color: {C['surface']};
-    border: 1px solid {C['border']};
-    border-radius: 14px;
+# ---------------------------------------------------------------------------
+# Stylesheet
+# ---------------------------------------------------------------------------
+_QSS = f"""
+#Head {{
+    background: transparent; border: none;
+    border-bottom: 1px solid {C['line']};
 }}
-#Titlebar {{
-    background-color: transparent;
-    border: none;
-    border-bottom: 1px solid {C['border_soft']};
+#AppName {{ color: {C['tx']}; background: transparent; border: none; }}
+#StateLbl {{ color: {C['pri2']}; background: transparent; border: none; }}
+#XBtn {{
+    background: transparent; border: none; border-radius: 9px;
+    color: {C['mut']};
 }}
-#Mark {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                                stop:0 {C['violet_grad_a']}, stop:1 {C['violet_grad_b']});
-    color: #ffffff;
-    border: none;
-    border-radius: 7px;
+#XBtn:hover {{ background: rgba(255,255,255,0.08); color: {C['tx']}; }}
+#XBtn:disabled {{ color: {C['faint']}; }}
+#Page, #LogHost, #LogRow {{ background: transparent; border: none; }}
+#H1 {{ color: {C['tx']}; background: transparent; border: none; }}
+#Sub {{ color: {C['mut']}; background: transparent; border: none; }}
+#OkText {{ color: {C['ok']}; background: transparent; border: none; }}
+#Foot {{ color: {C['ok']}; background: transparent; border: none; }}
+#Note {{ color: {C['mut']}; background: transparent; border: none; }}
+#Lab {{ color: {C['mut']}; background: transparent; border: none; }}
+#Bullet {{ color: {C['pri2']}; background: transparent; border: none; }}
+#LogText {{ color: {C['tx']}; background: transparent; border: none; }}
+#LogNone {{ color: {C['mut']}; background: transparent; border: none; }}
+#Chip {{
+    background: #171325; border: 1px solid #2a2340;
+    border-radius: 10px; color: {C['mut']};
+    padding: 6px 10px;
 }}
-#Titlebar .ud-l1 {{ color: {C['text_1']}; background: transparent; border: none; }}
-#Titlebar .ud-l2 {{ color: {C['text_3']}; background: transparent; border: none; }}
-#CloseBtn {{
-    background: transparent; color: {C['text_3']};
-    border: none; border-radius: 7px;
+#BtnGhost {{
+    background: transparent; border: none; color: {C['mut']};
 }}
-#CloseBtn:hover {{ background: {C['surface_2']}; color: {C['text_1']}; }}
-#Body {{ background: transparent; border: none; }}
-#H1 {{ color: {C['text_1']}; background: transparent; border: none; }}
-#NumOld {{ color: {C['text_3']}; background: transparent; border: none; text-decoration: line-through; }}
-#NumArrow {{ color: {C['text_3']}; background: transparent; border: none; }}
-#NumNew {{ color: {C['violet']}; background: transparent; border: none; }}
-#SpecChip {{
-    background: {C['surface_2']};
-    border: 1px solid {C['border_soft']};
-    border-radius: 7px;
-    color: {C['text_2']};
+#BtnGhost:hover {{ color: {C['tx']}; }}
+#Btn {{
+    background: {C['surface2']}; border: 1px solid {C['line']};
+    border-radius: 11px; color: {C['tx']};
 }}
-#SectionLabel {{ color: {C['text_3']}; background: transparent; border: none; }}
-#ChangeItem {{
-    background: {C['surface_2']};
-    border: 1px solid {C['border_soft']};
-    border-radius: 9px;
+#Btn:hover {{ border-color: {C['pri2']}; background: {C['surface3']}; }}
+#BtnPrimary {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 {C['pri2']}, stop:1 {C['pri_deep']});
+    border: 1px solid {C['pri2']}; border-radius: 11px; color: #ffffff;
 }}
-#Tag.speed {{ background: {C['amber_soft']}; color: {C['amber']}; border: none; border-radius: 5px; }}
-#Tag.fix   {{ background: {C['teal_soft']};  color: {C['teal']};  border: none; border-radius: 5px; }}
-#Tag.new   {{ background: {C['violet_soft']}; color: {C['violet']}; border: none; border-radius: 5px; }}
-#ChangeItem .ud-cb {{ color: {C['text_1']}; background: transparent; border: none; }}
-#ChangeItem .ud-ct {{ color: {C['text_2']}; background: transparent; border: none; }}
-#StatusDot {{
-    background: {C['green']};
-    border: none;
-    border-radius: 3px;
+#BtnPrimary:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #b9a8ff, stop:1 #8a5bff);
 }}
-#StatusText {{ color: {C['green']}; background: transparent; border: none; }}
-#SkipLink {{
-    background: transparent; color: {C['text_3']};
-    border: none; border-radius: 8px; padding: 8px 2px;
+#BtnPrimary:disabled {{
+    background: {C['surface2']}; color: {C['faint']}; border-color: {C['line']};
 }}
-#SkipLink:hover {{ color: {C['text_2']}; }}
-#BtnLater {{
-    background: {C['surface_2']}; color: {C['text_2']};
-    border: 1px solid {C['border']}; border-radius: 8px;
+#BodyScroll {{ background: transparent; border: none; }}
+#BodyScroll > QWidget > QWidget {{ background: transparent; }}
+#LogBox {{
+    background: {C['log']}; border: 1px solid {C['line']};
+    border-radius: 12px;
 }}
-#BtnLater:hover {{ color: {C['text_1']}; border-color: #332f47; }}
-#BtnUpdate {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                                stop:0 {C['violet_grad_a']}, stop:1 {C['violet_grad_b']});
-    color: #ffffff; border: none; border-radius: 8px;
+#LogBox > QWidget > QWidget {{ background: transparent; }}
+#Flash {{
+    background: {C['surface3']}; border: 1px solid {C['pri']};
+    border-radius: 12px; color: {C['tx']};
 }}
-#BtnUpdate:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                                stop:0 #a899ff, stop:1 #8878f5); }}
-#BtnUpdate:disabled {{ background: #2a2440; color: #5c5a6b; }}
-#Footnote {{ color: {C['text_3']}; background: transparent; border: none; }}
-"""
-
-# Transparent scroll areas with a slim 6px scrollbar, themed to the modal so
-# the changelog (and the scrolling middle of the body) never show the native
-# chunky scrollbar. Shared by the middle scroller and the changelog box.
-_SCROLL_QSS = f"""
-QScrollArea {{ background: transparent; border: none; }}
-QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 6px; margin: 0; }}
 QScrollBar::handle:vertical {{
-    background: {C['violet_soft']}; border-radius: 3px; min-height: 24px;
+    background: #3A2D66; border-radius: 3px; min-height: 24px;
 }}
-QScrollBar::handle:vertical:hover {{ background: #3b3357; }}
+QScrollBar::handle:vertical:hover {{ background: #4A3B80; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0; background: transparent;
 }}
@@ -513,43 +756,35 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
 """
 
 
-def _glyph(text: str, tag: str) -> QLabel:
-    lbl = QLabel(text)
-    lbl.setObjectName("Tag")
-    lbl.setProperty("class", tag)
-    lbl.setAlignment(Qt.AlignCenter)
-    lbl.setFixedSize(18, 18)
-    lbl.setFont(_mono(10, QFont.Weight.DemiBold))
-    return lbl
+# ---------------------------------------------------------------------------
+# Modal panel — paints the gradient body, violet border, soft shadow + top glow.
+# ---------------------------------------------------------------------------
+class _Modal(QFrame):
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
+        grad = QLinearGradient(0, 0, 0, max(140.0, self.height()))
+        grad.setColorAt(0.0, QColor(C["top"]))
+        grad.setColorAt(1.0, QColor(C["surface"]))
+        p.setPen(QPen(QColor(C["edge"]), 1))
+        p.setBrush(grad)
+        p.drawRoundedRect(r, 20, 20)
 
-
-def _change(bold: str, text: str, tag: str, glyph: str):
-    row = QWidget()
-    row.setObjectName("ChangeItem")
-    row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-    lay = QHBoxLayout(row)
-    lay.setContentsMargins(11, 10, 11, 10)
-    lay.setSpacing(10)
-    lay.addWidget(_glyph(glyph, tag))
-    txt = QLabel(f'<div style="line-height:150%;margin:0">'
-                 f'<b>{bold}</b> {text}</div>')
-    txt.setObjectName("ud-ct")
-    txt.setWordWrap(True)
-    txt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-    txt.setMinimumWidth(0)
-    txt.setFont(_sans(13))
-    lay.addWidget(txt, 1)
-    return row
+        # thin glowing gradient line along the top edge
+        line = QLinearGradient(0, 0, self.width(), 0)
+        line.setColorAt(0.0, QColor(201, 192, 255, 0))
+        line.setColorAt(0.5, QColor(C["pri2"]))
+        line.setColorAt(1.0, QColor(201, 192, 255, 0))
+        pen = QPen(line, 2)
+        pen.setCapStyle(Qt.FlatCap)
+        p.setPen(pen)
+        p.drawLine(QPointF(16, 1.5), QPointF(self.width() - 16, 1.5))
+        p.end()
 
 
 class UpdateDialog(QDialog):
-    """Check for updates, download with progress, install + restart.
-
-    Renders both states inside the same framed modal:
-      * update available — dial + chips + "What's changed" + green status +
-        Remind me later / Skip this version / Update now
-      * no update       — dial + "You're up to date" + green status + Close
-    """
+    """Check for updates, download with progress, install + restart."""
 
     def __init__(self, parent=None, check_on_open: bool = True):
         super().__init__(parent)
@@ -557,710 +792,714 @@ class UpdateDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # Width hugs each state (440 compact / 520 with the changelog); height
-        # is measured from the content so the modal is never taller than needed
-        # and never shorter than its content.
-        self.setMinimumWidth(0)
-        self.setMinimumHeight(0)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setStyleSheet(_QSS)
+
+        self._host = parent.window() if parent is not None else None
         self._info = None
         self._new_exe = None
-        self._bytes_total = 0
-        self._bytes_got = 0
         self._mode = None
+        self._retry = "check"
         self._worker = None
+        self._size_worker = None
+        self._logo_worker = None
+        self._bytes_got = 0
+        self._bytes_total = 0
+        self._known_size = 0
+        self._dl_start = 0.0
+        self._last_t = 0.0
+        self._last_bytes = 0
+        self._speed = 0.0
         self._geom_anim = None
         self._fade_anim = None
+        self._open_anim = None
+        self._opacity = 1.0
+        self._slide = 0
+        self._slide_page = None
 
-        self.setStyleSheet(_RISE_QSS)
-
-        # ---------- root ----------
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        # We size this frameless dialog ourselves from the measured content, so
-        # stop the layout from imposing a (cached, stale) minimum that would
-        # clamp resizes between states.
-        root.setSizeConstraint(QLayout.SetNoConstraint)
-        self.setMinimumSize(0, 0)
-
-        self._modal = QFrame(self)
-        self._modal.setObjectName("Modal")
-        root.addWidget(self._modal)
+        self._modal = _Modal(self)
+        shadow = QGraphicsDropShadowEffect(self._modal)
+        shadow.setBlurRadius(60)
+        shadow.setOffset(0, 18)
+        shadow.setColor(QColor(124, 77, 255, 90))
+        self._modal.setGraphicsEffect(shadow)
 
         m = QVBoxLayout(self._modal)
         m.setContentsMargins(0, 0, 0, 0)
         m.setSpacing(0)
 
-        # ---------- titlebar ----------
-        tb = QFrame()
-        tb.setObjectName("Titlebar")
-        tb.setFixedHeight(56)
-        t = QHBoxLayout(tb)
-        t.setContentsMargins(16, 12, 13, 12)
-        t.setSpacing(10)
+        # ---------- header ----------
+        head = QFrame()
+        head.setObjectName("Head")
+        head.setFixedHeight(_HEAD_H)
+        h = QHBoxLayout(head)
+        h.setContentsMargins(18, 0, 14, 0)
+        h.setSpacing(11)
 
-        mark = QLabel("M")
-        mark.setObjectName("Mark")
-        mark.setAlignment(Qt.AlignCenter)
-        mark.setFixedSize(24, 24)
-        mark.setFont(_sans(12, QFont.Weight.Bold))
-        t.addWidget(mark)
-        self._mark = mark
-        self._logo_worker = None
+        self._logo = _Logo()
+        h.addWidget(self._logo)
 
-        sub = QVBoxLayout()
-        sub.setContentsMargins(0, 0, 0, 0)
-        sub.setSpacing(3)
-        l1 = QLabel("Maximum Tweaks")
-        l1.setObjectName("ud-l1")
-        l1.setFont(_sans(13, QFont.Weight.DemiBold))
-        self._tb_sub = QLabel("CHECKING FOR UPDATES")
-        self._tb_sub.setObjectName("ud-l2")
-        _s = _mono(10, QFont.Weight.Medium)
-        _s.setLetterSpacing(QFont.AbsoluteSpacing, 0.6)
-        self._tb_sub.setFont(_s)
-        sub.addWidget(l1)
-        sub.addWidget(self._tb_sub)
-        t.addLayout(sub, 1)
+        titles = QVBoxLayout()
+        titles.setContentsMargins(0, 0, 0, 0)
+        titles.setSpacing(2)
+        name = QLabel("Maximum Tweaks")
+        name.setObjectName("AppName")
+        name.setFont(_sans(14, QFont.Weight.DemiBold))
+        name.setFixedHeight(round(14 * 1.2))          # line-height: 1.2
+        name.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._state_lbl = QLabel(_TITLES["checking"])
+        self._state_lbl.setObjectName("StateLbl")
+        sf = _sans(11, QFont.Weight.DemiBold)
+        sf.setLetterSpacing(QFont.AbsoluteSpacing, 1.4)
+        self._state_lbl.setFont(sf)
+        self._state_lbl.setFixedHeight(round(11 * 1.2))   # line-height: 1.2
+        self._state_lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        # Stretches above and below keep the title + state label together in
+        # the vertical centre. Without them Qt splits the header's spare height
+        # evenly between the two labels, opening a ~15px gap between them.
+        titles.addStretch(1)
+        titles.addWidget(name)
+        titles.addWidget(self._state_lbl)
+        titles.addStretch(1)
+        h.addLayout(titles, 1)
 
-        close = QToolButton()
-        close.setObjectName("CloseBtn")
-        close.setFixedSize(26, 26)
-        close.setText("\u2715")
-        close.setCursor(Qt.PointingHandCursor)
-        close.clicked.connect(self.reject)
-        t.addWidget(close)
+        self._x = QToolButton()
+        self._x.setObjectName("XBtn")
+        self._x.setFixedSize(30, 30)
+        self._x.setText("\u2715")
+        self._x.setFont(_sans(14))
+        self._x.setCursor(Qt.PointingHandCursor)
+        self._x.clicked.connect(self.reject)
+        h.addWidget(self._x, 0, Qt.AlignVCenter)
 
-        m.addWidget(tb)
+        m.addWidget(head)
 
-        # ---------- body ----------
-        body = QWidget()
-        body.setObjectName("Body")
-        b = QVBoxLayout(body)
-        b.setContentsMargins(20, 22, 20, 20)
-        b.setSpacing(0)
-        m.addWidget(body)
+        # ---------- body (header pinned, body scrolls) ----------
+        self._body_scroll = QScrollArea()
+        self._body_scroll.setObjectName("BodyScroll")
+        self._body_scroll.setWidgetResizable(True)
+        self._body_scroll.setFrameShape(QFrame.NoFrame)
+        self._body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._body_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._body_scroll.setMinimumHeight(0)
+        self._body = QWidget()
+        self._body.setObjectName("BodyHost")
+        self._body_lay = QVBoxLayout(self._body)
+        self._body_lay.setContentsMargins(*_BODY_MARGINS)
+        self._body_lay.setSpacing(0)
+        self._body_scroll.setWidget(self._body)
+        m.addWidget(self._body_scroll)
 
-        # The middle of the dialog (version row, chips, actions, changelog)
-        # lives in a scroll area that is allowed to shrink to nothing, so on a
-        # short screen the whole middle scrolls instead of the changelog box
-        # being squashed to a sliver. AdjustToContents keeps the dialog height
-        # hugging its content whenever there is room.
-        self._mid_scroll = QScrollArea()
-        self._mid_scroll.setWidgetResizable(True)
-        self._mid_scroll.setFrameShape(QFrame.NoFrame)
-        self._mid_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._mid_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._mid_scroll.setSizeAdjustPolicy(
-            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
-        self._mid_scroll.setMinimumHeight(0)
-        self._mid_scroll.setStyleSheet(_SCROLL_QSS)
-        self._mid = QWidget()
-        self._mid.setStyleSheet("background: transparent;")
-        mb = QVBoxLayout(self._mid)
-        mb.setContentsMargins(0, 0, 0, 0)
-        mb.setSpacing(0)
-        self._mid_scroll.setWidget(self._mid)
-        b.addWidget(self._mid_scroll, 1)
+        self._pages = {}
+        self._build_pages()
 
-        # version row
-        vr = QHBoxLayout()
-        vr.setSpacing(14)
-        self._dial = _Dial("")
-        vr.addWidget(self._dial, 0, Qt.AlignVCenter)
-
-        vt = QVBoxLayout()
-        vt.setContentsMargins(0, 0, 0, 0)
-        vt.setSpacing(5)
-        self._h1 = QLabel("")
-        self._h1.setObjectName("H1")
-        self._h1.setFont(_sans(16, QFont.Weight.Bold))
-        vt.addWidget(self._h1)
-        nums = QHBoxLayout()
-        nums.setContentsMargins(0, 0, 0, 0)
-        nums.setSpacing(7)
-        self._num_old = QLabel("")
-        self._num_old.setObjectName("NumOld")
-        self._num_old.setFont(_mono(12))
-        nums.addWidget(self._num_old)
-        arrow = QLabel("\u2192")
-        arrow.setObjectName("NumArrow")
-        arrow.setFont(_mono(12))
-        nums.addWidget(arrow)
-        self._num_arrow = arrow
-        self._num_new = QLabel("")
-        self._num_new.setObjectName("NumNew")
-        self._num_new.setFont(_mono(12, QFont.Weight.DemiBold))
-        nums.addWidget(self._num_new)
-        nums.addStretch()
-        vt.addLayout(nums)
-
-        self._num_status = QLabel("")
-        self._num_status.setObjectName("NumNew")
-        self._num_status.setFont(_mono(10))
-        self._num_status.setVisible(False)
-        vt.addWidget(self._num_status)
-
-        vr.addLayout(vt, 1)
-        mb.addLayout(vr)
-        mb.addSpacing(18)
-
-        # spec chips
-        self._chips = QHBoxLayout()
-        self._chips.setContentsMargins(0, 0, 0, 0)
-        self._chips.setSpacing(7)
-        mb.addLayout(self._chips)
-        mb.addSpacing(20)
-
-        # actions
-        act = QHBoxLayout()
-        act.setContentsMargins(0, 0, 0, 0)
-        act.setSpacing(12)
-        self._later = QToolButton()
-        self._later.setObjectName("SkipLink")
-        self._later.setText("Remind me later")
-        self._later.setFont(_sans(12))
-        self._later.setCursor(Qt.PointingHandCursor)
-        self._later.clicked.connect(self.reject)
-        act.addWidget(self._later)
-        act.addStretch()
-
-        grp = QHBoxLayout()
-        grp.setContentsMargins(0, 0, 0, 0)
-        grp.setSpacing(8)
-        self._btn_later = QToolButton()
-        self._btn_later.setObjectName("BtnLater")
-        self._btn_later.setText("Skip this version")
-        self._btn_later.setFont(_sans(12, QFont.Weight.DemiBold))
-        self._btn_later.setCursor(Qt.PointingHandCursor)
-        self._btn_later.setFixedHeight(36)
-        self._btn_later.clicked.connect(self._skip_version)
-        grp.addWidget(self._btn_later)
-        self._btn_update = QToolButton()
-        self._btn_update.setObjectName("BtnUpdate")
-        self._btn_update.setText("\u2b07  Update now")
-        self._btn_update.setFont(_sans(12, QFont.Weight.DemiBold))
-        self._btn_update.setCursor(Qt.PointingHandCursor)
-        self._btn_update.setFixedHeight(36)
-        self._btn_update.clicked.connect(self._on_update_clicked)
-        grp.addWidget(self._btn_update)
-        act.addLayout(grp)
-        mb.addLayout(act)
-        mb.addSpacing(14)
-
-        # What's changed — wrapped in its own container so it fully collapses
-        # (label + list) on the up-to-date/error states. The list itself lives
-        # in a scroll area with a fixed footprint: never smaller than 96px (so
-        # a one-line changelog is still readable and never clipped) and never
-        # larger than 220px (so a long changelog scrolls inside the box instead
-        # of making the dialog taller than the window). It is deliberately NOT
-        # stretchable; its height is measured and pinned in _adopt_widgets.
-        self._changes_box = QWidget()
-        self._changes_box.setObjectName("Body")
-        cb = QVBoxLayout(self._changes_box)
-        cb.setContentsMargins(0, 0, 0, 0)
-        cb.setSpacing(11)
-        self._section = QLabel("What's changed")
-        self._section.setObjectName("SectionLabel")
-        self._section.setFont(_sans(11))
-        cb.addWidget(self._section)
-        self._changes_scroll = QScrollArea()
-        self._changes_scroll.setWidgetResizable(True)
-        self._changes_scroll.setFrameShape(QFrame.NoFrame)
-        self._changes_scroll.setStyleSheet(_SCROLL_QSS)
-        self._changes_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._changes_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._changes_scroll.setSizeAdjustPolicy(
-            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
-        self._changes_scroll.setMinimumHeight(96)
-        self._changes_scroll.setMaximumHeight(220)
-        self._changes_host = QWidget()
-        self._changes_host.setStyleSheet("background: transparent;")
-        self._changes = QVBoxLayout(self._changes_host)
-        self._changes.setContentsMargins(14, 12, 14, 12)
-        self._changes.setSpacing(10)
-        self._changes_scroll.setWidget(self._changes_host)
-        cb.addWidget(self._changes_scroll)
-        self._changes_box.setVisible(True)
-        mb.addWidget(self._changes_box)
-        mb.addStretch(1)
-
-        # ---------- footer (pinned below the scrolling middle) ----------
-        # Kept out of the outer scroll so the status line / progress / restart
-        # note stay visible while only the middle (header, chips, buttons,
-        # changelog) scrolls on very short screens.
-        self._footer = QWidget()
-        self._footer.setStyleSheet("background: transparent;")
-        f = QVBoxLayout(self._footer)
-        f.setContentsMargins(0, 12, 0, 0)
-        f.setSpacing(0)
-
-        # status row
-        st = QHBoxLayout()
-        st.setContentsMargins(0, 0, 0, 0)
-        st.setSpacing(6)
-        dot = QFrame()
-        dot.setObjectName("StatusDot")
-        dot.setFixedSize(6, 6)
-        st.addWidget(dot, 0, Qt.AlignVCenter)
-        self._status = QLabel("")
-        self._status.setObjectName("StatusText")
-        self._status.setWordWrap(True)
-        self._status.setFont(_mono(11))
-        st.addWidget(self._status, 1)
-        st.addStretch()
-        f.addLayout(st)
-
-        # thin download progress bar — only visible while downloading
-        self._progress_bar = _ProgressBar(self._footer)
-        self._progress_bar.setVisible(False)
-        f.addWidget(self._progress_bar)
-        f.addSpacing(8)
-
-        # footnote (only shown when an update is available)
-        fn = QLabel("Maximum Tweaks will restart automatically")
-        fn.setObjectName("Footnote")
-        fn.setAlignment(Qt.AlignCenter)
-        fn.setFont(_sans(10))
-        f.addWidget(fn)
-        self._footnote = fn
-
-        b.addWidget(self._footer)
-
-        self._adopt_widgets()
-        self._load_remote_logo()
+        self._noselect_all()
+        self._load_logo()
+        self._load_check_icon()
         if check_on_open:
             self._check()
 
     # ------------------------------------------------------------------
-    # brand logo (fetched from the website, cached in the state dir)
+    # page builders
     # ------------------------------------------------------------------
-    def _load_remote_logo(self):
-        """Show the official logo in the titlebar: use the cached web fetch
-        immediately if present, then refresh it from the internet in the
-        background. Falls back to the bundled "M" mark on failure."""
-        if os.path.isfile(_LOGO_CACHE):
-            self._apply_logo_pixmap(QPixmap(_LOGO_CACHE))
+    def _new_page(self) -> tuple[QWidget, QVBoxLayout]:
+        w = QWidget()
+        w.setObjectName("Page")
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._body_lay.addWidget(w)
+        return w, lay
+
+    @staticmethod
+    def _row() -> tuple[QWidget, QHBoxLayout]:
+        row = QWidget()
+        row.setObjectName("Page")
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(16)
+        return row, lay
+
+    @staticmethod
+    def _vtext(head: QLabel, sub: QLabel) -> QWidget:
+        box = QWidget()
+        box.setObjectName("Page")
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(3)
+        v.addWidget(head)
+        v.addWidget(sub)
+        v.addStretch(1)
+        return box
+
+    def _mk_chip(self) -> QLabel:
+        lbl = QLabel("")
+        lbl.setObjectName("Chip")
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setFont(_sans(12))
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        return lbl
+
+    def _btn(self, text: str, primary: bool = False, ghost: bool = False) -> QToolButton:
+        b = QToolButton()
+        b.setObjectName("BtnPrimary" if primary else ("BtnGhost" if ghost else "Btn"))
+        b.setText(text)
+        b.setCursor(Qt.PointingHandCursor)
+        b.setFixedHeight(38)
+        if ghost:
+            b.setFont(_sans(12))
+            b.setStyleSheet(f"#BtnGhost {{ padding: 0 4px; }}")
+        else:
+            b.setFont(_sans(12, QFont.Weight.DemiBold))
+            b.setStyleSheet(
+                f"#{b.objectName()} {{ padding: 0 16px; }}")
+        return b
+
+    def _bullet_row(self, text: str) -> QWidget:
+        row = QWidget()
+        row.setObjectName("LogRow")
+        rl = QHBoxLayout(row)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(8)
+        b = QLabel("\u2022")
+        b.setObjectName("Bullet")
+        b.setFixedWidth(10)
+        b.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        b.setFont(_sans(13))
+        t = QLabel(text)
+        t.setObjectName("LogText")
+        t.setWordWrap(True)
+        t.setFont(_sans(13))
+        t.setMinimumWidth(0)
+        t.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        rl.addWidget(b, 0, Qt.AlignTop)
+        rl.addWidget(t, 1)
+        return row
+
+    def _build_pages(self):
+        # ---- checking ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_check = _Ring()
+        r.addWidget(self._ring_check, 0, Qt.AlignVCenter)
+        h1 = QLabel("Checking for updates\u2026")
+        h1.setObjectName("H1")
+        h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        sub = QLabel("This only takes a moment.")
+        sub.setObjectName("Sub")
+        sub.setFont(_sans(13))
+        r.addWidget(self._vtext(h1, sub), 1)
+        lay.addWidget(row)
+        lay.addStretch(1)
+        self._pages["checking"] = w
+
+        # ---- up to date ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_ok = _Ring()
+        r.addWidget(self._ring_ok, 0, Qt.AlignVCenter)
+        h1 = QLabel("You\u2019re up to date")
+        h1.setObjectName("H1")
+        h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        self._ok_sub = QLabel("")
+        self._ok_sub.setObjectName("OkText")
+        self._ok_sub.setFont(_sans(13))
+        r.addWidget(self._vtext(h1, self._ok_sub), 1)
+        lay.addWidget(row)
+        lay.addSpacing(20)
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        btns.addStretch(1)
+        self._btn_done = self._btn("Done", primary=True)
+        # A real vector tick (the same internet SVG as the ring), never the
+        # "✓" text glyph.
+        self._btn_done.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_done.setIcon(QIcon(_check_pixmap(14, "#FFFFFF")))
+        self._btn_done.setIconSize(QSize(14, 14))
+        self._btn_done.clicked.connect(self.accept)
+        btns.addWidget(self._btn_done)
+        lay.addLayout(btns)
+        lay.addStretch(1)
+        self._pages["up_to_date"] = w
+
+        # ---- update available ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_up = _Ring()
+        r.addWidget(self._ring_up, 0, Qt.AlignVCenter)
+        h1 = QLabel("Tuned up and ready")
+        h1.setObjectName("H1")
+        h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        self._up_sub = QLabel("")
+        self._up_sub.setObjectName("Sub")
+        self._up_sub.setFont(_sans(13))
+        r.addWidget(self._vtext(h1, self._up_sub), 1)
+        lay.addWidget(row)
+        lay.addSpacing(18)
+        chips = QHBoxLayout()
+        chips.setSpacing(8)
+        self._chip_dl = self._mk_chip()
+        self._chip_install = self._mk_chip()
+        self._chip_date = self._mk_chip()
+        self._chip_install.setText("<b>~2 min</b> install")
+        chips.addWidget(self._chip_dl, 1)
+        chips.addWidget(self._chip_install, 1)
+        chips.addWidget(self._chip_date, 1)
+        lay.addLayout(chips)
+        lay.addSpacing(18)
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        self._btn_remind = self._btn("Remind me later", ghost=True)
+        self._btn_remind.clicked.connect(self._remind)
+        btns.addWidget(self._btn_remind)
+        btns.addStretch(1)
+        self._btn_skip = self._btn("Skip this version")
+        self._btn_skip.clicked.connect(self._skip)
+        btns.addWidget(self._btn_skip)
+        self._btn_update = self._btn("\u2b07  Update now", primary=True)
+        self._btn_update.clicked.connect(self._on_update_clicked)
+        btns.addWidget(self._btn_update)
+        lay.addLayout(btns)
+        lay.addSpacing(20)
+        lab = QLabel("What\u2019s changed")
+        lab.setObjectName("Lab")
+        lf = _sans(11, QFont.Weight.DemiBold)
+        lf.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
+        lab.setFont(lf)
+        lay.addWidget(lab)
+        lay.addSpacing(8)
+        self._log_scroll = QScrollArea()
+        self._log_scroll.setObjectName("LogBox")
+        self._log_scroll.setWidgetResizable(True)
+        self._log_scroll.setFrameShape(QFrame.NoFrame)
+        self._log_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._log_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._log_scroll.setMinimumHeight(_LOG_MIN)
+        self._log_scroll.setMaximumHeight(_LOG_MAX)
+        self._log_host = QWidget()
+        self._log_host.setObjectName("LogHost")
+        self._log_lay = QVBoxLayout(self._log_host)
+        self._log_lay.setContentsMargins(14, 12, 14, 12)
+        self._log_lay.setSpacing(6)
+        self._log_scroll.setWidget(self._log_host)
+        lay.addWidget(self._log_scroll)
+        lay.addSpacing(16)
+        foot = QLabel("A newer build is ready \u2014 hit Update now")
+        foot.setObjectName("Foot")
+        foot.setFont(_sans(13))
+        lay.addWidget(foot)
+        lay.addSpacing(8)
+        note = QLabel("Maximum Tweaks will restart automatically")
+        note.setObjectName("Note")
+        note.setAlignment(Qt.AlignCenter)
+        note.setFont(_sans(12))
+        lay.addWidget(note)
+        lay.addStretch(1)
+        self._pages["available"] = w
+
+        # ---- downloading ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_dl = _Ring()
+        r.addWidget(self._ring_dl, 0, Qt.AlignVCenter)
+        h1 = QLabel("Downloading update\u2026")
+        h1.setObjectName("H1")
+        h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        self._dl_sub = QLabel("")
+        self._dl_sub.setObjectName("Sub")
+        self._dl_sub.setFont(_sans(13))
+        r.addWidget(self._vtext(h1, self._dl_sub), 1)
+        lay.addWidget(row)
+        lay.addSpacing(18)
+        self._bar_dl = _Bar()
+        lay.addWidget(self._bar_dl)
+        lay.addSpacing(6)
+        stat = QHBoxLayout()
+        self._dl_progress = QLabel("0 of 0 MB")
+        self._dl_progress.setObjectName("Sub")
+        self._dl_progress.setFont(_sans(12))
+        self._dl_speed = QLabel("")
+        self._dl_speed.setObjectName("Sub")
+        self._dl_speed.setFont(_sans(12))
+        stat.addWidget(self._dl_progress)
+        stat.addStretch(1)
+        stat.addWidget(self._dl_speed)
+        lay.addLayout(stat)
+        lay.addSpacing(18)
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        self._btn_cancel = self._btn("Cancel")
+        self._btn_cancel.clicked.connect(self._cancel_download)
+        btns.addWidget(self._btn_cancel)
+        lay.addLayout(btns)
+        lay.addStretch(1)
+        self._pages["downloading"] = w
+
+        # ---- installing ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_install = _Ring()
+        r.addWidget(self._ring_install, 0, Qt.AlignVCenter)
+        self._install_h1 = QLabel("Installing update\u2026")
+        self._install_h1.setObjectName("H1")
+        self._install_h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        sub = QLabel("Please don\u2019t close the app.")
+        sub.setObjectName("Sub")
+        sub.setFont(_sans(13))
+        r.addWidget(self._vtext(self._install_h1, sub), 1)
+        lay.addWidget(row)
+        lay.addSpacing(18)
+        self._bar_install = _Bar()
+        lay.addWidget(self._bar_install)
+        lay.addSpacing(10)
+        note = QLabel("Maximum Tweaks will restart automatically")
+        note.setObjectName("Note")
+        note.setAlignment(Qt.AlignCenter)
+        note.setFont(_sans(12))
+        lay.addWidget(note)
+        lay.addStretch(1)
+        self._pages["installing"] = w
+
+        # ---- error ----
+        w, lay = self._new_page()
+        row, r = self._row()
+        self._ring_err = _Ring()
+        r.addWidget(self._ring_err, 0, Qt.AlignVCenter)
+        self._err_h1 = QLabel("Update failed")
+        self._err_h1.setObjectName("H1")
+        self._err_h1.setFont(_sans(16, QFont.Weight.DemiBold))
+        self._err_sub = QLabel("")
+        self._err_sub.setObjectName("Sub")
+        self._err_sub.setFont(_sans(13))
+        self._err_sub.setWordWrap(True)
+        r.addWidget(self._vtext(self._err_h1, self._err_sub), 1)
+        lay.addWidget(row)
+        lay.addSpacing(20)
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        btns.addStretch(1)
+        self._btn_retry = self._btn("Try again", primary=True)
+        self._btn_retry.clicked.connect(self._retry_action)
+        btns.addWidget(self._btn_retry)
+        self._btn_close = self._btn("Close")
+        self._btn_close.clicked.connect(self.reject)
+        btns.addWidget(self._btn_close)
+        lay.addLayout(btns)
+        lay.addStretch(1)
+        self._pages["error"] = w
+
+        for name, page in self._pages.items():
+            page.setVisible(name == "checking")
+        self._mode = "checking"
+
+    # ------------------------------------------------------------------
+    # brand logo (bundled) + vector check mark (fetched, cached)
+    # ------------------------------------------------------------------
+    def _load_logo(self):
+        """Show the bundled ``assets/logo-64.png`` brand mark."""
+        pm = QPixmap(_asset_path(_LOGO_REL))
+        if pm.isNull():
+            pm = QPixmap(_LOGO_CACHE)
+        self._apply_logo_pixmap(pm)
+
+    def _apply_logo_pixmap(self, pm):
+        if pm is None or pm.isNull():
+            return
+        self._logo.set_pixmap(pm)
+
+    def _load_check_icon(self):
+        """Refresh the check mark SVG from the internet (cached on disk)."""
         self._logo_worker = LogoWorker(self)
-        self._logo_worker.done.connect(self._on_logo_done)
+        self._logo_worker.done.connect(self._on_check_icon_done)
         self._logo_worker.finished.connect(self._logo_gc)
         self._logo_worker.start()
 
-    def _apply_logo_pixmap(self, pm):
-        if pm.isNull():
+    def _on_check_icon_done(self, path):
+        if not path:
             return
-        mark = self._mark
-        mark.setText("")
-        size = 22
-        scaled = pm.scaled(size, size, Qt.KeepAspectRatio,
-                           Qt.SmoothTransformation)
-        mark.setPixmap(scaled)
-        mark.setStyleSheet(
-            "background:transparent;border:none;border-radius:7px;")
-
-    def _on_logo_done(self, path):
-        if path and os.path.isfile(path):
-            self._apply_logo_pixmap(QPixmap(path))
+        # Drop the cached raster so the next paint re-renders from the fresh
+        # SVG; refresh anything already showing a tick.
+        try:
+            _SVG_PIX_CACHE.clear()
+            self._ring_ok.update()
+            self._btn_done.setIcon(QIcon(_check_pixmap(14, "#FFFFFF")))
+        except RuntimeError:
+            pass  # dialog torn down while the fetch was in flight
 
     def _logo_gc(self):
         self._logo_worker = None
 
-    # -- sizing ----------------------------------------------------------
-    # Width per state: compact (440) for checking / up-to-date / error, roomy
-    # (520) when the changelog is on screen. Height is always measured from the
-    # content — never hardcoded.
-    _STATE_WIDTH = {
-        "available": 520, "downloading": 520, "ready": 520,
-        "checking": 440, "up_to_date": 440, "error": 440,
-    }
-    _TITLEBAR_H = 56
-    _BODY_VMARGIN = 42  # body layout 22 top + 20 bottom
-    _CHANGES_MIN = 96
-    _CHANGES_MAX = 220
+    # ------------------------------------------------------------------
+    # sizing + animation
+    # ------------------------------------------------------------------
+    def _noselect_all(self):
+        for lbl in self.findChildren(QLabel):
+            _no_select(lbl)
 
-    def _state_width(self) -> int:
-        return self._STATE_WIDTH.get(self._mode or "checking", 452)
-
-    def _max_h(self) -> int:
-        """max-height: calc(100vh - 48px) on the monitor the dialog is on."""
-        geos = QApplication.screens()
-        if not geos:
-            return 10000
-        avail = geos[0].availableGeometry()
-        for g in geos:
-            if g.availableGeometry().intersects(self.frameGeometry()):
-                avail = g.availableGeometry()
-                break
-        return max(320, avail.height() - 48)
-
-    def _center_rect(self, w: int, h: int) -> QRect:
-        """Target rect, centred on the parent window (or the screen)."""
-        cx, cy = None, None
-        parent = self.parentWidget()
-        if parent is not None and parent.isVisible():
-            geo = parent.window().frameGeometry()
-            if geo.isValid() and not geo.isEmpty():
-                cx, cy = geo.center().x(), geo.center().y()
-        if cx is None:
-            scr = (QApplication.screenAt(self.frameGeometry().center())
-                   or QApplication.primaryScreen())
+    def _sync_overlay_geometry(self):
+        geo = None
+        host = self._host
+        if host is not None and host.isVisible():
+            g = host.frameGeometry()
+            if g.isValid() and not g.isEmpty():
+                geo = g
+        if geo is None:
+            scr = QApplication.primaryScreen()
             if scr is not None:
                 geo = scr.availableGeometry()
-                cx, cy = geo.center().x(), geo.center().y()
-        if cx is None:
-            return QRect(0, 0, w, h)
-        return QRect(int(cx - w / 2), int(cy - h / 2), w, h)
+        if geo is None:
+            geo = QRect(0, 0, 1280, 800)
+        self.setGeometry(geo)
 
-    def _measure_changes(self, dialog_w: int) -> int:
-        """Height the changelog list wants at ``dialog_w``, clamped to
-        [min-height 96, max-height 220]. Row heights come from the label's
-        heightForWidth (the rich-text sizeHint is unreliable), so the box hugs
-        short logs and caps + scrolls long ones."""
-        if self._changes_box.isHidden():
+    def _modal_target(self, w: int, h: int) -> QRect:
+        rect = self.rect()
+        x = rect.x() + (rect.width() - w) // 2
+        y = rect.y() + (rect.height() - h) // 2
+        return QRect(x, y, w, h)
+
+    def _max_h(self) -> int:
+        # max-height: calc(100vh - 48px) — the overlay already is the viewport.
+        return max(120, self.height() - 48)
+
+    def _measure_log(self, dialog_w: int) -> int:
+        if self._pages["available"].isHidden():
             return 0
-        host_w = max(160, dialog_w - self._BODY_VMARGIN)
-        m = self._changes.contentsMargins()
-        inner = max(60, host_w - m.left() - m.right())
+        host_w = max(160, dialog_w - _BODY_MARGINS[0] - _BODY_MARGINS[2])
+        m = self._log_lay.contentsMargins()
+        inner = max(60, host_w - m.left() - m.right() - 2)
         total = m.top() + m.bottom()
-        n = self._changes.count()
+        n = self._log_lay.count()
         for i in range(n):
-            item = self._changes.itemAt(i)
+            item = self._log_lay.itemAt(i)
             row = item.widget() if item is not None else None
             if row is None:
                 continue
             rl = row.layout()
+            if rl is None:
+                continue
             rm = rl.contentsMargins()
-            lbl = row.findChild(QLabel, "ud-ct")
-            text_w = inner - rm.left() - rm.right() - 18 - rl.spacing()
-            lh = lbl.heightForWidth(max(40, text_w)) if lbl is not None else 18
+            lbl = row.findChild(QLabel, "LogText")
+            if lbl is None:
+                total += 18 + rm.top() + rm.bottom()
+                continue
+            tw = inner - rm.left() - rm.right() - 10 - rl.spacing()
+            lh = lbl.heightForWidth(max(40, tw))
             total += max(18, lh) + rm.top() + rm.bottom()
         if n > 1:
-            total += (n - 1) * self._changes.spacing()
-        return max(self._CHANGES_MIN, min(self._CHANGES_MAX, total))
-
-    def _mid_content_h(self, box_h: int) -> int:
-        """Natural height of the scrolling middle at the current width. Summed
-        item-by-item so the changelog box (whose QScrollArea sizeHint is not
-        trustworthy) contributes its measured ``box_h`` instead."""
-        lay = self._mid.layout()
-        total = 0
-        for i in range(lay.count()):
-            item = lay.itemAt(i)
-            if item is None:
-                continue
-            if item.spacerItem() is not None:
-                total += item.spacerItem().sizeHint().height()
-                continue
-            w = item.widget()
-            if w is not None:
-                if w is self._changes_box:
-                    if self._changes_box.isHidden():
-                        continue
-                    gap = self._changes_box.layout().spacing()
-                    total += (self._section.sizeHint().height() + gap + box_h)
-                elif not w.isHidden():
-                    total += w.sizeHint().height()
-                continue
-            sub = item.layout()
-            if sub is not None:
-                total += sub.sizeHint().height()
-        return total
-
-    def _noselect_all(self):
-        """user-select: none — nothing in the dialog can be selected."""
-        for lbl in self.findChildren(QLabel):
-            _no_select(lbl)
+            total += (n - 1) * self._log_lay.spacing()
+        return max(_LOG_MIN, min(_LOG_MAX, total))
 
     def _adopt_widgets(self, animate: bool | None = None):
-        """Measure the content for the current state and size the dialog to it.
-
-        No height is ever hardcoded: the middle content and the pinned footer
-        are measured at the target width, the changelog box is pinned to its
-        96-220px footprint, and the dialog is sized to the sum. If the content
-        would exceed ``max-height: calc(100vh - 48px)`` the middle scrolls
-        (the footer stays pinned). The size change is animated when the dialog
-        is already on screen (250ms ease-out), respecting reduced motion.
-        """
         if animate is None:
             animate = self.isVisible()
         self._noselect_all()
-        old = self.geometry()
-        w = self._state_width()
+        old = self._modal.geometry()
+        w = _STATE_WIDTH.get(self._mode or "checking", 452)
 
-        # Lay the content out at the target width so wrapped text measures at
-        # the size it will actually occupy.
-        self._mid_scroll.setMinimumHeight(0)
-        self.setMinimumWidth(0)
-        self.resize(w, max(old.height(), 1))
-        self.layout().activate()
+        self._body_scroll.setMinimumHeight(0)
+        self._modal.resize(w, max(old.height(), 1))
         self._modal.layout().activate()
+        self._body_lay.activate()
 
-        # Pin the changelog footprint, then measure middle + footer. The
-        # middle height is summed from its items (a QScrollArea's own sizeHint
-        # is unreliable, so the changelog box height is supplied explicitly).
-        box_h = self._measure_changes(w)
-        self._changes_scroll.setFixedHeight(box_h or self._CHANGES_MIN)
-        self._changes_scroll.updateGeometry()
-        self._changes_box.updateGeometry()
-        self._mid_scroll.updateGeometry()
-        mid_h = self._mid_content_h(box_h)
-        self._footer.layout().activate()
-        footer_h = self._footer.sizeHint().height()
+        page = self._pages.get(self._mode)
+        if self._mode == "available":
+            box_h = self._measure_log(w)
+            self._log_scroll.setFixedHeight(box_h or _LOG_MIN)
+            self._log_scroll.updateGeometry()
+            self._log_host.updateGeometry()
+        if page is not None and page.layout() is not None:
+            # Invalidate the page's cached sizeHint so the freshly pinned
+            # changelog height is reflected *synchronously* (otherwise the
+            # body is measured with the previous state's height).
+            page.layout().invalidate()
+            page.layout().activate()
+            page.updateGeometry()
+        self._body_lay.invalidate()
+        self._body_lay.activate()
 
+        body_h = self._body_lay.sizeHint().height()
         max_h = self._max_h()
-        chrome = self._TITLEBAR_H + self._BODY_VMARGIN
-        scroll_h = min(mid_h, max(0, max_h - chrome - footer_h))
-        self._mid_scroll.setFixedHeight(max(0, scroll_h))
-        self._mid_scroll.updateGeometry()
-        self.setMaximumHeight(max_h)
-        self.layout().activate()
+        body_h = max(1, min(body_h, max_h - _HEAD_H))
+        self._body_scroll.setFixedHeight(body_h)
+        self._body_scroll.updateGeometry()
 
-        total_h = chrome + scroll_h + footer_h
-        target = self._center_rect(w, total_h)
+        total_h = _HEAD_H + body_h
+        target = self._modal_target(w, total_h)
         if self._geom_anim is not None:
-            self._geom_anim.stop()
+            prev_anim = self._geom_anim
             self._geom_anim = None
+            prev_anim.stop()
+            prev_anim.deleteLater()
         if (not animate) or _prefers_reduced_motion() or old == target:
-            self.setGeometry(target)
+            self._modal.setGeometry(target)
             return
-        anim = QPropertyAnimation(self, b"geometry", self)
-        anim.setDuration(250)
+        anim = QPropertyAnimation(self._modal, b"geometry", self)
+        anim.setDuration(280)
         anim.setStartValue(old)
         anim.setEndValue(target)
         anim.setEasingCurve(QEasingCurve.OutCubic)
-        anim.start(QPropertyAnimation.DeleteWhenStopped)
-        self._geom_anim = anim
 
-    def _fade_in(self, widget: QWidget):
-        """Fade a freshly shown widget in (200ms) so it doesn't flash before
-        the dialog has grown to fit it."""
+        def _done_geo():
+            if self._geom_anim is anim:
+                self._geom_anim = None
+            anim.deleteLater()
+
+        anim.finished.connect(_done_geo)
+        self._geom_anim = anim
+        anim.start()
+
+    def _fade_in(self, page: QWidget):
+        # slide: start 4px lower, ease to 0 over 240ms
+        self._slide_page = page
+        self._set_slide(4 if not _prefers_reduced_motion() else 0)
+        slide = QPropertyAnimation(self, b"slide_offset", self)
+        slide.setDuration(240)
+        slide.setStartValue(4.0 if not _prefers_reduced_motion() else 0.0)
+        slide.setEndValue(0.0)
+        slide.setEasingCurve(QEasingCurve.OutCubic)
+        slide.start(QPropertyAnimation.DeleteWhenStopped)
+
         if self._fade_anim is not None:
-            self._fade_anim.stop()
+            prev_fade = self._fade_anim
             self._fade_anim = None
+            prev_fade.stop()
+            prev_fade.deleteLater()
         if _prefers_reduced_motion():
             try:
-                widget.setGraphicsEffect(None)
+                page.setGraphicsEffect(None)
             except Exception:  # noqa: BLE001
                 pass
             return
-        eff = QGraphicsOpacityEffect(widget)
+        eff = QGraphicsOpacityEffect(page)
         eff.setOpacity(0.0)
-        widget.setGraphicsEffect(eff)
+        page.setGraphicsEffect(eff)
         anim = QPropertyAnimation(eff, b"opacity", self)
-        anim.setDuration(200)
+        anim.setDuration(240)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.OutCubic)
 
         def _done():
             try:
-                if widget.graphicsEffect() is eff:
-                    widget.setGraphicsEffect(None)
+                if page.graphicsEffect() is eff:
+                    page.setGraphicsEffect(None)
             except Exception:  # noqa: BLE001
                 pass
+            if self._fade_anim is anim:
+                self._fade_anim = None
+            anim.deleteLater()
 
         anim.finished.connect(_done)
-        anim.start(QPropertyAnimation.DeleteWhenStopped)
         self._fade_anim = anim
+        anim.start()
+
+    def _get_slide(self) -> int:
+        return self._slide
+
+    def _set_slide(self, v):
+        self._slide = int(v)
+        page = self._slide_page
+        if page is not None and page.layout() is not None:
+            m = page.layout().contentsMargins()
+            page.layout().setContentsMargins(m.left(), int(v), m.right(), m.bottom())
+
+    slide_offset = QtProperty(int, fget=_get_slide, fset=_set_slide)
+
+    # overlay fade used by paintEvent
+    def _get_opacity(self) -> float:
+        return self._opacity
+
+    def _set_opacity(self, v):
+        self._opacity = float(v)
+        self.update()
+
+    overlay_opacity = QtProperty(float, fget=_get_opacity, fset=_set_opacity)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        a = int(255 * 0.62 * max(0.0, min(1.0, self._opacity)))
+        p.fillRect(self.rect(), QColor(5, 3, 12, a))
+        p.end()
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._sync_overlay_geometry()
         self._adopt_widgets(animate=False)
+        self.setFocus()
+        if _prefers_reduced_motion():
+            self._opacity = 1.0
+            return
+        target = self._modal.geometry()
+        start = QRect(target)
+        start.setWidth(int(target.width() * 0.97))
+        start.setHeight(int(target.height() * 0.97))
+        start.moveCenter(target.center())
+        start.translate(0, 14)
+        self._modal.setGeometry(start)
+        self._opacity = 0.0
+        fade = QPropertyAnimation(self, b"overlay_opacity", self)
+        fade.setDuration(200)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.start(QPropertyAnimation.DeleteWhenStopped)
+        anim = QPropertyAnimation(self._modal, b"geometry", self)
+        anim.setDuration(250)
+        anim.setStartValue(start)
+        anim.setEndValue(target)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._open_anim = anim
 
-    def _chip(self, bold: str, rest: str) -> QLabel:
-        lbl = QLabel(f"<b>{bold}</b> {rest}")
-        lbl.setObjectName("SpecChip")
-        lbl.setContentsMargins(0, 0, 0, 0)
-        lbl.setFont(_mono(11))
-        return lbl
+    # ------------------------------------------------------------------
+    # state machine
+    # ------------------------------------------------------------------
+    def _show_state(self, name: str, fade: bool = True):
+        prev = self._mode
+        self._mode = name
+        for key, page in self._pages.items():
+            page.setVisible(key == name)
+        self._state_lbl.setText(_TITLES.get(name, ""))
+        if name == "installing":
+            self._x.setEnabled(False)
+        else:
+            self._x.setEnabled(True)
+        self._adopt_widgets()
+        if fade and prev != name and not _prefers_reduced_motion():
+            self._fade_in(self._pages[name])
 
-    def _clear_layout(self, lay):
-        while lay.count():
-            item = lay.takeAt(0)
+    def _clear_log(self):
+        while self._log_lay.count():
+            item = self._log_lay.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.setParent(None)
                 w.deleteLater()
-            elif item.layout() is not None:
-                self._clear_layout(item.layout())
 
-    # ------------------------------------------------------------------
-    # states
-    # ------------------------------------------------------------------
-    def _show_available(self, info: dict):
-        """Update available — render exactly like the mockup's body."""
-        self._mode = "available"
-        self._tb_sub.setText("UPDATE AVAILABLE")
-        cur = APP_VERSION.lstrip("v")
-        new = str(info.get("version") or "").strip().lstrip("v")
-        self._dial.setNumber(new)
-        self._dial.set_tone("accent")
-        self._dial.animate(400)
-        self._h1.setText("Tuned up and ready")
-        # Only the update-available state shows the crossed-out old version in
-        # the "v{old} -> v{new}" row.
-        self._num_old.setText(f"v{cur}")
-        self._num_old.show()
-        self._num_arrow.show()
-        self._num_new.setText(f"v{new}")
-        self._num_new.show()
-        self._num_status.hide()
+    def _clear_workers(self):
+        for attr in ("_worker", "_size_worker"):
+            w = getattr(self, attr, None)
+            if w is not None and hasattr(w, "isRunning") and w.isRunning():
+                if hasattr(w, "cancel"):
+                    w.cancel()
+                else:
+                    w.quit()
+                w.wait(2500)
+            setattr(self, attr, None)
 
-        self._clear_layout(self._chips)
-        self._chips.addWidget(self._chip(f"{self._mb_label()} MB", "download"))
-        self._chips.addWidget(self._chip("~2 min", "install"))
-        self._chips.addWidget(self._chip("Released today", ""))
-
-        self._section.setText("What's changed")
-        self._changes_box.show()
-        self._fade_in(self._changes_box)
-        self._clear_layout(self._changes)
-        items = self._parse_notes(info.get("notes") or "")
-        for bold, text, tag, glyph in items:
-            self._changes.addWidget(_change(bold, text, tag, glyph))
-
-        self._status.setText("A newer build is ready \u2014 hit Update now")
-        self._progress_bar.setVisible(False)
-        self._later.setText("Remind me later")
-        self._later.show()
-        self._btn_later.setText("Skip this version")
-        self._btn_later.show()
-        self._btn_update.setText("\u2b07  Update now")
-        self._btn_update.setEnabled(True)
-        self._footnote.show()
-        self._adopt_widgets()
-
-    def _show_up_to_date(self):
-        """No update — same modal chrome, 'You're up to date' content."""
-        self._mode = "up_to_date"
-        self._tb_sub.setText("UP TO DATE")
-        cur = APP_VERSION.lstrip("v")
-        self._dial.setNumber(cur)
-        self._dial.set_tone("ok", check=True)   # full green ring + checkmark
-        self._dial.animate(250)
-        self._h1.setText("You\u2019re up to date")
-        # Single, normal version line — no strikethrough and no duplicate grey
-        # line. The crossed-out "v{old}" row belongs only to the update state.
-        self._num_old.setText("")
-        self._num_old.hide()
-        self._num_arrow.hide()
-        self._num_new.setText("")
-        self._num_new.hide()
-        self._num_status.setText(f"Latest release \u00b7 v{cur} installed")
-        self._num_status.setVisible(True)
-
-        self._clear_layout(self._chips)
-        self._chips.addWidget(self._chip("Up to date", "\u00b7 latest build"))
-        self._chips.addWidget(self._chip("v" + cur, "installed"))
-
-        self._changes_box.hide()
-        self._clear_layout(self._changes)
-
-        self._status.setText("All good \u2014 you\u2019re on the latest release")
-        self._progress_bar.setVisible(False)
-        self._later.hide()
-        self._btn_later.hide()
-        self._btn_update.setText("\u2713  Done")
-        self._btn_update.setEnabled(True)
-        self._footnote.hide()
-        self._num_status.setStyleSheet(f"color: {C['green']}; background: transparent; border: none;")
-        self._adopt_widgets()
-
-    def _show_error(self, message: str):
-        self._mode = "error"
-        self._tb_sub.setText("CHECK FAILED")
-        self._dial.setNumber("!")
-        self._dial.set_tone("accent")
-        self._dial.animate(0)
-        self._h1.setText("Couldn\u2019t check for updates")
-        self._num_old.setText("")
-        self._num_old.hide()
-        self._num_arrow.hide()
-        self._num_new.setText("")
-        self._num_new.hide()
-        self._num_status.setVisible(False)
-        self._clear_layout(self._chips)
-        self._clear_layout(self._changes)
-        self._changes_box.hide()
-        self._status.setText(message or "Couldn\u2019t check for updates.")
-        self._progress_bar.setVisible(False)
-        self._later.hide()
-        self._btn_later.hide()
-        self._btn_update.setText("Retry")
-        self._btn_update.setEnabled(True)
-        self._footnote.hide()
-        self._adopt_widgets()
-
-    # ------------------------------------------------------------------
-    # flow
-    # ------------------------------------------------------------------
-    def _parse_notes(self, notes: str):
-        lines = [ln.strip() for ln in notes.replace("\r", "").splitlines()
-                 if ln.strip()]
-        if not lines:
-            return [("", "No changelog provided.", "new", "\u002b")]
-        out = []
-        for ln in lines:
-            if not ln:
-                continue
-            marker = ln[0]
-            ln = ln.lstrip("-*+#>\u26a1").strip()
-            if not ln:
-                continue
-            if marker in ("\u26a1", "*", ">"):
-                tag, glyph = "speed", "\u26a1"
-            elif marker == "-":
-                tag, glyph = "fix", "\u2713"
-            else:
-                tag, glyph = "new", "\u002b"
-            if ":" in ln[:14]:
-                head, _, rest = ln.partition(":")
-                out.append((head.strip() + ":", rest.strip(), tag, glyph))
-            else:
-                out.append(("", ln, tag, glyph))
-        return out or [("", lines[0], "new", "\u002b")]
-
-    def _mb_label(self) -> str:
-        if self._bytes_total > 0:
-            return f"{self._bytes_total / 1048576:.0f}"
-        return "41"
+    # -- flow
     def _check(self):
-        self._mode = "checking"
-        self._tb_sub.setText("CHECKING FOR UPDATES")
-        self._dial.setNumber("?")
-        self._dial.set_tone("accent")
-        self._dial.start_spin()
-        self._h1.setText("Checking for updates\u2026")
-        # Compact: spinner + heading only, no version row, no changelog.
-        self._num_old.setText("")
-        self._num_old.hide()
-        self._num_arrow.hide()
-        self._num_new.setText("")
-        self._num_new.hide()
-        self._num_status.hide()
-        self._clear_layout(self._chips)
-        self._changes_box.hide()
-        self._clear_layout(self._changes)
-        self._status.setText("")
-        self._progress_bar.setVisible(False)
-        self._later.setEnabled(False)
-        self._btn_later.setEnabled(False)
-        self._btn_update.setEnabled(False)
-        self._btn_update.setText("Checking\u2026")
-        self._footnote.hide()
-        self._adopt_widgets()
-        self.worker = FetchWorker(self)
-        self.worker.done.connect(self._on_checked)
-        self.worker.start()
+        self._show_state("checking")
+        self._ring_check.start_spin()
+        self._worker = FetchWorker(self)
+        self._worker.done.connect(self._on_checked)
+        self._worker.start()
 
     def _on_checked(self, payload):
         info = payload.get("info")
         error = payload.get("error")
-        self._later.setEnabled(True)
-        self._btn_later.setEnabled(True)
-        self._btn_update.setEnabled(True)
+        self._ring_check.stop_spin()
         if error:
-            self._show_error(error)
+            self._show_error(error, retry="check")
             return
         if info is None:
             self._show_up_to_date()
@@ -1269,80 +1508,357 @@ class UpdateDialog(QDialog):
         self._show_available(info)
 
     def _on_update_clicked(self):
-        if self._mode == "checking":
-            return
         if self._mode == "available":
             self._download()
-        elif self._mode == "ready":
-            self._install()
-        elif self._mode == "error":
-            self._check()
-        elif self._mode == "up_to_date":
-            self.reject()
 
     def _download(self):
         if self._info is None:
             return
-        self._mode = "downloading"
-        self._tb_sub.setText("DOWNLOADING")
-        self._btn_update.setEnabled(False)
-        self._btn_update.setText("Downloading\u2026")
-        self._btn_later.setEnabled(False)
-        self._later.setEnabled(False)
-        # Collapse the changelog so the status + buttons stay grouped at the
-        # bottom (no big empty opening while it downloads).
-        self._changes_box.hide()
-        self._progress_bar.set_frac(0.0)
-        self._progress_bar.setVisible(True)
-        self._status.setText("Downloading the new build\u2026")
-        self.worker = DownloadWorker(self._info["url"], self)
-        self.worker._checksum_url = str(self._info.get("checksum_url") or "")
-        self.worker._sha256 = str(self._info.get("sha256") or "")
-        self.worker._filename = str(self._info.get("filename") or "")
-        self.worker.bytes.connect(self._on_bytes)
-        self.worker.done.connect(self._on_downloaded)
-        self.worker.start()
-        self._adopt_widgets()
+        self._show_state("downloading")
+        self._ring_dl.set_tone("pri")
+        self._ring_dl.set_progress(0.0)
+        self._ring_dl.set_text("0%")
+        self._bar_dl.set_frac(0.0)
+        self._bytes_got = 0
+        self._bytes_total = int(self._info.get("size") or self._known_size or 0)
+        self._dl_start = time.monotonic()
+        self._last_bytes = 0
+        self._last_t = self._dl_start
+        self._speed = 0.0
+        new = str(self._info.get("version") or "").lstrip("v")
+        self._dl_sub.setText(f"Maximum Tweaks <em>v{new}</em>")
+        self._update_dl_stat()
+        self._worker = DownloadWorker(str(self._info.get("url") or ""), self)
+        self._worker._checksum_url = str(self._info.get("checksum_url") or "")
+        self._worker._sha256 = str(self._info.get("sha256") or "")
+        self._worker._filename = str(self._info.get("filename") or "")
+        self._worker.bytes.connect(self._on_bytes)
+        self._worker.done.connect(self._on_downloaded)
+        self._worker.start()
 
     def _on_bytes(self, got: int, total: int):
         self._bytes_got = int(got or 0)
-        self._bytes_total = int(total or 0)
+        if total:
+            self._bytes_total = int(total)
         frac = (self._bytes_got / self._bytes_total) if self._bytes_total else 0.0
-        self._progress_bar.set_frac(frac)
-        got_mb = f"{self._bytes_got / 1048576:.0f}"
-        total_mb = f"{self._bytes_total / 1048576:.0f}"
-        self._status.setText(
-            f"Downloading {got_mb} / {total_mb} MB\u2026 {int(frac * 100)}%")
+        self._ring_dl.set_progress(frac)
+        self._ring_dl.set_text(f"{int(frac * 100)}%")
+        self._bar_dl.set_frac(frac)
+        now = time.monotonic()
+        if now - self._last_t >= 0.35:
+            dt = now - self._last_t
+            self._speed = (self._bytes_got - self._last_bytes) / dt if dt > 0 else 0.0
+            self._last_bytes = self._bytes_got
+            self._last_t = now
+        self._update_dl_stat()
+
+    def _update_dl_stat(self):
+        if self._bytes_total:
+            got = self._bytes_got / 1048576
+            total = self._bytes_total / 1048576
+            self._dl_progress.setText(f"{got:.1f} of {total:.1f} MB")
+        else:
+            self._dl_progress.setText(f"{self._bytes_got / 1048576:.1f} MB")
+        self._dl_speed.setText(
+            f"{self._speed / 1048576:.1f} MB/s" if self._speed else "")
 
     def _on_downloaded(self, new_exe, error):
-        self._btn_update.setEnabled(True)
-        self._btn_later.setEnabled(True)
-        self._later.setEnabled(True)
-        if error or new_exe is None:
-            self._show_error(error or "Download failed.")
+        self._worker = None
+        if error:
+            self._show_error(error, retry="download")
             return
-        self._mode = "ready"
+        if new_exe is None:  # cancelled
+            self._show_available(self._info)
+            self._flash("Download cancelled")
+            return
         self._new_exe = new_exe
-        self._tb_sub.setText("READY TO INSTALL")
-        self._progress_bar.set_frac(1.0)
-        self._status.setText("Downloaded and verified \u2014 ready to install")
-        self._btn_update.setText("\u26a1  Restart Update")
-        self._adopt_widgets()
+        if not self._known_size and self._bytes_total:
+            self._known_size = self._bytes_total
+        self._install()
 
-    def _skip_version(self):
-        """Skip this version — dismiss the dialog (no persistent skip api)."""
-        self.reject()
+    def _cancel_download(self):
+        if self._worker is not None:
+            self._worker.cancel()
+        else:
+            self._show_available(self._info)
+            self._flash("Download cancelled")
 
     def _install(self):
-        from engine import updater
+        self._show_state("installing")
+        self._ring_install.start_spin()
+        self._bar_install.start_indeterminate()
+        self._install_h1.setText("Installing update\u2026")
+        QTimer.singleShot(1200, self._restarting)
+        QTimer.singleShot(1600, self._do_install)
+
+    def _restarting(self):
+        if self._mode == "installing":
+            self._install_h1.setText("Restarting Maximum Tweaks\u2026")
+
+    def _do_install(self):
+        if self._mode != "installing":
+            return
+        from engine import updater, state
+        new = str((self._info or {}).get("version") or "").lstrip("v")
+        try:
+            state.set_meta("updated_to_version", new or None)
+            state.set_meta("updated_from_version", APP_VERSION)
+            state.set_meta("update_remind_at", None)
+            state.set_meta("skipped_update_version", None)
+        except Exception:  # noqa: BLE001
+            pass
         try:
             updater.install_and_restart(self._new_exe)
         except updater.UpdaterError as exc:
-            self._show_error(str(exc))
+            self._ring_install.stop_spin()
+            self._bar_install.stop_indeterminate()
+            self._show_error(str(exc), retry="install")
             return
         logger.info("updater: quitting to apply update")
-        if hasattr(self.parentWidget(), "close"):
-            self.parentWidget().close()
-        import time as _time
-        _time.sleep(1)
+        host = self._host
+        try:
+            if host is not None and hasattr(host, "close"):
+                host.close()
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(1)
         os._exit(0)
+
+    def _show_available(self, info: dict):
+        self._info = info or self._info or {}
+        self._ring_up.stop_spin()
+        cur = APP_VERSION.lstrip("v")
+        new = str(self._info.get("version") or "").strip().lstrip("v")
+        self._ring_up.set_tone("pri")
+        self._ring_up.set_offset(22)
+        self._ring_up.set_text(new)
+        self._up_sub.setText(
+            f"<s style='opacity:0.65'>v{cur}</s> "
+            f"\u2192 <b style='color:{C['pri2']}'>v{new}</b>")
+        self._known_size = int(self._info.get("size") or self._known_size or 0)
+        self._chip_dl.setText(self._size_chip_text())
+        self._chip_date.setText(self._date_chip_text(self._info.get("published_at")))
+        self._clear_log()
+        bullets = _parse_notes(self._info.get("notes") or "")
+        if bullets:
+            for text in bullets:
+                self._log_lay.addWidget(self._bullet_row(text))
+        else:
+            none = QLabel("No changelog provided.")
+            none.setObjectName("LogNone")
+            none.setFont(_sans(13))
+            self._log_lay.addWidget(none)
+        self._log_lay.addStretch(0)
+        self._show_state("available")
+        if not self._known_size:
+            self._probe_size()
+
+    def _probe_size(self):
+        url = str((self._info or {}).get("url") or "")
+        if not url:
+            return
+        self._size_worker = SizeWorker(url, self)
+        self._size_worker.done.connect(self._on_size_probed)
+        self._size_worker.start()
+
+    def _on_size_probed(self, size: int):
+        self._size_worker = None
+        if size and self._mode == "available":
+            self._known_size = int(size)
+            self._chip_dl.setText(self._size_chip_text())
+
+    def _size_chip_text(self) -> str:
+        if self._known_size:
+            return f"<b>{self._known_size / 1048576:.0f} MB</b> download"
+        return "<b>Download</b> update"
+
+    def _date_chip_text(self, published_at) -> str:
+        text = str(published_at or "").strip()
+        if not text:
+            return "<b>Latest release</b>"
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            days = (now - dt).days
+            if days <= 0:
+                return "<b>Released today</b>"
+            if days == 1:
+                return "<b>Released yesterday</b>"
+            if days < 7:
+                return f"<b>Released {days} days ago</b>"
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            return f"<b>Released {months[dt.month - 1]} {dt.day}</b>"
+        except Exception:  # noqa: BLE001
+            return "<b>Latest release</b>"
+
+    def _show_up_to_date(self):
+        cur = APP_VERSION.lstrip("v")
+        self._ring_ok.stop_spin()
+        self._ring_ok.set_tone("ok", check=True)
+        self._ok_sub.setText(f"Latest release \u00b7 v{cur} installed")
+        self._show_state("up_to_date")
+
+    def _show_error(self, message: str, retry: str = "check"):
+        self._retry = retry
+        if retry == "check":
+            self._state_lbl.setText("CHECK FAILED")
+            self._err_h1.setText("Couldn\u2019t check for updates")
+        else:
+            self._state_lbl.setText("UPDATE FAILED")
+            self._err_h1.setText("Update failed")
+        self._ring_err.stop_spin()
+        self._ring_err.set_tone("err")
+        self._ring_err.set_offset(22)
+        self._ring_err.set_text("!")
+        self._err_sub.setText(message or "Something went wrong.")
+        self._btn_retry.setText("Try again")
+        self._show_state("error")
+
+    def _retry_action(self):
+        if self._retry == "download" and self._info is not None:
+            self._download()
+        elif self._retry == "install" and self._new_exe is not None:
+            self._install()
+        else:
+            self._check()
+
+    # ------------------------------------------------------------------
+    # popup toast (used while the dialog stays open, e.g. cancel)
+    # ------------------------------------------------------------------
+    def _flash(self, text: str):
+        lbl = QLabel(text, self)
+        lbl.setObjectName("Flash")
+        lbl.setFont(_sans(12, QFont.Weight.DemiBold))
+        lbl.setContentsMargins(18, 10, 18, 10)
+        lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
+        lbl.adjustSize()
+        geo = self._modal.geometry()
+        x = geo.x() + (geo.width() - lbl.width()) // 2
+        y = geo.y() + geo.height() + 12
+        if y + lbl.height() > self.height() - 12:
+            y = geo.y() - lbl.height() - 12
+        lbl.move(x, y)
+        lbl.show()
+        lbl.raise_()
+        if _prefers_reduced_motion():
+            QTimer.singleShot(2200, lbl.deleteLater)
+            return
+        eff = QGraphicsOpacityEffect(lbl)
+        lbl.setGraphicsEffect(eff)
+        eff.setOpacity(0.0)
+        fin = QPropertyAnimation(eff, b"opacity", self)
+        fin.setDuration(180)
+        fin.setStartValue(0.0)
+        fin.setEndValue(1.0)
+        fin.start(QPropertyAnimation.DeleteWhenStopped)
+        out = QPropertyAnimation(eff, b"opacity", self)
+        out.setDuration(300)
+        out.setStartValue(1.0)
+        out.setEndValue(0.0)
+        out.finished.connect(lbl.deleteLater)
+        QTimer.singleShot(2000, out.start)
+
+    # ------------------------------------------------------------------
+    # actions that close the dialog
+    # ------------------------------------------------------------------
+    def _new_version(self) -> str:
+        return str((self._info or {}).get("version") or "").strip()
+
+    def _skip(self):
+        version = self._new_version().lstrip("v")
+        try:
+            from engine import state
+            if version:
+                state.set_meta("skipped_update_version", version)
+                state.set_meta("update_remind_at", None)
+        except Exception:  # noqa: BLE001
+            pass
+        self._toast_after_close(f"Skipped v{version}" if version else "Version skipped")
+
+    def _remind(self):
+        try:
+            from engine import state
+            state.set_meta("update_remind_at", time.time() + 86400)
+        except Exception:  # noqa: BLE001
+            pass
+        self._toast_after_close("We\u2019ll remind you later")
+
+    def _toast_after_close(self, message: str):
+        host = self.parentWidget() or self._host
+        self._clear_workers()
+        super().reject()
+
+        def _show():
+            try:
+                from ui.widgets import toast
+                toast(message, "info", host)
+            except Exception:  # noqa: BLE001
+                pass
+
+        QTimer.singleShot(40, _show)
+
+    # ------------------------------------------------------------------
+    # close handling
+    # ------------------------------------------------------------------
+    def reject(self):
+        if self._mode == "installing":
+            return
+        if self._mode == "downloading" and self._worker is not None:
+            self._worker.cancel()
+        self._clear_workers()
+        super().reject()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.reject()
+            return
+        super().keyPressEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if self._mode == "installing":
+                return
+            if not self._modal.geometry().contains(event.position().toPoint()):
+                self.reject()
+                return
+        super().mousePressEvent(event)
+
+    def closeEvent(self, event):
+        if self._mode == "installing":
+            event.ignore()
+            return
+        if self._mode == "downloading" and self._worker is not None:
+            self._worker.cancel()
+        self._clear_workers()
+        super().closeEvent(event)
+
+
+# ---------------------------------------------------------------------------
+# Changelog parsing
+# ---------------------------------------------------------------------------
+def _parse_notes(notes: str) -> list[str]:
+    """Turn a notes blob (markdown-ish) into a list of plain bullet strings."""
+    out: list[str] = []
+    for raw in str(notes or "").replace("\r", "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        line = re.sub(r"^#{1,6}\s*", "", line)          # markdown headings
+        line = re.sub(r"^[-*+\u2022]\s*", "", line)     # list bullets
+        line = re.sub(r"^\d+[.)]\s*", "", line)         # ordered list
+        line = line.replace("**", "").replace("__", "")
+        line = line.strip("`").strip()
+        if line:
+            out.append(line)
+    return out
+
+
+def _parse_notes_for_test(notes: str) -> list[str]:
+    return _parse_notes(notes)
+
+
+# Backwards-compatible name used by older callers.
+def parse_notes(notes: str) -> list[str]:
+    return _parse_notes(notes)
