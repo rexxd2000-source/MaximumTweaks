@@ -1,9 +1,15 @@
 """Update UI — pixel-accurate port of update_dialog_v2.html.
 
-Renders the "Check for Updates" popup exactly like the HTML mockup: a 452px
-frameless modal with the brand titlebar, animated version dial, spec chips,
-"What's changed" list with tagged rows, a green status line and the action
-buttons (Remind me later / Skip this version / Update now).
+Renders the "Check for Updates" popup exactly like the HTML mockup: a frameless
+modal with the brand titlebar, animated version dial, spec chips, "What's
+changed" list with tagged rows, a green status line and the action buttons
+(Remind me later / Skip this version / Update now).
+
+The modal sizes itself to its content (height:auto) with a max-height of
+calc(100vh - 48px): compact (440px) while checking / up to date, roomy (520px)
+with the changelog, and it animates between states (250ms ease-out, skipped
+under prefers-reduced-motion). If the content is taller than max-height the
+middle scrolls while the titlebar and footer stay fixed.
 
 Both the update-available state and the up-to-date ("no update") state use the
 same modal chrome so the popup always looks the same, just with different
@@ -18,6 +24,7 @@ from PySide6.QtCore import (
     Property as QtProperty,
     QEasingCurve,
     QPointF,
+    QRect,
     QRectF,
     Qt,
     QThread,
@@ -31,8 +38,10 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QScrollArea,
     QSizePolicy,
     QToolButton,
@@ -90,6 +99,53 @@ def _sans(pixel: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
     return f
 
 
+# -- reduced motion -----------------------------------------------------
+# Honour the OS "show animations" setting (the Windows equivalent of the web
+# prefers-reduced-motion media query) so the size transition is skipped for
+# users who turn animations off. MT_REDUCED_MOTION=1 forces it on for testing.
+_REDUCED_MOTION_CACHE: bool | None = None
+
+
+def _prefers_reduced_motion() -> bool:
+    global _REDUCED_MOTION_CACHE
+    if _REDUCED_MOTION_CACHE is not None:
+        return _REDUCED_MOTION_CACHE
+    import os as _os
+    env = (_os.environ.get("MT_REDUCED_MOTION")
+           or _os.environ.get("REDUCED_MOTION"))
+    if env is not None:
+        _REDUCED_MOTION_CACHE = env.strip().lower() not in ("0", "", "false", "no")
+        return _REDUCED_MOTION_CACHE
+    reduced = False
+    try:
+        import ctypes
+        # SPI_GETCLIENTAREAANIMATION -> 0 when "Animate controls and elements
+        # inside windows" is turned off.
+        enabled = ctypes.c_int(1)
+        ok = ctypes.windll.user32.SystemParametersInfoW(
+            0x1042, 0, ctypes.byref(enabled), 0)
+        if ok and enabled.value == 0:
+            reduced = True
+    except Exception:  # noqa: BLE001 - non-Windows / restricted => play safe
+        reduced = False
+    _REDUCED_MOTION_CACHE = reduced
+    return reduced
+
+
+def _no_select(w: QWidget) -> QWidget:
+    """Make a widget's text un-selectable (user-select: none)."""
+    try:
+        if isinstance(w, QLabel):
+            w.setTextInteractionFlags(Qt.NoTextInteraction)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        w.setFocusPolicy(Qt.NoFocus)
+    except Exception:  # noqa: BLE001
+        pass
+    return w
+
+
 # ---------------------------------------------------------------------------
 # Version dial — a small ring that draws an animated violet arc.
 # ---------------------------------------------------------------------------
@@ -103,6 +159,9 @@ class _Dial(QWidget):
         self._anim = None
         self._tone = "accent"  # accent | ok
         self._check = False
+        self._spin = False
+        self._angle = 0.0
+        self._spin_anim = None
         self.setFixedSize(56, 56)
         w = QLabel(self)
         w.setFont(_mono(11, QFont.Weight.DemiBold))
@@ -116,6 +175,7 @@ class _Dial(QWidget):
         self._label.setText(text)
 
     def animate(self, delay_ms: int = 400):
+        self.stop_spin()
         self._label.setText(self._text)
         if self._anim is not None:
             self._anim.stop()
@@ -136,6 +196,43 @@ class _Dial(QWidget):
         self._label.setVisible(not check)
         self.update()
 
+    def start_spin(self):
+        """Continuous indeterminate spinner for the checking state."""
+        if self._anim is not None:
+            self._anim.stop()
+        self._label.setVisible(False)
+        self._check = False
+        if self._spin:
+            return
+        self._spin = True
+        anim = QPropertyAnimation(self, b"angle", self)
+        anim.setDuration(1000)
+        anim.setStartValue(0.0)
+        anim.setEndValue(360.0)
+        anim.setLoopCount(-1)
+        anim.setEasingCurve(QEasingCurve.Linear)
+        self._spin_anim = anim
+        if not _prefers_reduced_motion():
+            anim.start()
+        else:
+            self._angle = 0.0
+            self.update()
+
+    def stop_spin(self):
+        if self._spin_anim is not None:
+            self._spin_anim.stop()
+            self._spin_anim = None
+        self._spin = False
+
+    def _get_angle(self) -> float:
+        return self._angle
+
+    def _set_angle(self, v: float):
+        self._angle = float(v)
+        self.update()
+
+    angle = QtProperty(float, fget=_get_angle, fset=_set_angle)
+
     def _get_fill(self) -> float:
         return self._fill
 
@@ -155,6 +252,14 @@ class _Dial(QWidget):
         p.setPen(pen)
         p.drawArc(QRectF(center.x() - r, center.y() - r, r * 2, r * 2),
                   0, 360 * 16)
+        if self._spin:
+            spin = QPen(QColor(C["violet"]), 5)
+            spin.setCapStyle(Qt.RoundCap)
+            p.setPen(spin)
+            p.drawArc(QRectF(center.x() - r, center.y() - r, r * 2, r * 2),
+                      int((-90 + self._angle) * 16), int(-110 * 16))
+            p.end()
+            return
         # Violet (update) or green (up-to-date) arc, clockwise from the top,
         # leaving a small tail gap like the mockup's dash-fill.
         arc_color = C["green"] if self._tone == "ok" else C["violet"]
@@ -452,15 +557,19 @@ class UpdateDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # Fixed modal width matches update_dialog_v2.html; height auto-sizes
-        # (hugs content) so the button row sits right under the changelog.
-        self.setFixedWidth(452)
+        # Width hugs each state (440 compact / 520 with the changelog); height
+        # is measured from the content so the modal is never taller than needed
+        # and never shorter than its content.
+        self.setMinimumWidth(0)
+        self.setMinimumHeight(0)
         self._info = None
         self._new_exe = None
         self._bytes_total = 0
         self._bytes_got = 0
         self._mode = None
         self._worker = None
+        self._geom_anim = None
+        self._fade_anim = None
 
         self.setStyleSheet(_RISE_QSS)
 
@@ -468,6 +577,11 @@ class UpdateDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        # We size this frameless dialog ourselves from the measured content, so
+        # stop the layout from imposing a (cached, stale) minimum that would
+        # clamp resizes between states.
+        root.setSizeConstraint(QLayout.SetNoConstraint)
+        self.setMinimumSize(0, 0)
 
         self._modal = QFrame(self)
         self._modal.setObjectName("Modal")
@@ -638,8 +752,9 @@ class UpdateDialog(QDialog):
         # (label + list) on the up-to-date/error states. The list itself lives
         # in a scroll area with a fixed footprint: never smaller than 96px (so
         # a one-line changelog is still readable and never clipped) and never
-        # larger than 180px (so a long changelog scrolls inside the box instead
-        # of pushing the footer off-screen). It is deliberately NOT stretchable.
+        # larger than 220px (so a long changelog scrolls inside the box instead
+        # of making the dialog taller than the window). It is deliberately NOT
+        # stretchable; its height is measured and pinned in _adopt_widgets.
         self._changes_box = QWidget()
         self._changes_box.setObjectName("Body")
         cb = QVBoxLayout(self._changes_box)
@@ -658,7 +773,7 @@ class UpdateDialog(QDialog):
         self._changes_scroll.setSizeAdjustPolicy(
             QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
         self._changes_scroll.setMinimumHeight(96)
-        self._changes_scroll.setMaximumHeight(180)
+        self._changes_scroll.setMaximumHeight(220)
         self._changes_host = QWidget()
         self._changes_host.setStyleSheet("background: transparent;")
         self._changes = QVBoxLayout(self._changes_host)
@@ -671,7 +786,14 @@ class UpdateDialog(QDialog):
         mb.addStretch(1)
 
         # ---------- footer (pinned below the scrolling middle) ----------
-        b.addSpacing(12)
+        # Kept out of the outer scroll so the status line / progress / restart
+        # note stay visible while only the middle (header, chips, buttons,
+        # changelog) scrolls on very short screens.
+        self._footer = QWidget()
+        self._footer.setStyleSheet("background: transparent;")
+        f = QVBoxLayout(self._footer)
+        f.setContentsMargins(0, 12, 0, 0)
+        f.setSpacing(0)
 
         # status row
         st = QHBoxLayout()
@@ -687,21 +809,23 @@ class UpdateDialog(QDialog):
         self._status.setFont(_mono(11))
         st.addWidget(self._status, 1)
         st.addStretch()
-        b.addLayout(st)
+        f.addLayout(st)
 
         # thin download progress bar — only visible while downloading
-        self._progress_bar = _ProgressBar(self._modal)
+        self._progress_bar = _ProgressBar(self._footer)
         self._progress_bar.setVisible(False)
-        b.addWidget(self._progress_bar)
-        b.addSpacing(8)
+        f.addWidget(self._progress_bar)
+        f.addSpacing(8)
 
         # footnote (only shown when an update is available)
         fn = QLabel("Maximum Tweaks will restart automatically")
         fn.setObjectName("Footnote")
         fn.setAlignment(Qt.AlignCenter)
         fn.setFont(_sans(10))
-        b.addWidget(fn)
+        f.addWidget(fn)
         self._footnote = fn
+
+        b.addWidget(self._footer)
 
         self._adopt_widgets()
         self._load_remote_logo()
@@ -741,32 +865,207 @@ class UpdateDialog(QDialog):
     def _logo_gc(self):
         self._logo_worker = None
 
-    def _adopt_widgets(self):
-        """Keep the modal chrome laid out; height hugs the current content.
-        Never let the dialog exceed the screen height — the action buttons
-        must stay visible, so anything taller scrolls inside the modal."""
-        self._modal.layout().activate()
-        self._recompute_height()
-        self._modal.layout().activate()
-        self.adjustSize()
+    # -- sizing ----------------------------------------------------------
+    # Width per state: compact (440) for checking / up-to-date / error, roomy
+    # (520) when the changelog is on screen. Height is always measured from the
+    # content — never hardcoded.
+    _STATE_WIDTH = {
+        "available": 520, "downloading": 520, "ready": 520,
+        "checking": 440, "up_to_date": 440, "error": 440,
+    }
+    _TITLEBAR_H = 56
+    _BODY_VMARGIN = 42  # body layout 22 top + 20 bottom
+    _CHANGES_MIN = 96
+    _CHANGES_MAX = 220
 
-    def _recompute_height(self):
-        """Cap the frameless dialog at the screen height minus a 24px margin
-        top and bottom (calc(100vh - 48px)). Height still hugs the content
-        below that cap; once the content is taller, the scrolling middle of the
-        body takes over instead of any element being squashed."""
+    def _state_width(self) -> int:
+        return self._STATE_WIDTH.get(self._mode or "checking", 452)
+
+    def _max_h(self) -> int:
+        """max-height: calc(100vh - 48px) on the monitor the dialog is on."""
         geos = QApplication.screens()
         if not geos:
-            return
+            return 10000
         avail = geos[0].availableGeometry()
         for g in geos:
             if g.availableGeometry().intersects(self.frameGeometry()):
                 avail = g.availableGeometry()
                 break
-        maxH = max(320, avail.height() - 48)
-        self.setMaximumHeight(maxH)
-        if self.height() > maxH:
-            self.resize(self.width(), maxH)
+        return max(320, avail.height() - 48)
+
+    def _center_rect(self, w: int, h: int) -> QRect:
+        """Target rect, centred on the parent window (or the screen)."""
+        cx, cy = None, None
+        parent = self.parentWidget()
+        if parent is not None and parent.isVisible():
+            geo = parent.window().frameGeometry()
+            if geo.isValid() and not geo.isEmpty():
+                cx, cy = geo.center().x(), geo.center().y()
+        if cx is None:
+            scr = (QApplication.screenAt(self.frameGeometry().center())
+                   or QApplication.primaryScreen())
+            if scr is not None:
+                geo = scr.availableGeometry()
+                cx, cy = geo.center().x(), geo.center().y()
+        if cx is None:
+            return QRect(0, 0, w, h)
+        return QRect(int(cx - w / 2), int(cy - h / 2), w, h)
+
+    def _measure_changes(self, dialog_w: int) -> int:
+        """Height the changelog list wants at ``dialog_w``, clamped to
+        [min-height 96, max-height 220]. Row heights come from the label's
+        heightForWidth (the rich-text sizeHint is unreliable), so the box hugs
+        short logs and caps + scrolls long ones."""
+        if self._changes_box.isHidden():
+            return 0
+        host_w = max(160, dialog_w - self._BODY_VMARGIN)
+        m = self._changes.contentsMargins()
+        inner = max(60, host_w - m.left() - m.right())
+        total = m.top() + m.bottom()
+        n = self._changes.count()
+        for i in range(n):
+            item = self._changes.itemAt(i)
+            row = item.widget() if item is not None else None
+            if row is None:
+                continue
+            rl = row.layout()
+            rm = rl.contentsMargins()
+            lbl = row.findChild(QLabel, "ud-ct")
+            text_w = inner - rm.left() - rm.right() - 18 - rl.spacing()
+            lh = lbl.heightForWidth(max(40, text_w)) if lbl is not None else 18
+            total += max(18, lh) + rm.top() + rm.bottom()
+        if n > 1:
+            total += (n - 1) * self._changes.spacing()
+        return max(self._CHANGES_MIN, min(self._CHANGES_MAX, total))
+
+    def _mid_content_h(self, box_h: int) -> int:
+        """Natural height of the scrolling middle at the current width. Summed
+        item-by-item so the changelog box (whose QScrollArea sizeHint is not
+        trustworthy) contributes its measured ``box_h`` instead."""
+        lay = self._mid.layout()
+        total = 0
+        for i in range(lay.count()):
+            item = lay.itemAt(i)
+            if item is None:
+                continue
+            if item.spacerItem() is not None:
+                total += item.spacerItem().sizeHint().height()
+                continue
+            w = item.widget()
+            if w is not None:
+                if w is self._changes_box:
+                    if self._changes_box.isHidden():
+                        continue
+                    gap = self._changes_box.layout().spacing()
+                    total += (self._section.sizeHint().height() + gap + box_h)
+                elif not w.isHidden():
+                    total += w.sizeHint().height()
+                continue
+            sub = item.layout()
+            if sub is not None:
+                total += sub.sizeHint().height()
+        return total
+
+    def _noselect_all(self):
+        """user-select: none — nothing in the dialog can be selected."""
+        for lbl in self.findChildren(QLabel):
+            _no_select(lbl)
+
+    def _adopt_widgets(self, animate: bool | None = None):
+        """Measure the content for the current state and size the dialog to it.
+
+        No height is ever hardcoded: the middle content and the pinned footer
+        are measured at the target width, the changelog box is pinned to its
+        96-220px footprint, and the dialog is sized to the sum. If the content
+        would exceed ``max-height: calc(100vh - 48px)`` the middle scrolls
+        (the footer stays pinned). The size change is animated when the dialog
+        is already on screen (250ms ease-out), respecting reduced motion.
+        """
+        if animate is None:
+            animate = self.isVisible()
+        self._noselect_all()
+        old = self.geometry()
+        w = self._state_width()
+
+        # Lay the content out at the target width so wrapped text measures at
+        # the size it will actually occupy.
+        self._mid_scroll.setMinimumHeight(0)
+        self.setMinimumWidth(0)
+        self.resize(w, max(old.height(), 1))
+        self.layout().activate()
+        self._modal.layout().activate()
+
+        # Pin the changelog footprint, then measure middle + footer. The
+        # middle height is summed from its items (a QScrollArea's own sizeHint
+        # is unreliable, so the changelog box height is supplied explicitly).
+        box_h = self._measure_changes(w)
+        self._changes_scroll.setFixedHeight(box_h or self._CHANGES_MIN)
+        self._changes_scroll.updateGeometry()
+        self._changes_box.updateGeometry()
+        self._mid_scroll.updateGeometry()
+        mid_h = self._mid_content_h(box_h)
+        self._footer.layout().activate()
+        footer_h = self._footer.sizeHint().height()
+
+        max_h = self._max_h()
+        chrome = self._TITLEBAR_H + self._BODY_VMARGIN
+        scroll_h = min(mid_h, max(0, max_h - chrome - footer_h))
+        self._mid_scroll.setFixedHeight(max(0, scroll_h))
+        self._mid_scroll.updateGeometry()
+        self.setMaximumHeight(max_h)
+        self.layout().activate()
+
+        total_h = chrome + scroll_h + footer_h
+        target = self._center_rect(w, total_h)
+        if self._geom_anim is not None:
+            self._geom_anim.stop()
+            self._geom_anim = None
+        if (not animate) or _prefers_reduced_motion() or old == target:
+            self.setGeometry(target)
+            return
+        anim = QPropertyAnimation(self, b"geometry", self)
+        anim.setDuration(250)
+        anim.setStartValue(old)
+        anim.setEndValue(target)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._geom_anim = anim
+
+    def _fade_in(self, widget: QWidget):
+        """Fade a freshly shown widget in (200ms) so it doesn't flash before
+        the dialog has grown to fit it."""
+        if self._fade_anim is not None:
+            self._fade_anim.stop()
+            self._fade_anim = None
+        if _prefers_reduced_motion():
+            try:
+                widget.setGraphicsEffect(None)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        eff = QGraphicsOpacityEffect(widget)
+        eff.setOpacity(0.0)
+        widget.setGraphicsEffect(eff)
+        anim = QPropertyAnimation(eff, b"opacity", self)
+        anim.setDuration(200)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        def _done():
+            try:
+                if widget.graphicsEffect() is eff:
+                    widget.setGraphicsEffect(None)
+            except Exception:  # noqa: BLE001
+                pass
+
+        anim.finished.connect(_done)
+        anim.start(QPropertyAnimation.DeleteWhenStopped)
+        self._fade_anim = anim
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._adopt_widgets(animate=False)
 
     def _chip(self, bold: str, rest: str) -> QLabel:
         lbl = QLabel(f"<b>{bold}</b> {rest}")
@@ -798,10 +1097,14 @@ class UpdateDialog(QDialog):
         self._dial.set_tone("accent")
         self._dial.animate(400)
         self._h1.setText("Tuned up and ready")
+        # Only the update-available state shows the crossed-out old version in
+        # the "v{old} -> v{new}" row.
         self._num_old.setText(f"v{cur}")
+        self._num_old.show()
         self._num_arrow.show()
         self._num_new.setText(f"v{new}")
-        self._num_status.setVisible(False)
+        self._num_new.show()
+        self._num_status.hide()
 
         self._clear_layout(self._chips)
         self._chips.addWidget(self._chip(f"{self._mb_label()} MB", "download"))
@@ -810,9 +1113,10 @@ class UpdateDialog(QDialog):
 
         self._section.setText("What's changed")
         self._changes_box.show()
+        self._fade_in(self._changes_box)
         self._clear_layout(self._changes)
         items = self._parse_notes(info.get("notes") or "")
-        for bold, text, tag, glyph in items[:3]:
+        for bold, text, tag, glyph in items:
             self._changes.addWidget(_change(bold, text, tag, glyph))
 
         self._status.setText("A newer build is ready \u2014 hit Update now")
@@ -835,9 +1139,13 @@ class UpdateDialog(QDialog):
         self._dial.set_tone("ok", check=True)   # full green ring + checkmark
         self._dial.animate(250)
         self._h1.setText("You\u2019re up to date")
-        self._num_old.setText(f"v{cur}")
+        # Single, normal version line — no strikethrough and no duplicate grey
+        # line. The crossed-out "v{old}" row belongs only to the update state.
+        self._num_old.setText("")
+        self._num_old.hide()
         self._num_arrow.hide()
         self._num_new.setText("")
+        self._num_new.hide()
         self._num_status.setText(f"Latest release \u00b7 v{cur} installed")
         self._num_status.setVisible(True)
 
@@ -866,8 +1174,10 @@ class UpdateDialog(QDialog):
         self._dial.animate(0)
         self._h1.setText("Couldn\u2019t check for updates")
         self._num_old.setText("")
+        self._num_old.hide()
         self._num_arrow.hide()
         self._num_new.setText("")
+        self._num_new.hide()
         self._num_status.setVisible(False)
         self._clear_layout(self._chips)
         self._clear_layout(self._changes)
@@ -890,7 +1200,7 @@ class UpdateDialog(QDialog):
         if not lines:
             return [("", "No changelog provided.", "new", "\u002b")]
         out = []
-        for ln in lines[:6]:
+        for ln in lines:
             if not ln:
                 continue
             marker = ln[0]
@@ -919,13 +1229,16 @@ class UpdateDialog(QDialog):
         self._tb_sub.setText("CHECKING FOR UPDATES")
         self._dial.setNumber("?")
         self._dial.set_tone("accent")
-        self._dial.animate(0)
+        self._dial.start_spin()
         self._h1.setText("Checking for updates\u2026")
-        self._num_old.setText(f"v{APP_VERSION.lstrip('v')}")
-        self._num_arrow.show()
+        # Compact: spinner + heading only, no version row, no changelog.
+        self._num_old.setText("")
+        self._num_old.hide()
+        self._num_arrow.hide()
         self._num_new.setText("")
+        self._num_new.hide()
+        self._num_status.hide()
         self._clear_layout(self._chips)
-        self._chips.addWidget(self._chip("...", "fetching"))
         self._changes_box.hide()
         self._clear_layout(self._changes)
         self._status.setText("")
@@ -935,6 +1248,7 @@ class UpdateDialog(QDialog):
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Checking\u2026")
         self._footnote.hide()
+        self._adopt_widgets()
         self.worker = FetchWorker(self)
         self.worker.done.connect(self._on_checked)
         self.worker.start()
