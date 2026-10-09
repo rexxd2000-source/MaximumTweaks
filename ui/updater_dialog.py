@@ -27,6 +27,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractScrollArea,
     QApplication,
     QDialog,
     QFrame,
@@ -387,6 +388,25 @@ _RISE_QSS = f"""
 #Footnote {{ color: {C['text_3']}; background: transparent; border: none; }}
 """
 
+# Transparent scroll areas with a slim 6px scrollbar, themed to the modal so
+# the changelog (and the scrolling middle of the body) never show the native
+# chunky scrollbar. Shared by the middle scroller and the changelog box.
+_SCROLL_QSS = f"""
+QScrollArea {{ background: transparent; border: none; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QScrollBar:vertical {{ background: transparent; width: 6px; margin: 0; }}
+QScrollBar::handle:vertical {{
+    background: {C['violet_soft']}; border-radius: 3px; min-height: 24px;
+}}
+QScrollBar::handle:vertical:hover {{ background: #3b3357; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0; background: transparent;
+}}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: transparent;
+}}
+"""
+
 
 def _glyph(text: str, tag: str) -> QLabel:
     lbl = QLabel(text)
@@ -406,7 +426,8 @@ def _change(bold: str, text: str, tag: str, glyph: str):
     lay.setContentsMargins(11, 10, 11, 10)
     lay.setSpacing(10)
     lay.addWidget(_glyph(glyph, tag))
-    txt = QLabel(f"<b>{bold}</b> {text}")
+    txt = QLabel(f'<div style="line-height:150%;margin:0">'
+                 f'<b>{bold}</b> {text}</div>')
     txt.setObjectName("ud-ct")
     txt.setWordWrap(True)
     txt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -506,6 +527,28 @@ class UpdateDialog(QDialog):
         b.setSpacing(0)
         m.addWidget(body)
 
+        # The middle of the dialog (version row, chips, actions, changelog)
+        # lives in a scroll area that is allowed to shrink to nothing, so on a
+        # short screen the whole middle scrolls instead of the changelog box
+        # being squashed to a sliver. AdjustToContents keeps the dialog height
+        # hugging its content whenever there is room.
+        self._mid_scroll = QScrollArea()
+        self._mid_scroll.setWidgetResizable(True)
+        self._mid_scroll.setFrameShape(QFrame.NoFrame)
+        self._mid_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._mid_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._mid_scroll.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        self._mid_scroll.setMinimumHeight(0)
+        self._mid_scroll.setStyleSheet(_SCROLL_QSS)
+        self._mid = QWidget()
+        self._mid.setStyleSheet("background: transparent;")
+        mb = QVBoxLayout(self._mid)
+        mb.setContentsMargins(0, 0, 0, 0)
+        mb.setSpacing(0)
+        self._mid_scroll.setWidget(self._mid)
+        b.addWidget(self._mid_scroll, 1)
+
         # version row
         vr = QHBoxLayout()
         vr.setSpacing(14)
@@ -545,15 +588,15 @@ class UpdateDialog(QDialog):
         vt.addWidget(self._num_status)
 
         vr.addLayout(vt, 1)
-        b.addLayout(vr)
-        b.addSpacing(18)
+        mb.addLayout(vr)
+        mb.addSpacing(18)
 
         # spec chips
         self._chips = QHBoxLayout()
         self._chips.setContentsMargins(0, 0, 0, 0)
         self._chips.setSpacing(7)
-        b.addLayout(self._chips)
-        b.addSpacing(20)
+        mb.addLayout(self._chips)
+        mb.addSpacing(20)
 
         # actions
         act = QHBoxLayout()
@@ -588,13 +631,15 @@ class UpdateDialog(QDialog):
         self._btn_update.clicked.connect(self._on_update_clicked)
         grp.addWidget(self._btn_update)
         act.addLayout(grp)
-        b.addLayout(act)
-        b.addSpacing(14)
+        mb.addLayout(act)
+        mb.addSpacing(14)
 
         # What's changed — wrapped in its own container so it fully collapses
-        # (label + list + spacing) on the up-to-date/error states. The list
-        # itself lives in a scroll area so a long changelog can never push the
-        # action buttons off-screen on small displays.
+        # (label + list) on the up-to-date/error states. The list itself lives
+        # in a scroll area with a fixed footprint: never smaller than 96px (so
+        # a one-line changelog is still readable and never clipped) and never
+        # larger than 180px (so a long changelog scrolls inside the box instead
+        # of pushing the footer off-screen). It is deliberately NOT stretchable.
         self._changes_box = QWidget()
         self._changes_box.setObjectName("Body")
         cb = QVBoxLayout(self._changes_box)
@@ -607,25 +652,26 @@ class UpdateDialog(QDialog):
         self._changes_scroll = QScrollArea()
         self._changes_scroll.setWidgetResizable(True)
         self._changes_scroll.setFrameShape(QFrame.NoFrame)
-        self._changes_scroll.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; } "
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
-        )
+        self._changes_scroll.setStyleSheet(_SCROLL_QSS)
         self._changes_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._changes_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._changes_scroll.setMinimumHeight(1)
-        self._changes_scroll.setMaximumHeight(200)
+        self._changes_scroll.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
+        self._changes_scroll.setMinimumHeight(96)
+        self._changes_scroll.setMaximumHeight(180)
         self._changes_host = QWidget()
         self._changes_host.setStyleSheet("background: transparent;")
         self._changes = QVBoxLayout(self._changes_host)
-        self._changes.setContentsMargins(0, 0, 0, 0)
+        self._changes.setContentsMargins(14, 12, 14, 12)
         self._changes.setSpacing(10)
         self._changes_scroll.setWidget(self._changes_host)
-        cb.addWidget(self._changes_scroll, 1)
-        # bottom gap is part of the box so it collapses when hidden
-        cb.addSpacing(20)
+        cb.addWidget(self._changes_scroll)
         self._changes_box.setVisible(True)
-        b.addWidget(self._changes_box)
+        mb.addWidget(self._changes_box)
+        mb.addStretch(1)
+
+        # ---------- footer (pinned below the scrolling middle) ----------
+        b.addSpacing(12)
 
         # status row
         st = QHBoxLayout()
@@ -705,8 +751,10 @@ class UpdateDialog(QDialog):
         self.adjustSize()
 
     def _recompute_height(self):
-        """Resize this frameless dialog to fit the screen (no more than ~94%
-        of the available geometry) so the button row is always on-screen."""
+        """Cap the frameless dialog at the screen height minus a 24px margin
+        top and bottom (calc(100vh - 48px)). Height still hugs the content
+        below that cap; once the content is taller, the scrolling middle of the
+        body takes over instead of any element being squashed."""
         geos = QApplication.screens()
         if not geos:
             return
@@ -715,9 +763,10 @@ class UpdateDialog(QDialog):
             if g.availableGeometry().intersects(self.frameGeometry()):
                 avail = g.availableGeometry()
                 break
-        maxH = max(320, int(avail.height() * 0.94))
+        maxH = max(320, avail.height() - 48)
+        self.setMaximumHeight(maxH)
         if self.height() > maxH:
-            self.setFixedHeight(maxH)
+            self.resize(self.width(), maxH)
 
     def _chip(self, bold: str, rest: str) -> QLabel:
         lbl = QLabel(f"<b>{bold}</b> {rest}")
@@ -839,8 +888,7 @@ class UpdateDialog(QDialog):
         lines = [ln.strip() for ln in notes.replace("\r", "").splitlines()
                  if ln.strip()]
         if not lines:
-            return [("New build", "Install the latest version.",
-                     "new", "\u002b")]
+            return [("", "No changelog provided.", "new", "\u002b")]
         out = []
         for ln in lines[:6]:
             if not ln:
